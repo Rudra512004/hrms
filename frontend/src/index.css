@@ -1,18 +1,19 @@
 :root {
-  /* Colors */
-  --color-primary: #ff902b; /* SmartHR orange */
-  --color-primary-hover: #ff8112;
-  --color-bg-body: #f8f9fa; /* Light gray */
-  --color-bg-sidebar: #34444c; /* Dark sidebar */
-  --color-bg-sidebar-hover: #263238;
-  --color-bg-header: #ffffff; /* White header */
+  /* Colors (Vuexy Inspired) */
+  --color-primary: #7367f0;
+  --color-primary-hover: #655bd3;
+  --color-bg-body: #f8f7fa;
+  --color-bg-sidebar: #ffffff;
+  --color-bg-sidebar-hover: rgba(115, 103, 240, 0.08);
+  --color-bg-header: #ffffff;
   --color-bg-card: #ffffff;
 
-  --color-text-main: #333333;
-  --color-text-muted: #8e8e8e;
+  --color-text-main: #4b465c;
+  --color-text-muted: #a8aaae;
   --color-text-inverse: #ffffff;
+  --color-text-sidebar: #4b465c;
 
-  --color-border: #e2e5e8;
+  --color-border: #dbdade;
 
   /* Status Colors */
   --color-status-success: #55ce63;

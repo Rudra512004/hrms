@@ -9,14 +9,14 @@ const styles = {
     display: 'flex',
     minHeight: '100vh',
     width: '100%',
+    backgroundColor: 'var(--color-bg-body)',
   },
   mainContent: (isSidebarOpen: boolean) => ({
     flex: 1,
     marginLeft: isSidebarOpen ? 'var(--sidebar-width)' : 'var(--sidebar-width-collapsed)',
-    marginTop: 'var(--header-height)',
-    padding: 'var(--spacing-lg)',
+    padding: 'calc(62px + 2rem) 1.5rem 1.5rem 1.5rem', // 62px header + padding
     transition: 'margin-left 0.3s ease',
-    minHeight: 'calc(100vh - var(--header-height))',
+    minHeight: '100vh',
     width: `calc(100% - ${isSidebarOpen ? 'var(--sidebar-width)' : 'var(--sidebar-width-collapsed)'})`,
   }),
 };

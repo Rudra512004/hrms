@@ -24,17 +24,7 @@ export const AppRouter: React.FC = () => {
       <Route element={<AppLayout />}>
         <Route path="/" element={<Navigate to="/dashboard" replace />} />
         <Route path="/dashboard" element={<DashboardPage />} />
-        
-        {/* Module Placeholders */}
-        <Route path="/employees" element={<div>Employees Module Placeholder</div>} />
-        <Route path="/attendance" element={<div>Attendance Module Placeholder</div>} />
-        <Route path="/leave" element={<div>Leave Module Placeholder</div>} />
-        <Route path="/payroll" element={<div>Payroll Module Placeholder</div>} />
-        <Route path="/users" element={<div>Users Module Placeholder</div>} />
-        <Route path="/roles" element={<div>Roles Module Placeholder</div>} />
-        <Route path="/organization" element={<div>Organization Module Placeholder</div>} />
-        <Route path="/audit-logs" element={<div>Audit Logs Placeholder</div>} />
-        <Route path="/settings" element={<div>Settings Placeholder</div>} />
+        <Route path="/profile" element={<div>Profile Placeholder</div>} />
 
         {/* Catch-all within AppLayout */}
         <Route path="*" element={<NotFoundPage />} />

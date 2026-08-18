@@ -1,5 +1,7 @@
-import React from 'react';
-import { Menu, Search, Bell, User } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Menu, Search, Bell, User, LogOut } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { authService, type User as AuthUser } from '../services/auth';
 
 interface HeaderProps {
   toggleSidebar: () => void;
@@ -8,19 +10,20 @@ interface HeaderProps {
 
 const styles = {
   header: (isOpen: boolean) => ({
-    height: 'var(--header-height)',
+    height: '62px',
     backgroundColor: 'var(--color-bg-header)',
-    borderBottom: '1px solid var(--color-border)',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'space-between',
-    padding: '0 var(--spacing-lg)',
+    padding: '0 var(--spacing-md)',
     position: 'fixed' as const,
-    top: 0,
-    right: 0,
-    left: isOpen ? 'var(--sidebar-width)' : 'var(--sidebar-width-collapsed)',
+    top: '1rem',
+    right: '1.5rem',
+    left: isOpen ? 'calc(var(--sidebar-width) + 1.5rem)' : 'calc(var(--sidebar-width-collapsed) + 1.5rem)',
     zIndex: 90,
     transition: 'left 0.3s ease',
+    borderRadius: 'var(--radius-md)',
+    boxShadow: 'var(--shadow-sm)',
   }),
   leftSide: {
     display: 'flex',
@@ -40,34 +43,39 @@ const styles = {
   searchBox: {
     display: 'flex',
     alignItems: 'center',
-    backgroundColor: 'var(--color-bg-body)',
-    borderRadius: '20px',
-    padding: '0.4rem 1rem',
-    marginLeft: 'var(--spacing-md)',
+    backgroundColor: 'transparent',
+    padding: '0.4rem',
   },
   searchInput: {
     border: 'none',
     background: 'none',
     outline: 'none',
     marginLeft: 'var(--spacing-sm)',
-    fontSize: '0.9rem',
+    fontSize: '0.95rem',
     width: '200px',
+    color: 'var(--color-text-main)',
   },
   rightSide: {
     display: 'flex',
     alignItems: 'center',
-    gap: 'var(--spacing-lg)',
+    gap: 'var(--spacing-md)',
   },
   iconBtn: {
     background: 'none',
     border: 'none',
-    color: 'var(--color-text-muted)',
+    color: 'var(--color-text-main)',
     position: 'relative' as const,
+    cursor: 'pointer',
+    padding: '8px',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: '50%',
   },
   badge: {
     position: 'absolute' as const,
-    top: '-4px',
-    right: '-4px',
+    top: '2px',
+    right: '2px',
     backgroundColor: 'var(--color-status-danger)',
     color: '#fff',
     fontSize: '0.65rem',
@@ -84,10 +92,11 @@ const styles = {
     alignItems: 'center',
     gap: 'var(--spacing-sm)',
     cursor: 'pointer',
+    paddingLeft: 'var(--spacing-sm)',
   },
   avatar: {
-    width: '32px',
-    height: '32px',
+    width: '38px',
+    height: '38px',
     borderRadius: '50%',
     backgroundColor: 'var(--color-primary)',
     display: 'flex',
@@ -98,10 +107,23 @@ const styles = {
   userName: {
     fontSize: '0.9rem',
     fontWeight: 500,
+    color: 'var(--color-text-main)',
   }
 };
 
 export const Header: React.FC<HeaderProps> = ({ toggleSidebar, isSidebarOpen }) => {
+  const navigate = useNavigate();
+  const [user, setUser] = useState<AuthUser | null>(null);
+
+  useEffect(() => {
+    authService.getCurrentUser().then(setUser);
+  }, []);
+
+  const handleLogout = async () => {
+    await authService.logout();
+    navigate('/login');
+  };
+
   return (
     <header style={styles.header(isSidebarOpen)}>
       <div style={styles.leftSide}>
@@ -109,10 +131,10 @@ export const Header: React.FC<HeaderProps> = ({ toggleSidebar, isSidebarOpen }) 
           <Menu size={24} />
         </button>
         <div style={styles.searchBox} className="desktop-only">
-          <Search size={18} color="var(--color-text-muted)" />
+          <Search size={20} color="var(--color-text-main)" />
           <input 
             type="text" 
-            placeholder="Search here" 
+            placeholder="Search (Ctrl+/)" 
             style={styles.searchInput}
           />
         </div>
@@ -120,15 +142,21 @@ export const Header: React.FC<HeaderProps> = ({ toggleSidebar, isSidebarOpen }) 
       
       <div style={styles.rightSide}>
         <button style={styles.iconBtn}>
-          <Bell size={20} />
-          <span style={styles.badge}>3</span>
+          <Bell size={22} />
+          <span style={styles.badge}>4</span>
         </button>
         
         <div style={styles.userArea}>
-          <div style={styles.avatar}>
-            <User size={18} />
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', marginRight: '8px' }}>
+            <span style={styles.userName}>{user ? `${user.firstName} ${user.lastName}` : 'Guest'}</span>
+            <span style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>Admin</span>
           </div>
-          <span style={styles.userName}>Admin User</span>
+          <div style={styles.avatar}>
+            <User size={20} />
+          </div>
+          <button style={{...styles.iconBtn, marginLeft: '4px'}} onClick={handleLogout} title="Logout">
+            <LogOut size={20} />
+          </button>
         </div>
       </div>
     </header>
