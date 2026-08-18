@@ -154,7 +154,7 @@ export const Header: React.FC<HeaderProps> = ({ toggleSidebar, isSidebarOpen }) 
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', marginRight: '8px' }}>
             <span style={styles.userName}>{user ? `${user.firstName} ${user.lastName}` : 'Loading...'}</span>
             <span style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>
-              {user ? (user as any).isStaff ? 'Admin' : 'Employee' : ''}
+              {user ? user.email : ''}
             </span>
           </div>
           <div style={styles.avatar}>

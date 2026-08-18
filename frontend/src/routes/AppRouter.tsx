@@ -11,6 +11,8 @@ import { LoginPage } from '../pages/LoginPage';
 import { PendingActivationPage } from '../pages/PendingActivationPage';
 import { NotFoundPage } from '../pages/NotFoundPage';
 
+import { ProfilePage } from '../pages/ProfilePage';
+
 export const AppRouter: React.FC = () => {
   return (
     <Routes>
@@ -24,7 +26,7 @@ export const AppRouter: React.FC = () => {
       <Route element={<AppLayout />}>
         <Route path="/" element={<Navigate to="/dashboard" replace />} />
         <Route path="/dashboard" element={<DashboardPage />} />
-        <Route path="/profile" element={<div>Profile Placeholder</div>} />
+        <Route path="/profile" element={<ProfilePage />} />
 
         {/* Catch-all within AppLayout */}
         <Route path="*" element={<NotFoundPage />} />
