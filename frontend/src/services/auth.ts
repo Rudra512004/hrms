@@ -20,14 +20,14 @@ export const authService = {
   /**
    * Log in using company email and password.
    */
-  login: async (email: string, password: string): Promise<void> => {
+  login: async (_email: string, _password: string): Promise<void> => {
     // TODO: Implement API call
   },
 
   /**
    * Activate an account and set a password.
    */
-  activate: async (uid: string, token: string, password: string): Promise<void> => {
+  activate: async (_uid: string, _token: string, _password: string): Promise<void> => {
     // TODO: Implement API call
   },
 
