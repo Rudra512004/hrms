@@ -124,6 +124,10 @@ export const Header: React.FC<HeaderProps> = ({ toggleSidebar, isSidebarOpen }) 
     navigate('/login');
   };
 
+  const getInitials = (firstName: string, lastName: string) => {
+    return `${firstName.charAt(0)}${lastName.charAt(0)}`.toUpperCase();
+  };
+
   return (
     <header style={styles.header(isSidebarOpen)}>
       <div style={styles.leftSide}>
@@ -143,16 +147,22 @@ export const Header: React.FC<HeaderProps> = ({ toggleSidebar, isSidebarOpen }) 
       <div style={styles.rightSide}>
         <button style={styles.iconBtn}>
           <Bell size={22} />
-          <span style={styles.badge}>4</span>
+          {/* <span style={styles.badge}>4</span> */}
         </button>
         
         <div style={styles.userArea}>
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', marginRight: '8px' }}>
-            <span style={styles.userName}>{user ? `${user.firstName} ${user.lastName}` : 'Guest'}</span>
-            <span style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>Admin</span>
+            <span style={styles.userName}>{user ? `${user.firstName} ${user.lastName}` : 'Loading...'}</span>
+            <span style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>
+              {user ? (user as any).isStaff ? 'Admin' : 'Employee' : ''}
+            </span>
           </div>
           <div style={styles.avatar}>
-            <User size={20} />
+            {user ? (
+              <span style={{ fontSize: '0.9rem', fontWeight: 600 }}>{getInitials(user.firstName, user.lastName)}</span>
+            ) : (
+              <User size={20} />
+            )}
           </div>
           <button style={{...styles.iconBtn, marginLeft: '4px'}} onClick={handleLogout} title="Logout">
             <LogOut size={20} />

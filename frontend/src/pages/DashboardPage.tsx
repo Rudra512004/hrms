@@ -1,123 +1,198 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { Card } from '../components/Card';
-import { StatusBadge, type StatusType } from '../components/StatusBadge';
-import { Table } from '../components/Table';
-import { Users, UserCheck, CalendarOff, AlertCircle } from 'lucide-react';
+import { StatusBadge } from '../components/StatusBadge';
+import { User as UserIcon, Mail, Hash, ChevronRight, AlertCircle, Loader2 } from 'lucide-react';
+import { authService, type User as AuthUser } from '../services/auth';
+import { useNavigate } from 'react-router-dom';
 
 const styles = {
-  grid: {
-    display: 'grid',
-    gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
-    gap: 'var(--spacing-lg)',
-    marginBottom: 'var(--spacing-lg)',
-  },
-  statCard: {
+  container: {
     display: 'flex',
-    alignItems: 'center',
+    flexDirection: 'column' as const,
+    gap: 'var(--spacing-xl)',
   },
-  statIcon: {
-    width: '60px',
-    height: '60px',
-    borderRadius: 'var(--radius-sm)',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 'var(--spacing-md)',
+  welcomeSection: {
+    marginBottom: 'var(--spacing-md)',
   },
-  statContent: {
-    flex: 1,
-  },
-  statTitle: {
-    fontSize: '0.9rem',
-    color: 'var(--color-text-muted)',
-    margin: 0,
-    fontWeight: 500,
-  },
-  statValue: {
+  welcomeTitle: {
     fontSize: '1.5rem',
     fontWeight: 700,
     color: 'var(--color-text-main)',
-    margin: '4px 0 0 0',
+    margin: '0 0 var(--spacing-xs) 0',
   },
-  sectionTitle: {
-    fontSize: '1.2rem',
+  welcomeSubtitle: {
+    color: 'var(--color-text-muted)',
+    margin: 0,
+    fontSize: '0.95rem',
+  },
+  grid: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
+    gap: 'var(--spacing-lg)',
+  },
+  infoCard: {
+    display: 'flex',
+    alignItems: 'flex-start',
+    gap: 'var(--spacing-md)',
+  },
+  iconBox: {
+    width: '48px',
+    height: '48px',
+    borderRadius: 'var(--radius-md)',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+  },
+  infoContent: {
+    flex: 1,
+  },
+  infoLabel: {
+    fontSize: '0.85rem',
+    color: 'var(--color-text-muted)',
+    textTransform: 'uppercase' as const,
+    letterSpacing: '0.5px',
+    margin: '0 0 4px 0',
     fontWeight: 600,
-    marginBottom: 'var(--spacing-md)',
-    marginTop: 'var(--spacing-xl)',
+  },
+  infoValue: {
+    fontSize: '1.1rem',
+    fontWeight: 600,
+    color: 'var(--color-text-main)',
+    margin: 0,
+    wordBreak: 'break-word' as const,
+  },
+  profileBanner: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 'var(--spacing-lg)',
+    backgroundColor: 'var(--color-primary)',
+    borderRadius: 'var(--radius-lg)',
+    color: '#fff',
+    cursor: 'pointer',
+    transition: 'transform 0.2s',
+  },
+  profileBannerText: {
+    margin: 0,
+    fontSize: '1.1rem',
+    fontWeight: 600,
+  },
+  profileBannerSubtext: {
+    margin: '4px 0 0 0',
+    fontSize: '0.9rem',
+    opacity: 0.9,
+  },
+  centerState: {
+    display: 'flex',
+    flexDirection: 'column' as const,
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: '400px',
+    color: 'var(--color-text-muted)',
   }
 };
 
-const StatCard = ({ title, value, icon, color }: { title: string, value: string | number, icon: React.ReactNode, color: string }) => (
+const InfoCard = ({ label, value, icon, color, isStatus = false }: { label: string, value: string, icon: React.ReactNode, color: string, isStatus?: boolean }) => (
   <Card>
-    <div style={styles.statCard}>
-      <div style={{ ...styles.statIcon, backgroundColor: `${color}15`, color }}>
+    <div style={styles.infoCard}>
+      <div style={{ ...styles.iconBox, backgroundColor: `${color}15`, color }}>
         {icon}
       </div>
-      <div style={styles.statContent}>
-        <p style={styles.statTitle}>{title}</p>
-        <h3 style={styles.statValue}>{value}</h3>
+      <div style={styles.infoContent}>
+        <p style={styles.infoLabel}>{label}</p>
+        {isStatus ? (
+          <div style={{ marginTop: '4px' }}>
+            <StatusBadge status={value as any} />
+          </div>
+        ) : (
+          <h3 style={styles.infoValue}>{value}</h3>
+        )}
       </div>
     </div>
   </Card>
 );
 
-// Demo Data
-const recentActivity = [
-  { id: '1', name: 'John Doe', action: 'Requested Leave', date: 'Today, 09:30 AM', status: 'pending' as StatusType },
-  { id: '2', name: 'Jane Smith', action: 'Joined Company', date: 'Yesterday', status: 'active' as StatusType },
-  { id: '3', name: 'Mike Johnson', action: 'Approved Leave', date: '12 Aug 2026', status: 'approved' as StatusType },
-  { id: '4', name: 'Emily Davis', action: 'Absent', date: '11 Aug 2026', status: 'absent' as StatusType },
-];
-
 export const DashboardPage: React.FC = () => {
-  const tableColumns = [
-    { key: 'name', title: 'Employee Name' },
-    { key: 'action', title: 'Action' },
-    { key: 'date', title: 'Date' },
-    { 
-      key: 'status', 
-      title: 'Status',
-      render: (item: any) => <StatusBadge status={item.status} />
-    },
-  ];
+  const navigate = useNavigate();
+  const [user, setUser] = useState<AuthUser | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    authService.getCurrentUser()
+      .then(u => {
+        if (!u) throw new Error("Could not load user data. Please log in again.");
+        setUser(u);
+      })
+      .catch(err => {
+        setError(err.message || "An unexpected error occurred while fetching your data.");
+      })
+      .finally(() => {
+        setLoading(false);
+      });
+  }, []);
+
+  if (loading) {
+    return (
+      <div style={styles.centerState}>
+        <Loader2 size={32} color="var(--color-primary)" style={{ animation: 'spin 1s linear infinite', marginBottom: 'var(--spacing-md)' }} />
+        <p>Loading your dashboard...</p>
+      </div>
+    );
+  }
+
+  if (error || !user) {
+    return (
+      <div style={styles.centerState}>
+        <AlertCircle size={48} color="var(--color-status-danger)" style={{ marginBottom: 'var(--spacing-md)' }} />
+        <h3 style={{ color: 'var(--color-text-main)', marginBottom: 'var(--spacing-xs)' }}>Unable to load dashboard</h3>
+        <p>{error}</p>
+      </div>
+    );
+  }
 
   return (
-    <div>
+    <div style={styles.container}>
+      <div style={styles.welcomeSection}>
+        <h1 style={styles.welcomeTitle}>Welcome back, {user.firstName}!</h1>
+        <p style={styles.welcomeSubtitle}>Here is an overview of your account information.</p>
+      </div>
+
       <div style={styles.grid}>
-        <StatCard 
-          title="Total Employees" 
-          value="124" 
-          icon={<Users size={28} />} 
-          color="var(--color-primary)" 
+        <InfoCard 
+          label="Account Status" 
+          value={user.status || 'unknown'} 
+          icon={<UserIcon size={24} />} 
+          color="var(--color-primary)"
+          isStatus={true}
         />
-        <StatCard 
-          title="Present Today" 
-          value="112" 
-          icon={<UserCheck size={28} />} 
-          color="var(--color-status-success)" 
+        <InfoCard 
+          label="Employee Code" 
+          value={user.hrmsId || 'Not Assigned'} 
+          icon={<Hash size={24} />} 
+          color="var(--color-status-info)" 
         />
-        <StatCard 
-          title="On Leave" 
-          value="8" 
-          icon={<CalendarOff size={28} />} 
+        <InfoCard 
+          label="Company Email" 
+          value={user.email} 
+          icon={<Mail size={24} />} 
           color="var(--color-status-warning)" 
-        />
-        <StatCard 
-          title="Pending Requests" 
-          value="6" 
-          icon={<AlertCircle size={28} />} 
-          color="var(--color-status-danger)" 
         />
       </div>
 
-      <h3 style={styles.sectionTitle}>Recent Activity</h3>
-      <Card>
-        <Table 
-          data={recentActivity} 
-          columns={tableColumns} 
-          keyExtractor={(item) => item.id} 
-        />
-      </Card>
+      <div 
+        style={styles.profileBanner} 
+        onClick={() => navigate('/profile')}
+        onMouseEnter={(e) => (e.currentTarget.style.transform = 'translateY(-2px)')}
+        onMouseLeave={(e) => (e.currentTarget.style.transform = 'translateY(0)')}
+      >
+        <div>
+          <h3 style={styles.profileBannerText}>Complete your profile</h3>
+          <p style={styles.profileBannerSubtext}>Make sure your personal and contact information is up to date.</p>
+        </div>
+        <ChevronRight size={28} />
+      </div>
     </div>
   );
 };
