@@ -73,7 +73,7 @@ class NetworkPolicyTests(TestCase):
 
         # Outside network, approved WFH
         now = timezone.now()
-        WFHRequest.objects.create(
+        wfh = WFHRequest.objects.create(
             employee=self.employee,
             start_at=now - timedelta(days=1),
             end_at=now + timedelta(days=1),
@@ -81,3 +81,22 @@ class NetworkPolicyTests(TestCase):
         )
         request = self.factory.get('/', REMOTE_ADDR='192.168.1.10')
         self.assertTrue(NetworkAccessService.is_remote_access_allowed(request, self.user))
+
+        # Outside network, expired WFH
+        wfh.start_at = now - timedelta(days=2)
+        wfh.end_at = now - timedelta(days=1)
+        wfh.save()
+        self.assertFalse(NetworkAccessService.is_remote_access_allowed(request, self.user))
+
+        # Outside network, rejected WFH
+        wfh.start_at = now - timedelta(days=1)
+        wfh.end_at = now + timedelta(days=1)
+        wfh.status = 'rejected'
+        wfh.save()
+        self.assertFalse(NetworkAccessService.is_remote_access_allowed(request, self.user))
+
+    def test_superadmin_access(self):
+        super_user = User.objects.create_user(email='super@example.com', password='Password123!', status='active', is_superuser=True)
+        # External IP, no WFH, no OfficeNetwork match -> ALLOWED for superadmin
+        request = self.factory.get('/', REMOTE_ADDR='192.168.1.10')
+        self.assertTrue(NetworkAccessService.is_remote_access_allowed(request, super_user))
