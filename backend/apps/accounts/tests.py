@@ -8,7 +8,7 @@ from django.utils.encoding import force_bytes
 from django.contrib.auth.tokens import default_token_generator
 from apps.employees.models import Employee
 from apps.authorization.models import Permission, Role, RolePermission, UserRole
-from apps.organization.models import Organization
+from apps.organization.models import Organization, OfficeNetwork
 
 User = get_user_model()
 
@@ -98,6 +98,9 @@ class EmployeeSelfServiceAPITests(TestCase):
         self.client.force_authenticate(user=self.user)
         self.me_url = reverse('employee-me')
 
+        org = Organization.objects.create(name='Org')
+        OfficeNetwork.objects.create(organization=org, name='TestNet', network='127.0.0.0/8', is_active=True)
+
     def test_can_modify_self_service_fields(self):
         response = self.client.patch(self.me_url, {
             'phone_number': '98765',
@@ -145,6 +148,7 @@ class ProvisioningAPITests(TestCase):
         self.perm = Permission.objects.create(name='Create Employee', codename='employee.create', resource='employee', action='create')
         RolePermission.objects.create(role=self.role, permission=self.perm)
         UserRole.objects.create(user=self.hr_user, role=self.role)
+        OfficeNetwork.objects.create(organization=self.org, name='TestNet', network='127.0.0.0/8', is_active=True)
 
     def test_unauthenticated_user_cannot_provision(self):
         response = self.client.post(self.provision_url, {
