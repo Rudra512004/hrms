@@ -78,13 +78,27 @@ class EmployeeManagementAPITests(TestCase):
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
     def test_deactivated_account_access(self):
+        from rest_framework.authtoken.models import Token
+        token, _ = Token.objects.get_or_create(user=self.target_user)
+
         self.target_user.status = 'inactive'
         self.target_user.save()
 
-        self.client.force_authenticate(user=self.target_user)
+        # Clear any force_authenticate state
+        self.client.force_authenticate(user=None)
+        self.client.credentials(HTTP_AUTHORIZATION='Token ' + token.key)
+
         response = self.client.get(reverse('employee-me'))
         # Should fail authentication since user is inactive
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+
+        # Test Reactivation
+        self.target_user.status = 'active'
+        self.target_user.save()
+
+        # Now the token should work again
+        response = self.client.get(reverse('employee-me'))
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
 
     def test_last_superadmin_protection(self):
         # Case B: 1 active superuser -> deactivating that superuser is DENIED

@@ -55,14 +55,7 @@ class User(AbstractBaseUser, PermissionsMixin):
     def is_active(self):
         return self.status == UserStatus.ACTIVE
 
-    @property
-    def is_authenticated(self):
-        """
-        Ensure inactive/deactivated accounts are strictly treated as unauthenticated.
-        This forces the DRF authentication and permission layers to produce 401 Unauthorized
-        instead of allowing an inactive user to reach the authorization layer and get 403.
-        """
-        return super().is_authenticated and self.is_active
+
 
     def __str__(self):
         return self.email
