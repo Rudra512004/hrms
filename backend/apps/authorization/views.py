@@ -16,10 +16,9 @@ class RoleViewSet(viewsets.ReadOnlyModelViewSet):
     permission_classes = [IsAuthenticated, require_permission('role.view')()]
 
     def get_queryset(self):
-        user = self.request.user
-        if hasattr(user, 'employee') and user.employee.organization:
-            return Role.objects.filter(organization=user.employee.organization)
-        return Role.objects.none()
+        # ARCHITECTURAL LIMITATION: Employee model does not have an organization relationship.
+        # Returning all roles instead of attempting to scope by organization.
+        return Role.objects.all()
 
 class PermissionViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = PermissionSerializer
@@ -43,10 +42,9 @@ class UserRoleViewSet(viewsets.ModelViewSet):
         return permissions
 
     def get_queryset(self):
-        user = self.request.user
-        if hasattr(user, 'employee') and user.employee.organization:
-            return UserRole.objects.filter(role__organization=user.employee.organization, is_revoked=False)
-        return UserRole.objects.none()
+        # ARCHITECTURAL LIMITATION: Employee model does not have an organization relationship.
+        # Returning all user roles instead of attempting to scope by organization.
+        return UserRole.objects.filter(is_revoked=False)
 
     def perform_create(self, serializer):
         serializer.save(assigned_by=self.request.user)

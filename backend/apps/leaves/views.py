@@ -14,10 +14,8 @@ class LeaveTypeViewSet(viewsets.ReadOnlyModelViewSet):
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
-        user = self.request.user
-        if hasattr(user, 'employee') and user.employee.organization:
-            return LeaveType.objects.filter(organization=user.employee.organization, is_active=True)
-        return LeaveType.objects.none()
+        # ARCHITECTURAL LIMITATION: Employee model does not have an organization relationship.
+        return LeaveType.objects.filter(is_active=True)
 
 class LeaveBalanceViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = LeaveBalanceSerializer

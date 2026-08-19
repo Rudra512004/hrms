@@ -17,11 +17,11 @@ class AuthorizationManagementAPITests(TestCase):
 
         # Superadmin
         self.super_user = User.objects.create_user(email='super@example.com', password='Password123!', status='active', is_superuser=True)
-        self.super_employee = Employee.objects.create(user=self.super_user, employee_code='EMP_SUPER', organization=self.org)
+        self.super_employee = Employee.objects.create(user=self.super_user, employee_code='EMP_SUPER')
 
         # Normal User
         self.normal_user = User.objects.create_user(email='normal@example.com', password='Password123!', status='active')
-        self.normal_employee = Employee.objects.create(user=self.normal_user, employee_code='EMP_NORMAL', organization=self.org)
+        self.normal_employee = Employee.objects.create(user=self.normal_user, employee_code='EMP_NORMAL')
 
         # Permissions and Roles
         self.perm_view_emp = Permission.objects.create(name='View Employee', codename='employee.view', resource='employee', action='view')
