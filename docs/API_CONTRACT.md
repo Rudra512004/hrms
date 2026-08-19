@@ -251,8 +251,139 @@ View or securely modify self-service fields. Prevent IDOR by intrinsically opera
 
 ## 4. Dynamic RBAC & Role Assignment
 
-Authorization remains purely dynamic. 
+Authorization remains purely dynamic.
 The backend explicitly uses `AuthorizationService.has_permission(user, 'permission.codename')` and strictly avoids any hardcoded role strings like `if role == "HR"`.
 
 - Role checks require a `403 Forbidden` response if the active user lacks the required permission codename (e.g., `employee.create`).
 - Normal employees cannot provision others or arbitrarily elevate their permissions through provisioning endpoints.
+
+---
+
+## 5. Network Policy & WFH
+
+The HRMS enforces a strict network access policy. Once authenticated, a user's API requests must pass network access constraints unless the endpoint is explicitly public (e.g., login, activation).
+
+**Network Policy Algorithm:**
+1. Determine the trusted client IP. For direct requests, this uses `REMOTE_ADDR`. We do not blindly trust `X-Forwarded-For` to prevent trivial spoofing.
+2. The `NetworkAccessService` evaluates if the IP falls within any active `OfficeNetwork` CIDR range. If yes, access is allowed.
+3. If outside an active office network, the system checks for an active, approved `WFHRequest` for the employee spanning the current time. If active, access is allowed.
+4. Otherwise, access is denied (403 Forbidden).
+
+**Note:** The WFH exception bypasses network restrictions, but *does not* bypass authentication. A user must always authenticate with valid credentials.
+
+---
+
+## 6. Office Network APIs
+
+Manage allowed office networks (Requires authorized users).
+
+### List / Create Office Networks
+
+- **Method:** `GET` / `POST`
+- **Path:** `/api/v1/organization/office-networks/`
+- **Authentication Requirement:** Token
+- **Authorization Requirement:** `office_network.view` (GET), `office_network.create` (POST)
+
+**POST Request Body:**
+```json
+{
+  "organization": 1,
+  "name": "Headquarters",
+  "network": "203.0.113.0/24",
+  "description": "Main HQ network",
+  "is_active": true
+}
+```
+
+**Successful Response (201 Created):**
+```json
+{
+  "id": 1,
+  "organization": 1,
+  "name": "Headquarters",
+  "network": "203.0.113.0/24",
+  "description": "Main HQ network",
+  "is_active": true,
+  "created_at": "2023-11-01T10:00:00Z",
+  "updated_at": "2023-11-01T10:00:00Z"
+}
+```
+
+**Validation Errors (400 Bad Request):**
+- Invalid CIDR: `{"network": ["Invalid CIDR network"]}`
+
+### Retrieve / Update / Delete Office Network
+
+- **Method:** `GET` / `PUT` / `PATCH` / `DELETE`
+- **Path:** `/api/v1/organization/office-networks/<id>/`
+- **Authentication Requirement:** Token
+- **Authorization Requirement:** `office_network.view` (GET), `office_network.update` (PUT/PATCH), `office_network.delete` (DELETE)
+
+---
+
+## 7. Work From Home (WFH) APIs
+
+Manage and approve WFH requests.
+
+### List / Create WFH Requests
+
+- **Method:** `GET` / `POST`
+- **Path:** `/api/v1/employees/wfh-requests/`
+- **Authentication Requirement:** Token
+- **Authorization Requirement (GET):** Employees inherently see their own requests. Users with `wfh.view` see all requests.
+- **Authorization Requirement (POST):** Requires `wfh.request` permission.
+
+**POST Request Body:**
+```json
+{
+  "start_at": "2023-11-05T00:00:00Z",
+  "end_at": "2023-11-05T23:59:59Z",
+  "reason": "Doctor appointment"
+}
+```
+*Note: `employee` ID injection is ignored. The system intrinsically maps it to `request.user.employee`.*
+
+**Successful Response (201 Created):**
+```json
+{
+  "id": 1,
+  "employee": 1,
+  "start_at": "2023-11-05T00:00:00Z",
+  "end_at": "2023-11-05T23:59:59Z",
+  "reason": "Doctor appointment",
+  "status": "pending",
+  "requested_at": "2023-11-01T10:00:00Z",
+  "reviewed_by": null,
+  "reviewed_at": null,
+  "reviewer_comment": ""
+}
+```
+
+**Validation Errors (400 Bad Request):**
+- End date before start date: `{"end_at": ["End date must be after start date."]}`
+
+### Cancel Request
+
+- **Method:** `POST`
+- **Path:** `/api/v1/employees/wfh-requests/<id>/cancel/`
+- **Authentication Requirement:** Token
+- **Authorization Requirement:** Must own the request, or hold `wfh.cancel`. The request must be in `pending` state.
+
+### Approve / Reject Request
+
+- **Method:** `POST`
+- **Path:** `/api/v1/employees/wfh-requests/<id>/approve/` or `/api/v1/employees/wfh-requests/<id>/reject/`
+- **Authentication Requirement:** Token
+- **Authorization Requirement:** `wfh.approve` or `wfh.reject`. *An employee cannot approve their own request.*
+- **State Transition:** Pending -> Approved, or Pending -> Rejected.
+
+**POST Request Body (Optional Comment):**
+```json
+{
+  "reviewer_comment": "Approved as per discussion."
+}
+```
+
+**State Transition Errors (400 Bad Request):**
+- Invalid transition: `{"detail": "Only pending requests can be approved."}`
+- Self-approval attempt (403): `{"detail": "Cannot approve own request."}`

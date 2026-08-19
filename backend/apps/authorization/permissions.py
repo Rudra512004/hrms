@@ -17,3 +17,13 @@ def require_permission(permission_codename):
                 return False
             return AuthorizationService.has_permission(request.user, permission_codename)
     return SpecificPermission
+
+from .network import NetworkAccessService
+
+class IsNetworkAllowed(permissions.BasePermission):
+    message = "Network access denied. You must be on an office network or have an active WFH request."
+
+    def has_permission(self, request, view):
+        if not request.user or not request.user.is_authenticated:
+            return True
+        return NetworkAccessService.is_remote_access_allowed(request, request.user)

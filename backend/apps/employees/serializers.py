@@ -48,3 +48,21 @@ class ProvisionEmployeeSerializer(serializers.Serializer):
             employee_code=validated_data['employee_code']
         )
         return employee
+
+from .models import WFHRequest
+
+class WFHRequestSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = WFHRequest
+        fields = ['id', 'employee', 'start_at', 'end_at', 'reason', 'status', 'requested_at', 'reviewed_by', 'reviewed_at', 'reviewer_comment']
+        read_only_fields = ['id', 'employee', 'status', 'requested_at', 'reviewed_by', 'reviewed_at', 'reviewer_comment']
+
+    def validate(self, attrs):
+        start_at = attrs.get('start_at')
+        end_at = attrs.get('end_at')
+        if start_at and end_at and start_at >= end_at:
+            raise serializers.ValidationError({"end_at": "End date must be after start date."})
+        return attrs
+
+class WFHRequestReviewSerializer(serializers.Serializer):
+    reviewer_comment = serializers.CharField(required=False, allow_blank=True)

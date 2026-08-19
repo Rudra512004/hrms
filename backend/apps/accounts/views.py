@@ -4,6 +4,7 @@ from rest_framework.views import APIView
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.authtoken.models import Token
 from .serializers import LoginSerializer, UserSerializer, ActivateSerializer
+from apps.authorization.permissions import IsNetworkAllowed
 
 class LoginView(APIView):
     permission_classes = [AllowAny]
