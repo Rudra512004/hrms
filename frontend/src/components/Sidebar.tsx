@@ -5,7 +5,8 @@ import {
   UserCircle,
   Settings,
   Network,
-  FileText
+  FileText,
+  Clock
 } from 'lucide-react';
 import { authService, type User as AuthUser } from '../services/auth';
 
@@ -108,6 +109,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen }) => {
       title: 'Apps & Pages',
       items: [
         { path: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
+        { path: '/attendance', label: 'Attendance', icon: Clock },
         { path: '/profile', label: 'My Profile', icon: UserCircle },
       ]
     }

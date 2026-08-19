@@ -11,6 +11,7 @@ import { LoginPage } from '../pages/LoginPage';
 import { PendingActivationPage } from '../pages/PendingActivationPage';
 import { NotFoundPage } from '../pages/NotFoundPage';
 import { ProfilePage } from '../pages/ProfilePage';
+import { AttendancePage } from '../pages/AttendancePage';
 
 // Admin Pages
 import { AdminDashboardPage } from '../pages/admin/AdminDashboardPage';
@@ -30,6 +31,7 @@ export const AppRouter: React.FC = () => {
       <Route element={<AppLayout />}>
         <Route path="/" element={<Navigate to="/dashboard" replace />} />
         <Route path="/dashboard" element={<DashboardPage />} />
+        <Route path="/attendance" element={<AttendancePage />} />
         <Route path="/profile" element={<ProfilePage />} />
 
         {/* Admin Routes */}
