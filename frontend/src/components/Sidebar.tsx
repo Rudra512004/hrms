@@ -1,9 +1,13 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { NavLink } from 'react-router-dom';
 import { 
   LayoutDashboard, 
-  UserCircle
+  UserCircle,
+  Settings,
+  Network,
+  FileText
 } from 'lucide-react';
+import { authService, type User as AuthUser } from '../services/auth';
 
 interface SidebarProps {
   isOpen: boolean;
@@ -92,17 +96,34 @@ interface NavSection {
   items: NavItem[];
 }
 
-const navigation: NavSection[] = [
-  {
-    title: 'Apps & Pages',
-    items: [
-      { path: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
-      { path: '/profile', label: 'My Profile', icon: UserCircle },
-    ]
-  }
-];
-
 export const Sidebar: React.FC<SidebarProps> = ({ isOpen }) => {
+  const [user, setUser] = useState<AuthUser | null>(null);
+
+  useEffect(() => {
+    authService.getCurrentUser().then(setUser);
+  }, []);
+
+  const navigation: NavSection[] = [
+    {
+      title: 'Apps & Pages',
+      items: [
+        { path: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
+        { path: '/profile', label: 'My Profile', icon: UserCircle },
+      ]
+    }
+  ];
+
+  if (user?.isStaff) {
+    navigation.push({
+      title: 'Administration',
+      items: [
+        { path: '/admin', label: 'Overview', icon: Settings },
+        { path: '/admin/office-networks', label: 'Office Networks', icon: Network },
+        { path: '/admin/wfh', label: 'WFH Requests', icon: FileText },
+      ]
+    });
+  }
+
   return (
     <aside style={styles.sidebar(isOpen)}>
       <div style={styles.logoArea}>
@@ -116,6 +137,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen }) => {
               <NavLink 
                 key={item.path} 
                 to={item.path} 
+                end={item.path === '/admin'}
                 style={({ isActive }) => styles.link(isActive, isOpen)}
                 title={!isOpen ? item.label : undefined}
               >
