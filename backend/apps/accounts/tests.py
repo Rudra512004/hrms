@@ -198,18 +198,18 @@ class HTTPStatusMatrixTests(TestCase):
     def setUp(self):
         from rest_framework.test import APIClient
         self.client = APIClient()
-        self.active_user = User.objects.create_user(email=\'matrix_active@company.com\', password=\'Password123!\', status=\'active\')
-        self.employee = Employee.objects.create(user=self.active_user, employee_code=\'MAT001\')
+        self.active_user = User.objects.create_user(email='matrix_active@company.com', password='Password123!', status='active')
+        self.employee = Employee.objects.create(user=self.active_user, employee_code='MAT001')
 
-        self.deactivated_user = User.objects.create_user(email=\'matrix_deact@company.com\', password=\'Password123!\', status=\'inactive\')
-        self.deactivated_employee = Employee.objects.create(user=self.deactivated_user, employee_code=\'MAT002\')
+        self.deactivated_user = User.objects.create_user(email='matrix_deact@company.com', password='Password123!', status='inactive')
+        self.deactivated_employee = Employee.objects.create(user=self.deactivated_user, employee_code='MAT002')
 
-        self.superadmin = User.objects.create_user(email=\'matrix_super@company.com\', password=\'Password123!\', status=\'active\', is_superuser=True)
-        self.super_employee = Employee.objects.create(user=self.superadmin, employee_code=\'MAT003\')
+        self.superadmin = User.objects.create_user(email='matrix_super@company.com', password='Password123!', status='active', is_superuser=True)
+        self.super_employee = Employee.objects.create(user=self.superadmin, employee_code='MAT003')
 
         from apps.organization.models import Organization, OfficeNetwork
-        org = Organization.objects.create(name=\'MatrixOrg\')
-        OfficeNetwork.objects.create(organization=org, name=\'MatrixNet\', network=\'127.0.0.0/8\', is_active=True)
+        org = Organization.objects.create(name='MatrixOrg')
+        OfficeNetwork.objects.create(organization=org, name='MatrixNet', network='127.0.0.0/8', is_active=True)
 
     def get_token(self, user):
         from rest_framework.authtoken.models import Token
@@ -217,28 +217,28 @@ class HTTPStatusMatrixTests(TestCase):
         return token.key
 
     def test_missing_credentials(self):
-        response = self.client.get(reverse(\'employee-me\'))
+        response = self.client.get(reverse('employee-me'))
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
 
     def test_invalid_credentials(self):
-        self.client.credentials(HTTP_AUTHORIZATION=\'Token invalidtoken\')
-        response = self.client.get(reverse(\'employee-me\'))
+        self.client.credentials(HTTP_AUTHORIZATION='Token invalidtoken')
+        response = self.client.get(reverse('employee-me'))
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
 
     def test_deactivated_user(self):
-        self.client.credentials(HTTP_AUTHORIZATION=\'Token \' + self.get_token(self.deactivated_user))
-        response = self.client.get(reverse(\'employee-me\'))
+        self.client.credentials(HTTP_AUTHORIZATION='Token ' + self.get_token(self.deactivated_user))
+        response = self.client.get(reverse('employee-me'))
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
 
     def test_active_user_without_rbac(self):
-        self.client.credentials(HTTP_AUTHORIZATION=\'Token \' + self.get_token(self.active_user))
-        response = self.client.post(reverse(\'employee-provision\'), {})
+        self.client.credentials(HTTP_AUTHORIZATION='Token ' + self.get_token(self.active_user))
+        response = self.client.post(reverse('employee-provision'), {})
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
     def test_active_employee_external_ip_without_wfh(self):
-        self.client.credentials(HTTP_AUTHORIZATION=\'Token \' + self.get_token(self.active_user))
+        self.client.credentials(HTTP_AUTHORIZATION='Token ' + self.get_token(self.active_user))
         # Simulate external IP by modifying REMOTE_ADDR
-        response = self.client.get(reverse(\'employee-me\'), REMOTE_ADDR=\'8.8.8.8\')
+        response = self.client.get(reverse('employee-me'), REMOTE_ADDR='8.8.8.8')
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
     def test_active_employee_approved_wfh(self):
@@ -248,15 +248,36 @@ class HTTPStatusMatrixTests(TestCase):
         now = timezone.now()
         WFHRequest.objects.create(
             employee=self.employee,
-            status=\'approved\',
+            status='approved',
             start_at=now - datetime.timedelta(days=1),
             end_at=now + datetime.timedelta(days=1)
         )
-        self.client.credentials(HTTP_AUTHORIZATION=\'Token \' + self.get_token(self.active_user))
-        response = self.client.get(reverse(\'employee-me\'), REMOTE_ADDR=\'8.8.8.8\')
+        self.client.credentials(HTTP_AUTHORIZATION='Token ' + self.get_token(self.active_user))
+        response = self.client.get(reverse('employee-me'), REMOTE_ADDR='8.8.8.8')
         self.assertEqual(response.status_code, status.HTTP_200_OK)
 
     def test_superadmin_external_ip(self):
-        self.client.credentials(HTTP_AUTHORIZATION=\'Token \' + self.get_token(self.superadmin))
-        response = self.client.get(reverse(\'employee-me\'), REMOTE_ADDR=\'8.8.8.8\')
+        self.client.credentials(HTTP_AUTHORIZATION='Token ' + self.get_token(self.superadmin))
+        response = self.client.get(reverse('employee-me'), REMOTE_ADDR='8.8.8.8')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+    def test_active_valid_token(self):
+        self.client.credentials(HTTP_AUTHORIZATION='Token ' + self.get_token(self.superadmin))
+        response = self.client.get(reverse('employee-me'))
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+    def test_reactivated_user(self):
+        token_key = self.get_token(self.deactivated_user)
+        self.client.credentials(HTTP_AUTHORIZATION='Token ' + token_key)
+        # Should be 401 while deactivated
+        response = self.client.get(reverse('employee-me'))
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+        
+        # Reactivate
+        self.deactivated_user.status = 'active'
+        self.deactivated_user.save()
+        
+        # In order for this not to fail with 403 due to network, we can give them WFH or make them superadmin, or just run it without external IP
+        # Default test client has no REMOTE_ADDR unless specified, which means it evaluates as local/office by default!
+        response = self.client.get(reverse('employee-me'))
         self.assertEqual(response.status_code, status.HTTP_200_OK)
