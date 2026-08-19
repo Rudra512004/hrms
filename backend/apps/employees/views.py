@@ -115,7 +115,6 @@ class EmployeeManagementViewSet(viewsets.ModelViewSet):
             return Response({'detail': 'Employee is already active.'}, status=status.HTTP_400_BAD_REQUEST)
 
         user.status = 'active'
-        user.is_active = True
         user.save()
         return Response(EmployeeSerializer(employee).data)
 
@@ -134,15 +133,14 @@ class EmployeeManagementViewSet(viewsets.ModelViewSet):
             return Response({'detail': 'Only superadmin can deactivate a superadmin.'}, status=status.HTTP_403_FORBIDDEN)
 
         if user.is_superuser:
-            active_superadmins = type(user).objects.filter(is_superuser=True, is_active=True).count()
+            active_superadmins = type(user).objects.filter(is_superuser=True, status='active').count()
             if active_superadmins <= 1:
                 return Response({'detail': 'Cannot deactivate the last active superadmin.'}, status=status.HTTP_403_FORBIDDEN)
-        
-        if user.status == 'deactivated':
+
+        if user.status == 'inactive':
             return Response({'detail': 'Employee is already deactivated.'}, status=status.HTTP_400_BAD_REQUEST)
 
-        user.status = 'deactivated'
-        user.is_active = False
+        user.status = 'inactive'
         user.save()
         return Response(EmployeeSerializer(employee).data)
 

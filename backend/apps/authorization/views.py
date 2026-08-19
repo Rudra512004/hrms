@@ -22,8 +22,14 @@ class RoleViewSet(viewsets.ReadOnlyModelViewSet):
 
 class PermissionViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = PermissionSerializer
-    permission_classes = [IsAuthenticated, require_permission('permission.view')]
+    permission_classes = [IsAuthenticated]
     queryset = Permission.objects.all()
+
+    def get_permissions(self):
+        permissions = [IsAuthenticated()]
+        if self.action != 'my_permissions':
+            permissions.append(require_permission('permission.view')())
+        return permissions
 
     @action(detail=False, methods=['get'])
     def my_permissions(self, request):
