@@ -13,7 +13,7 @@ User = get_user_model()
 
 class RoleViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = RoleSerializer
-    permission_classes = [IsAuthenticated, require_permission('role.view')()]
+    permission_classes = [IsAuthenticated, require_permission('role.view')]
 
     def get_queryset(self):
         # ARCHITECTURAL LIMITATION: Employee model does not have an organization relationship.
@@ -22,7 +22,7 @@ class RoleViewSet(viewsets.ReadOnlyModelViewSet):
 
 class PermissionViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = PermissionSerializer
-    permission_classes = [IsAuthenticated, require_permission('permission.view')()]
+    permission_classes = [IsAuthenticated, require_permission('permission.view')]
     queryset = Permission.objects.all()
 
     @action(detail=False, methods=['get'])

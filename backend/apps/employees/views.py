@@ -133,6 +133,11 @@ class EmployeeManagementViewSet(viewsets.ModelViewSet):
         if user.is_superuser and not request.user.is_superuser:
             return Response({'detail': 'Only superadmin can deactivate a superadmin.'}, status=status.HTTP_403_FORBIDDEN)
 
+        if user.is_superuser:
+            active_superadmins = type(user).objects.filter(is_superuser=True, is_active=True).count()
+            if active_superadmins <= 1:
+                return Response({'detail': 'Cannot deactivate the last active superadmin.'}, status=status.HTTP_403_FORBIDDEN)
+        
         if user.status == 'deactivated':
             return Response({'detail': 'Employee is already deactivated.'}, status=status.HTTP_400_BAD_REQUEST)
 
