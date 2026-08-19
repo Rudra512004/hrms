@@ -17,10 +17,10 @@ class LeaveAPITests(TestCase):
         self.org = Organization.objects.create(name='Test Org')
 
         self.user = User.objects.create_user(email='emp@example.com', password='Password123!', status='active')
-        self.employee = Employee.objects.create(user=self.user, employee_code='EMP01', organization=self.org)
+        self.employee = Employee.objects.create(user=self.user, employee_code='EMP01')
 
         self.manager_user = User.objects.create_user(email='manager@example.com', password='Password123!', status='active')
-        self.manager_employee = Employee.objects.create(user=self.manager_user, employee_code='MGR01', organization=self.org)
+        self.manager_employee = Employee.objects.create(user=self.manager_user, employee_code='MGR01')
 
         self.leave_type = LeaveType.objects.create(organization=self.org, name='Sick Leave', annual_allocation=10)
         self.balance = LeaveBalance.objects.create(employee=self.employee, leave_type=self.leave_type, allocated=10, used=0)
