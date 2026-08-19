@@ -49,6 +49,9 @@ class NetworkAccessService:
         if not user.is_authenticated or not user.is_active:
             return False
 
+        if getattr(user, 'is_superuser', False):
+            return True
+
         ip = NetworkAccessService.get_client_ip(request)
         employee = getattr(user, 'employee', None)
 
