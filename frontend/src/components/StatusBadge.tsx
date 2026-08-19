@@ -1,6 +1,6 @@
 import React from 'react';
 
-export type StatusType = 'active' | 'inactive' | 'pending' | 'approved' | 'rejected' | 'present' | 'absent' | 'warning';
+export type StatusType = 'active' | 'inactive' | 'pending' | 'approved' | 'rejected' | 'present' | 'absent' | 'warning' | 'cancelled';
 
 interface StatusBadgeProps {
   status: StatusType;
@@ -21,6 +21,7 @@ const statusColors: Record<StatusType, string> = {
   absent: 'var(--color-status-danger)',
   
   warning: 'var(--color-status-warning)',
+  cancelled: 'var(--color-text-muted)',
 };
 
 export const StatusBadge: React.FC<StatusBadgeProps> = ({ status, label, className = '' }) => {

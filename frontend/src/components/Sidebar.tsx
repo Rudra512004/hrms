@@ -5,8 +5,8 @@ import {
   UserCircle,
   Settings,
   Network,
-  FileText,
-  Clock
+  Clock,
+  Calendar
 } from 'lucide-react';
 import { authService, type User as AuthUser } from '../services/auth';
 
@@ -110,6 +110,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen }) => {
       items: [
         { path: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
         { path: '/attendance', label: 'Attendance', icon: Clock },
+        { path: '/leaves', label: 'Leave', icon: Calendar },
         { path: '/profile', label: 'My Profile', icon: UserCircle },
       ]
     }
@@ -121,7 +122,8 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen }) => {
       items: [
         { path: '/admin', label: 'Overview', icon: Settings },
         { path: '/admin/office-networks', label: 'Office Networks', icon: Network },
-        { path: '/admin/wfh', label: 'WFH Requests', icon: FileText },
+        { path: '/admin/wfh', label: 'WFH Requests', icon: Settings },
+        { path: '/admin/leaves', label: 'Leave Requests', icon: Calendar },
       ]
     });
   }

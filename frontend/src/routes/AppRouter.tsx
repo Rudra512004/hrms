@@ -12,9 +12,11 @@ import { PendingActivationPage } from '../pages/PendingActivationPage';
 import { NotFoundPage } from '../pages/NotFoundPage';
 import { ProfilePage } from '../pages/ProfilePage';
 import { AttendancePage } from '../pages/AttendancePage';
+import { LeavePage } from '../pages/LeavePage';
 
 // Admin Pages
 import { AdminDashboardPage } from '../pages/admin/AdminDashboardPage';
+import { AdminLeavePage } from '../pages/admin/AdminLeavePage';
 import { OfficeNetworksPage } from '../pages/admin/OfficeNetworksPage';
 import { WfhRequestsPage } from '../pages/admin/WfhRequestsPage';
 
@@ -32,12 +34,14 @@ export const AppRouter: React.FC = () => {
         <Route path="/" element={<Navigate to="/dashboard" replace />} />
         <Route path="/dashboard" element={<DashboardPage />} />
         <Route path="/attendance" element={<AttendancePage />} />
+        <Route path="/leaves" element={<LeavePage />} />
         <Route path="/profile" element={<ProfilePage />} />
 
         {/* Admin Routes */}
         <Route path="/admin" element={<AdminDashboardPage />} />
         <Route path="/admin/office-networks" element={<OfficeNetworksPage />} />
         <Route path="/admin/wfh" element={<WfhRequestsPage />} />
+        <Route path="/admin/leaves" element={<AdminLeavePage />} />
 
         {/* Catch-all within AppLayout */}
         <Route path="*" element={<NotFoundPage />} />
