@@ -4,6 +4,7 @@ from rest_framework.views import APIView
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.authtoken.models import Token
 from .serializers import LoginSerializer, UserSerializer, ActivateSerializer
+from apps.authorization.permissions import IsNetworkAllowed
 
 class LoginView(APIView):
     permission_classes = [AllowAny]
@@ -19,14 +20,14 @@ class LoginView(APIView):
         }, status=status.HTTP_200_OK)
 
 class LogoutView(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, IsNetworkAllowed]
 
     def post(self, request, *args, **kwargs):
         request.user.auth_token.delete()
         return Response({'detail': 'Successfully logged out.'}, status=status.HTTP_200_OK)
 
 class MeView(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, IsNetworkAllowed]
 
     def get(self, request, *args, **kwargs):
         serializer = UserSerializer(request.user)

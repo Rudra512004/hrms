@@ -1,7 +1,7 @@
 from rest_framework import viewsets
 from .models import OfficeNetwork
 from .serializers import OfficeNetworkSerializer
-from apps.authorization.permissions import require_permission
+from apps.authorization.permissions import require_permission, IsNetworkAllowed
 
 class OfficeNetworkViewSet(viewsets.ModelViewSet):
     queryset = OfficeNetwork.objects.all()
@@ -18,4 +18,4 @@ class OfficeNetworkViewSet(viewsets.ModelViewSet):
             permission = require_permission('office_network.delete')
         else:
             permission = require_permission('office_network.view')
-        return [permission()]
+        return [permission(), IsNetworkAllowed()]

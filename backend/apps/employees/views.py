@@ -6,12 +6,12 @@ from django.utils.http import urlsafe_base64_encode
 from django.utils.encoding import force_bytes
 from django.contrib.auth.tokens import default_token_generator
 from django.conf import settings
-from apps.authorization.permissions import HasRequiredPermission
+from apps.authorization.permissions import HasRequiredPermission, IsNetworkAllowed
 from .models import Employee
 from .serializers import EmployeeSerializer, ProvisionEmployeeSerializer
 
 class EmployeeSelfServiceView(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, IsNetworkAllowed]
 
     def get(self, request, *args, **kwargs):
         try:
@@ -34,7 +34,7 @@ class EmployeeSelfServiceView(APIView):
         return Response(serializer.data, status=status.HTTP_200_OK)
 
 class ProvisionEmployeeView(APIView):
-    permission_classes = [HasRequiredPermission]
+    permission_classes = [HasRequiredPermission, IsNetworkAllowed]
     required_permission = 'employee.create'
 
     def post(self, request, *args, **kwargs):
@@ -83,8 +83,8 @@ class WFHRequestViewSet(viewsets.ModelViewSet):
     def get_permissions(self):
         if self.action == 'create':
             permission = require_permission('wfh.request')
-            return [permission()]
-        return [IsAuthenticated()]
+            return [permission(), IsNetworkAllowed()]
+        return [IsAuthenticated(), IsNetworkAllowed()]
 
     def perform_create(self, serializer):
         serializer.save(employee=self.request.user.employee)
