@@ -18,4 +18,4 @@ class OfficeNetworkViewSet(viewsets.ModelViewSet):
             permission = require_permission('office_network.delete')
         else:
             permission = require_permission('office_network.view')
-        return [permission(), IsNetworkAllowed()]
+        return [permission()]

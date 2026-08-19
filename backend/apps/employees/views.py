@@ -83,8 +83,8 @@ class WFHRequestViewSet(viewsets.ModelViewSet):
     def get_permissions(self):
         if self.action == 'create':
             permission = require_permission('wfh.request')
-            return [permission(), IsNetworkAllowed()]
-        return [IsAuthenticated(), IsNetworkAllowed()]
+            return [permission()]
+        return [IsAuthenticated()]
 
     def perform_create(self, serializer):
         serializer.save(employee=self.request.user.employee)
