@@ -1,13 +1,15 @@
-from rest_framework import status
+from rest_framework import status, viewsets
 from rest_framework.response import Response
 from rest_framework.views import APIView
+from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
 from django.utils.http import urlsafe_base64_encode
 from django.utils.encoding import force_bytes
 from django.contrib.auth.tokens import default_token_generator
 from django.conf import settings
-from apps.authorization.permissions import HasRequiredPermission, IsNetworkAllowed
-from .models import Employee
+from apps.authorization.permissions import HasRequiredPermission, IsNetworkAllowed, require_permission
+from apps.authorization.services import AuthorizationService
+from .models import Employee, WFHRequest
 from .serializers import EmployeeSerializer, ProvisionEmployeeSerializer
 
 class EmployeeSelfServiceView(APIView):
@@ -59,13 +61,89 @@ class ProvisionEmployeeView(APIView):
 
         return Response(response_data, status=status.HTTP_201_CREATED)
 
-from rest_framework import viewsets
-from rest_framework.decorators import action
+class EmployeeManagementViewSet(viewsets.ModelViewSet):
+    def get_serializer_class(self):
+        if self.action == 'create':
+            return ProvisionEmployeeSerializer
+        return EmployeeSerializer
+
+    def get_permissions(self):
+        permissions = [IsAuthenticated(), IsNetworkAllowed()]
+        if self.action in ['list', 'retrieve']:
+            permissions.append(require_permission('employee.view')())
+        elif self.action == 'create':
+            permissions.append(require_permission('employee.create')())
+        else:
+            permissions.append(require_permission('employee.update')())
+        return permissions
+
+    def get_queryset(self):
+        user = self.request.user
+        if hasattr(user, 'employee') and user.employee.organization:
+            return Employee.objects.filter(organization=user.employee.organization)
+        return Employee.objects.none()
+
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        employee = serializer.save()
+
+        uid = urlsafe_base64_encode(force_bytes(employee.user.pk))
+        token = default_token_generator.make_token(employee.user)
+
+        response_data = {
+            'detail': 'Employee provisioned successfully.',
+            'employee': EmployeeSerializer(employee).data,
+        }
+
+        if settings.DEBUG:
+            response_data['activation_info'] = {
+                'uid': uid,
+                'token': token
+            }
+
+        return Response(response_data, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['post'])
+    def activate(self, request, pk=None):
+        if not AuthorizationService.has_permission(request.user, 'employee.status'):
+            return Response(status=status.HTTP_403_FORBIDDEN)
+
+        employee = self.get_object()
+        user = employee.user
+
+        if user.status == 'active':
+            return Response({'detail': 'Employee is already active.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        user.status = 'active'
+        user.is_active = True
+        user.save()
+        return Response(EmployeeSerializer(employee).data)
+
+    @action(detail=True, methods=['post'])
+    def deactivate(self, request, pk=None):
+        if not AuthorizationService.has_permission(request.user, 'employee.status'):
+            return Response(status=status.HTTP_403_FORBIDDEN)
+
+        employee = self.get_object()
+        user = employee.user
+
+        if user == request.user:
+            return Response({'detail': 'Cannot deactivate own account.'}, status=status.HTTP_403_FORBIDDEN)
+
+        if user.is_superuser and not request.user.is_superuser:
+            return Response({'detail': 'Only superadmin can deactivate a superadmin.'}, status=status.HTTP_403_FORBIDDEN)
+
+        if user.status == 'deactivated':
+            return Response({'detail': 'Employee is already deactivated.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        user.status = 'deactivated'
+        user.is_active = False
+        user.save()
+        return Response(EmployeeSerializer(employee).data)
+
 from django.utils import timezone
-from .models import WFHRequest
 from .serializers import WFHRequestSerializer, WFHRequestReviewSerializer
-from apps.authorization.permissions import require_permission
-from apps.authorization.services import AuthorizationService
 
 class WFHRequestViewSet(viewsets.ModelViewSet):
     serializer_class = WFHRequestSerializer

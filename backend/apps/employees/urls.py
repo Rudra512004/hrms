@@ -1,8 +1,9 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
-from .views import EmployeeSelfServiceView, ProvisionEmployeeView, WFHRequestViewSet
+from .views import EmployeeSelfServiceView, ProvisionEmployeeView, WFHRequestViewSet, EmployeeManagementViewSet
 
 router = DefaultRouter()
+router.register(r'management', EmployeeManagementViewSet, basename='employee-management')
 router.register(r'wfh-requests', WFHRequestViewSet, basename='wfh-request')
 
 urlpatterns = [
