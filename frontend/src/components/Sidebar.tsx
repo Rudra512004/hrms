@@ -6,7 +6,8 @@ import {
   Settings,
   Network,
   Clock,
-  Calendar
+  Calendar,
+  Users
 } from 'lucide-react';
 import { authService, type User as AuthUser } from '../services/auth';
 
@@ -121,6 +122,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen }) => {
       title: 'Administration',
       items: [
         { path: '/admin', label: 'Overview', icon: Settings },
+        { path: '/admin/employees', label: 'Employees', icon: Users },
         { path: '/admin/office-networks', label: 'Office Networks', icon: Network },
         { path: '/admin/wfh', label: 'WFH Requests', icon: Settings },
         { path: '/admin/leaves', label: 'Leave Requests', icon: Calendar },

@@ -19,6 +19,8 @@ import { AdminDashboardPage } from '../pages/admin/AdminDashboardPage';
 import { AdminLeavePage } from '../pages/admin/AdminLeavePage';
 import { OfficeNetworksPage } from '../pages/admin/OfficeNetworksPage';
 import { WfhRequestsPage } from '../pages/admin/WfhRequestsPage';
+import { EmployeesPage } from '../pages/admin/EmployeesPage';
+import { EmployeeAccessPage } from '../pages/admin/EmployeeAccessPage';
 
 export const AppRouter: React.FC = () => {
   return (
@@ -39,6 +41,8 @@ export const AppRouter: React.FC = () => {
 
         {/* Admin Routes */}
         <Route path="/admin" element={<AdminDashboardPage />} />
+        <Route path="/admin/employees" element={<EmployeesPage />} />
+        <Route path="/admin/employees/:employeeId/access" element={<EmployeeAccessPage />} />
         <Route path="/admin/office-networks" element={<OfficeNetworksPage />} />
         <Route path="/admin/wfh" element={<WfhRequestsPage />} />
         <Route path="/admin/leaves" element={<AdminLeavePage />} />
