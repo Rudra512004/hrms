@@ -1,4 +1,5 @@
 from rest_framework import viewsets, status
+from apps.audit.services import AuditService
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
@@ -61,6 +62,13 @@ class AttendanceViewSet(viewsets.GenericViewSet):
 
         attendance.check_out = timezone.now()
         attendance.save()
+        AuditService.log(
+            action='check-out',
+            actor=request.user,
+            target_type='attendance',
+            target_id=attendance.id,
+            request=request
+        )
 
         serializer = self.get_serializer(attendance)
         return Response(serializer.data, status=status.HTTP_200_OK)

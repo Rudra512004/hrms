@@ -1,4 +1,5 @@
 from rest_framework import viewsets, status
+from apps.audit.services import AuditService
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
@@ -48,7 +49,14 @@ class LeaveRequestViewSet(viewsets.ModelViewSet):
         return permissions
 
     def perform_create(self, serializer):
-        serializer.save(employee=self.request.user.employee)
+        leave = serializer.save(employee=self.request.user.employee)
+        AuditService.log(
+            action='leave_request_created',
+            actor=self.request.user,
+            target_type='leaverequest',
+            target_id=leave.id,
+            request=self.request
+        )
 
     @action(detail=True, methods=['post'])
     def approve(self, request, pk=None):
