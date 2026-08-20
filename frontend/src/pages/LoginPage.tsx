@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { authService } from '../services/auth';
+import { Eye, EyeOff } from 'lucide-react';
 
 const styles = {
   container: {
@@ -40,10 +41,28 @@ const styles = {
   input: {
     width: '100%',
     padding: '0.75rem',
+    paddingRight: '2.5rem',
     borderRadius: 'var(--radius-sm)',
     border: '1px solid var(--color-border)',
     fontSize: '1rem',
     outline: 'none',
+  },
+  passwordWrapper: {
+    position: 'relative' as const,
+    display: 'flex',
+    alignItems: 'center',
+  },
+  eyeButton: {
+    position: 'absolute' as const,
+    right: '10px',
+    background: 'none',
+    border: 'none',
+    cursor: 'pointer',
+    color: 'var(--color-text-muted)',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: '4px',
   },
   options: {
     display: 'flex',
@@ -96,6 +115,7 @@ export const LoginPage: React.FC = () => {
   const navigate = useNavigate();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -109,36 +129,46 @@ export const LoginPage: React.FC = () => {
       <div style={styles.logo}>SmartHR</div>
       <div style={styles.card}>
         <h2 style={styles.title}>Welcome Back</h2>
-        
+
         <form onSubmit={handleLogin}>
           <div style={styles.formGroup}>
             <label style={styles.label}>Company Email</label>
-            <input 
-              type="email" 
-              style={styles.input} 
+            <input
+              type="email"
+              style={styles.input}
               placeholder="email@company.com"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               required
             />
           </div>
-          
+
           <div style={styles.formGroup}>
             <label style={styles.label}>Password</label>
-            <input 
-              type="password" 
-              style={styles.input} 
-              placeholder="********"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-            />
+            <div style={styles.passwordWrapper}>
+              <input
+                type={showPassword ? 'text' : 'password'}
+                style={styles.input}
+                placeholder="********"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
+              />
+              <button
+                type="button"
+                style={styles.eyeButton}
+                onClick={() => setShowPassword(!showPassword)}
+                aria-label={showPassword ? "Hide password" : "Show password"}
+              >
+                {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+              </button>
+            </div>
           </div>
-          
+
           <div style={styles.options}>
-            <a href="#" style={styles.link} onClick={(e) => e.preventDefault()}>Forgot password?</a>
+            <Link to="/forgot-password" style={styles.link}>Forgot password?</Link>
           </div>
-          
+
           <button type="submit" style={styles.button}>Login</button>
         </form>
 
