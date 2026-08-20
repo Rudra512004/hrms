@@ -118,16 +118,17 @@ export const EmployeesPage: React.FC = () => {
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingEmployee, setEditingEmployee] = useState<EmployeeProfile | null>(null);
-  
+
   const [formData, setFormData] = useState({
     email: '',
+    personal_email: '',
     first_name: '',
     last_name: '',
     employee_code: '',
     phone_number: '',
     address: ''
   });
-  
+
   const [formError, setFormError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -166,7 +167,7 @@ export const EmployeesPage: React.FC = () => {
 
   const openCreateModal = () => {
     setEditingEmployee(null);
-    setFormData({ email: '', first_name: '', last_name: '', employee_code: '', phone_number: '', address: '' });
+    setFormData({ email: '', personal_email: '', first_name: '', last_name: '', employee_code: '', phone_number: '', address: '' });
     setFormError(null);
     setIsModalOpen(true);
   };
@@ -175,6 +176,7 @@ export const EmployeesPage: React.FC = () => {
     setEditingEmployee(emp);
     setFormData({
       email: emp.email,
+      personal_email: '',
       first_name: emp.first_name,
       last_name: emp.last_name,
       employee_code: emp.employee_code,
@@ -200,11 +202,12 @@ export const EmployeesPage: React.FC = () => {
       } else {
         const result = await employeeManagementService.createEmployee({
           email: formData.email,
+          personal_email: formData.personal_email,
           first_name: formData.first_name,
           last_name: formData.last_name,
           employee_code: formData.employee_code
         });
-        
+
         let msg = `Employee created.`;
         if (result.onboarding_email_status === 'sent') {
           msg = "Employee created. Onboarding email sent.";
@@ -268,16 +271,16 @@ export const EmployeesPage: React.FC = () => {
     { key: 'employee_code', title: 'Code' },
     { key: 'name', title: 'Name', render: (e: EmployeeProfile) => `${e.first_name} ${e.last_name}` },
     { key: 'email', title: 'Email' },
-    { 
-      key: 'status', 
-      title: 'Status', 
+    {
+      key: 'status',
+      title: 'Status',
       render: (e: EmployeeProfile) => (
         <StatusBadge status={e.status as any} />
-      ) 
+      )
     },
-    { 
-      key: 'actions', 
-      title: 'Actions', 
+    {
+      key: 'actions',
+      title: 'Actions',
       render: (e: EmployeeProfile) => (
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
           <button style={styles.actionBtn} onClick={() => openEditModal(e)} title="Edit">
@@ -286,15 +289,15 @@ export const EmployeesPage: React.FC = () => {
           <button style={styles.actionBtn} onClick={() => navigate(`/admin/employees/${e.id}/access`)} title="RBAC Access">
             <Shield size={18} color="var(--color-primary)" />
           </button>
-          <button 
-            style={styles.actionBtn} 
-            onClick={() => e.status === 'active' ? handleDeactivate(e) : handleActivate(e)} 
+          <button
+            style={styles.actionBtn}
+            onClick={() => e.status === 'active' ? handleDeactivate(e) : handleActivate(e)}
             title={e.status === 'active' ? "Deactivate" : "Activate"}
           >
             <Power size={18} color={e.status === 'active' ? "var(--color-status-danger)" : "var(--color-status-success)"} />
           </button>
         </div>
-      ) 
+      )
     }
   ];
 
@@ -345,7 +348,7 @@ export const EmployeesPage: React.FC = () => {
         <div style={styles.modalOverlay}>
           <div style={styles.modalContent}>
             <h2 style={{ marginTop: 0 }}>{editingEmployee ? 'Edit Employee Info' : 'Provision Employee'}</h2>
-            
+
             {formError && (
               <div style={styles.errorBox}>
                 <AlertCircle size={18} /> {formError}
@@ -366,19 +369,29 @@ export const EmployeesPage: React.FC = () => {
                 <>
                   <div style={styles.formGroup}>
                     <label style={styles.label}>Email</label>
-                    <input 
-                      style={styles.input} 
+                    <input
+                      style={styles.input}
                       type="email"
                       value={formData.email}
                       onChange={(e) => setFormData({...formData, email: e.target.value})}
                       required
                     />
                   </div>
+                  <div style={styles.formGroup}>
+                    <label style={styles.label}>Personal Email</label>
+                    <input
+                      style={styles.input}
+                      type="email"
+                      value={formData.personal_email}
+                      onChange={(e) => setFormData({...formData, personal_email: e.target.value})}
+                      required
+                    />
+                  </div>
                   <div style={{ display: 'flex', gap: 'var(--spacing-md)' }}>
                     <div style={{ ...styles.formGroup, flex: 1 }}>
                       <label style={styles.label}>First Name</label>
-                      <input 
-                        style={styles.input} 
+                      <input
+                        style={styles.input}
                         value={formData.first_name}
                         onChange={(e) => setFormData({...formData, first_name: e.target.value})}
                         required
@@ -386,8 +399,8 @@ export const EmployeesPage: React.FC = () => {
                     </div>
                     <div style={{ ...styles.formGroup, flex: 1 }}>
                       <label style={styles.label}>Last Name</label>
-                      <input 
-                        style={styles.input} 
+                      <input
+                        style={styles.input}
                         value={formData.last_name}
                         onChange={(e) => setFormData({...formData, last_name: e.target.value})}
                         required
@@ -396,8 +409,8 @@ export const EmployeesPage: React.FC = () => {
                   </div>
                   <div style={styles.formGroup}>
                     <label style={styles.label}>Employee Code</label>
-                    <input 
-                      style={styles.input} 
+                    <input
+                      style={styles.input}
                       value={formData.employee_code}
                       onChange={(e) => setFormData({...formData, employee_code: e.target.value})}
                       required
@@ -410,23 +423,23 @@ export const EmployeesPage: React.FC = () => {
                 <>
                   <div style={styles.formGroup}>
                     <label style={styles.label}>Phone Number</label>
-                    <input 
-                      style={styles.input} 
+                    <input
+                      style={styles.input}
                       value={formData.phone_number}
                       onChange={(e) => setFormData({...formData, phone_number: e.target.value})}
                     />
                   </div>
                   <div style={styles.formGroup}>
                     <label style={styles.label}>Address</label>
-                    <input 
-                      style={styles.input} 
+                    <input
+                      style={styles.input}
                       value={formData.address}
                       onChange={(e) => setFormData({...formData, address: e.target.value})}
                     />
                   </div>
                 </>
               )}
-              
+
               <div style={styles.modalActions}>
                 <button type="button" style={styles.cancelBtn} onClick={() => setIsModalOpen(false)}>
                   Cancel

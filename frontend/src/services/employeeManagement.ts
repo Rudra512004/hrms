@@ -2,6 +2,7 @@ import { type EmployeeProfile } from './employee';
 
 export interface ProvisionEmployeeData {
   email: string;
+  personal_email: string;
   first_name: string;
   last_name: string;
   employee_code: string;
