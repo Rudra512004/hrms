@@ -159,6 +159,7 @@ export const EmployeeAccessPage: React.FC = () => {
   
   const [allRoles, setAllRoles] = useState<Role[]>([]);
   const [allPermissions, setAllPermissions] = useState<Permission[]>([]);
+  const [effectivePermissions, setEffectivePermissions] = useState<string[]>([]);
   
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -194,17 +195,19 @@ export const EmployeeAccessPage: React.FC = () => {
       // or that the backend handles it appropriately.
       const userId = emp.id;
 
-      const [uRoles, uPerms, roles, perms] = await Promise.all([
+      const [uRoles, uPerms, roles, perms, effPerms] = await Promise.all([
         authorizationManagementService.listUserRoles(userId),
         authorizationManagementService.listUserPermissions(userId),
         authorizationManagementService.listRoles(),
-        authorizationManagementService.listPermissions()
+        authorizationManagementService.listPermissions(),
+        authorizationManagementService.getMyPermissions()
       ]);
 
       setUserRoles(uRoles);
       setUserPermissions(uPerms);
       setAllRoles(roles);
       setAllPermissions(perms);
+      setEffectivePermissions(effPerms);
       setError(null);
     } catch (err: any) {
       if (err.message?.includes('403') || err.response?.status === 403) {
@@ -380,6 +383,30 @@ export const EmployeeAccessPage: React.FC = () => {
             ]}
           />
           {userPermissions.length === 0 && <p style={{ color: 'var(--color-text-muted)', textAlign: 'center', padding: '16px' }}>No direct permissions granted.</p>}
+        </Card>
+
+        {/* Effective Permissions Section */}
+        <Card>
+          <div style={styles.sectionTitle}>
+            <span>Effective Permissions</span>
+          </div>
+          {effectivePermissions.length > 0 ? (
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+              {effectivePermissions.map(perm => (
+                <span key={perm} style={{
+                  backgroundColor: 'var(--color-bg-body)',
+                  border: '1px solid var(--color-border)',
+                  padding: '4px 8px',
+                  borderRadius: 'var(--radius-sm)',
+                  fontSize: '0.85rem'
+                }}>
+                  {perm}
+                </span>
+              ))}
+            </div>
+          ) : (
+            <p style={{ color: 'var(--color-text-muted)', textAlign: 'center', padding: '16px' }}>No effective permissions.</p>
+          )}
         </Card>
       </div>
 
