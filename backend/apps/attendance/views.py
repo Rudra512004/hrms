@@ -40,6 +40,13 @@ class AttendanceViewSet(viewsets.GenericViewSet):
             check_in=timezone.now(),
             status='present'
         )
+        AuditService.log(
+            action='check-in',
+            actor=request.user,
+            target_type='attendance',
+            target_id=attendance.id,
+            request=request
+        )
 
         serializer = self.get_serializer(attendance)
         return Response(serializer.data, status=status.HTTP_201_CREATED)

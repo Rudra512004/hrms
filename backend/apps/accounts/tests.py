@@ -171,10 +171,11 @@ class ProvisioningAPITests(TestCase):
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         self.assertTrue(User.objects.filter(email='new@company.com').exists())
         self.assertTrue(Employee.objects.filter(employee_code='EMP003').exists())
-        # In testing (DEBUG defaults to True or testing mode ignores it depending on settings), it may return activation_info
-        if 'activation_info' in response.data:
-            self.assertIn('uid', response.data['activation_info'])
-            self.assertIn('token', response.data['activation_info'])
+        # SECURITY: activation token must NEVER appear in the API response
+        self.assertNotIn('activation_info', response.data)
+        self.assertNotIn('token', response.data)
+        # Onboarding email status must always be present
+        self.assertIn('onboarding_email_status', response.data)
 
     def test_duplicate_employee_code_rejected(self):
         User.objects.create_user(email='existing@company.com', password='Password123!')

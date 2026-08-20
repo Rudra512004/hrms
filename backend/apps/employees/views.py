@@ -69,13 +69,6 @@ class ProvisionEmployeeView(APIView):
             'employee': EmployeeSerializer(employee).data,
         }
 
-        # Only expose activation secrets in DEBUG mode for local development/testing
-        if settings.DEBUG:
-            response_data['activation_info'] = {
-                'uid': uid,
-                'token': token
-            }
-
         email_sent = NotificationService.send_employee_onboarding_email(
             personal_email=employee.personal_email,
             first_name=employee.user.first_name,
@@ -128,12 +121,6 @@ class EmployeeManagementViewSet(viewsets.ModelViewSet):
             'detail': 'Employee provisioned successfully.',
             'employee': EmployeeSerializer(employee).data,
         }
-
-        if settings.DEBUG:
-            response_data['activation_info'] = {
-                'uid': uid,
-                'token': token
-            }
 
         email_sent = NotificationService.send_employee_onboarding_email(
             personal_email=employee.personal_email,
