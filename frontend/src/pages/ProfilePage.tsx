@@ -52,22 +52,14 @@ const styles = {
     fontWeight: 600,
     color: 'var(--color-text-main)',
   },
-  input: {
-    padding: '10px 14px',
-    border: '1px solid var(--color-border)',
-    borderRadius: 'var(--radius-md)',
-    fontSize: '0.95rem',
-    outline: 'none',
-    transition: 'border-color 0.2s',
-  },
   readOnlyValue: {
     padding: '10px 14px',
     backgroundColor: 'var(--color-bg-body)',
-    border: '1px solid var(--color-border)',
     borderRadius: 'var(--radius-md)',
     fontSize: '0.95rem',
     color: 'var(--color-text-muted)',
     cursor: 'not-allowed',
+    boxShadow: 'var(--shadow-inset)',
   },
   readOnlyBadge: {
     marginLeft: 'auto',
@@ -76,26 +68,7 @@ const styles = {
     padding: '2px 6px',
     borderRadius: 'var(--radius-sm)',
     color: 'var(--color-text-muted)',
-  },
-  btnSave: {
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: '8px',
-    backgroundColor: 'var(--color-primary)',
-    color: '#fff',
-    border: 'none',
-    padding: '12px 24px',
-    borderRadius: 'var(--radius-md)',
-    fontSize: '1rem',
-    fontWeight: 600,
-    cursor: 'pointer',
-    transition: 'background-color 0.2s',
-    alignSelf: 'flex-start',
-  },
-  btnSaveDisabled: {
-    backgroundColor: 'var(--color-text-muted)',
-    cursor: 'not-allowed',
+    boxShadow: 'var(--shadow-inset)',
   },
   alert: (type: 'success' | 'error') => ({
     padding: 'var(--spacing-md)',
@@ -289,7 +262,7 @@ export const ProfilePage: React.FC = () => {
                   name="phone_number"
                   value={formData.phone_number}
                   onChange={handleChange}
-                  style={styles.input}
+                  className="input-neumorphic"
                   placeholder="+1234567890"
                 />
               </div>
@@ -301,7 +274,8 @@ export const ProfilePage: React.FC = () => {
                 name="address"
                 value={formData.address}
                 onChange={handleChange}
-                style={{ ...styles.input, minHeight: '80px', resize: 'vertical' }}
+                className="input-neumorphic"
+                style={{ minHeight: '80px', resize: 'vertical' }}
                 placeholder="123 Main St, City, Country"
               />
             </div>
@@ -316,7 +290,7 @@ export const ProfilePage: React.FC = () => {
                     name="emergency_contact_name"
                     value={formData.emergency_contact_name}
                     onChange={handleChange}
-                    style={styles.input}
+                    className="input-neumorphic"
                     placeholder="Jane Doe"
                   />
                 </div>
@@ -327,7 +301,7 @@ export const ProfilePage: React.FC = () => {
                     name="emergency_contact_phone"
                     value={formData.emergency_contact_phone}
                     onChange={handleChange}
-                    style={styles.input}
+                    className="input-neumorphic"
                     placeholder="+1234567890"
                   />
                 </div>
@@ -339,7 +313,8 @@ export const ProfilePage: React.FC = () => {
         <button 
           type="submit" 
           disabled={saving} 
-          style={{ ...styles.btnSave, ...(saving ? styles.btnSaveDisabled : {}) }}
+          className="btn btn-primary"
+          style={{ alignSelf: 'flex-start' }}
         >
           {saving ? <Loader2 size={20} style={{ animation: 'spin 1s linear infinite' }} /> : <Save size={20} />}
           {saving ? 'Saving...' : 'Save Changes'}

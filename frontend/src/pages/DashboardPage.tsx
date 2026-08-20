@@ -72,6 +72,7 @@ const styles = {
     color: '#fff',
     cursor: 'pointer',
     transition: 'transform 0.2s',
+    boxShadow: 'var(--shadow-md)',
   },
   profileBannerText: {
     margin: 0,

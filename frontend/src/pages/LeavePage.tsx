@@ -31,19 +31,8 @@ const styles = {
     gap: 'var(--spacing-lg)',
     marginBottom: 'var(--spacing-xl)'
   },
-  button: (variant: 'primary' | 'danger' | 'secondary' = 'primary') => ({
-    padding: 'var(--spacing-sm) var(--spacing-lg)',
-    backgroundColor: variant === 'primary' ? 'var(--color-primary)' : variant === 'danger' ? 'var(--color-danger)' : 'var(--color-bg-body)',
-    color: variant === 'secondary' ? 'var(--color-text-main)' : 'white',
-    border: variant === 'secondary' ? '1px solid var(--color-border)' : 'none',
-    borderRadius: '4px',
-    cursor: 'pointer',
-    fontWeight: 500,
-    display: 'inline-flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 'var(--spacing-sm)',
-    transition: 'opacity 0.2s',
+  button: () => ({
+    // Kept for backward compatibility just in case, but overridden by className in JSX
   }),
   formGroup: {
     marginBottom: 'var(--spacing-md)'
@@ -55,16 +44,7 @@ const styles = {
     fontWeight: 500,
     fontSize: '14px'
   },
-  input: {
-    width: '100%',
-    padding: 'var(--spacing-sm)',
-    border: '1px solid var(--color-border)',
-    borderRadius: '4px',
-    backgroundColor: 'var(--color-bg-input)',
-    color: 'var(--color-text-main)',
-    fontFamily: 'inherit',
-    fontSize: '14px'
-  },
+  input: {},
   alert: (type: 'error' | 'success') => ({
     padding: 'var(--spacing-md)',
     backgroundColor: type === 'error' ? 'rgba(239, 68, 68, 0.1)' : 'rgba(34, 197, 94, 0.1)',
@@ -177,7 +157,8 @@ export function LeavePage() {
       render: (r: LeaveRequest) => r.status === 'pending' ? (
         <button 
           onClick={() => handleCancel(r.id)}
-          style={{...styles.button('danger'), padding: '4px 8px', fontSize: '12px'}}
+          className="btn btn-danger"
+          style={{ padding: '4px 8px', fontSize: '12px' }}
         >
           Cancel
         </button>
@@ -202,7 +183,7 @@ export function LeavePage() {
             <p style={styles.subtitle}>View your balances and manage leave requests.</p>
           </div>
           <button 
-            style={styles.button('primary')} 
+            className="btn btn-primary"
             onClick={() => setShowForm(!showForm)}
           >
             <PlusCircle size={18} />
@@ -235,7 +216,7 @@ export function LeavePage() {
                 <div style={styles.formGroup}>
                   <label style={styles.label}>Leave Type</label>
                   <select 
-                    style={styles.input} 
+                    className="input-neumorphic"
                     value={formType} 
                     onChange={e => setFormType(e.target.value)}
                     required
@@ -251,7 +232,7 @@ export function LeavePage() {
                   <label style={styles.label}>Start Date</label>
                   <input 
                     type="date" 
-                    style={styles.input}
+                    className="input-neumorphic"
                     value={formStart}
                     onChange={e => setFormStart(e.target.value)}
                     required
@@ -262,7 +243,7 @@ export function LeavePage() {
                   <label style={styles.label}>End Date</label>
                   <input 
                     type="date" 
-                    style={styles.input}
+                    className="input-neumorphic"
                     value={formEnd}
                     onChange={e => setFormEnd(e.target.value)}
                     required
@@ -273,7 +254,8 @@ export function LeavePage() {
               <div style={styles.formGroup}>
                 <label style={styles.label}>Reason</label>
                 <textarea 
-                  style={{...styles.input, minHeight: '100px', resize: 'vertical'}}
+                  className="input-neumorphic"
+                  style={{ minHeight: '100px', resize: 'vertical' }}
                   value={formReason}
                   onChange={e => setFormReason(e.target.value)}
                   placeholder="Provide a reason for your leave request..."
@@ -282,10 +264,10 @@ export function LeavePage() {
               </div>
 
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 'var(--spacing-md)', marginTop: 'var(--spacing-lg)' }}>
-                <button type="button" style={styles.button('secondary')} onClick={() => setShowForm(false)}>
+                <button type="button" className="btn btn-secondary" onClick={() => setShowForm(false)}>
                   Cancel
                 </button>
-                <button type="submit" style={styles.button('primary')} disabled={formSubmitting}>
+                <button type="submit" className="btn btn-primary" disabled={formSubmitting}>
                   {formSubmitting ? <Loader2 size={18} className="animate-spin" /> : 'Submit Request'}
                 </button>
               </div>

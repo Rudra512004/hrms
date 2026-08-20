@@ -30,13 +30,14 @@ export const StatusBadge: React.FC<StatusBadgeProps> = ({ status, label, classNa
   const style = {
     display: 'inline-flex',
     alignItems: 'center',
-    padding: '0.25em 0.6em',
+    padding: '0.25em 0.7em',
     fontSize: '0.75rem',
     fontWeight: 600,
     lineHeight: 1,
-    color: '#fff',
-    backgroundColor: color,
+    color: color,
+    backgroundColor: 'var(--color-bg-body)',
     borderRadius: '10px',
+    boxShadow: 'var(--shadow-inset)',
   };
   
   return (

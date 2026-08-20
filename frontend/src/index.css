@@ -38,11 +38,17 @@
   --header-height: 60px;
 
   /* Radii & Shadows */
-  --radius-sm: 4px;
-  --radius-md: 8px;
-  --radius-lg: 12px;
-  --shadow-sm: 0 1px 3px rgba(0,0,0,0.05);
-  --shadow-md: 0 2px 6px rgba(0,0,0,0.08);
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 16px;
+  
+  /* Neumorphic soft shadows */
+  --shadow-sm: 2px 2px 5px rgba(0,0,0,0.03), -2px -2px 5px rgba(255,255,255,0.7);
+  --shadow-md: 4px 4px 10px rgba(0,0,0,0.04), -4px -4px 10px rgba(255,255,255,0.8);
+  --shadow-lg: 6px 6px 15px rgba(0,0,0,0.05), -6px -6px 15px rgba(255,255,255,0.9);
+  
+  /* Active/Inset shadows for pressed states or inputs */
+  --shadow-inset: inset 3px 3px 6px rgba(0,0,0,0.04), inset -3px -3px 6px rgba(255,255,255,0.8);
 }
 
 * {
@@ -82,4 +88,114 @@ h1, h2, h3, h4, h5, h6 {
 
 .text-muted {
   color: var(--color-text-muted);
+}
+
+/* ----------------------------------------------------
+   Shared Component Classes (Buttons)
+   ---------------------------------------------------- */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 8px 16px;
+  border-radius: var(--radius-md);
+  font-weight: 500;
+  border: none;
+  transition: all 0.2s ease-in-out;
+  outline: none;
+}
+
+.btn:focus-visible {
+  box-shadow: 0 0 0 3px rgba(115, 103, 240, 0.4);
+}
+
+.btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+.btn-primary {
+  background-color: var(--color-primary);
+  color: var(--color-text-inverse);
+  box-shadow: 0 2px 4px rgba(115, 103, 240, 0.4);
+}
+.btn-primary:hover:not(:disabled) {
+  background-color: var(--color-primary-hover);
+  transform: translateY(-1px);
+}
+.btn-primary:active:not(:disabled) {
+  transform: translateY(0);
+  box-shadow: var(--shadow-inset);
+}
+
+.btn-secondary {
+  background-color: var(--color-bg-body);
+  color: var(--color-text-main);
+  box-shadow: var(--shadow-sm);
+  border: 1px solid var(--color-border);
+}
+.btn-secondary:hover:not(:disabled) {
+  background-color: #f1f0f3;
+}
+.btn-secondary:active:not(:disabled) {
+  box-shadow: var(--shadow-inset);
+}
+
+.btn-danger {
+  background-color: var(--color-status-danger);
+  color: var(--color-text-inverse);
+  box-shadow: 0 2px 4px rgba(246, 45, 81, 0.4);
+}
+.btn-danger:hover:not(:disabled) {
+  filter: brightness(0.9);
+}
+
+.btn-ghost {
+  background: transparent;
+  color: var(--color-text-muted);
+  box-shadow: none;
+}
+.btn-ghost:hover:not(:disabled) {
+  background-color: rgba(0,0,0,0.04);
+  color: var(--color-text-main);
+}
+.btn-ghost:active:not(:disabled) {
+  background-color: rgba(0,0,0,0.08);
+  box-shadow: var(--shadow-inset);
+}
+
+/* ----------------------------------------------------
+   Shared Component Classes (Inputs & Forms)
+   ---------------------------------------------------- */
+.input-neumorphic {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background-color: var(--color-bg-body);
+  color: var(--color-text-main);
+  font-size: 0.95rem;
+  box-shadow: var(--shadow-inset);
+  transition: all 0.2s ease-in-out;
+  outline: none;
+}
+
+.input-neumorphic:focus {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px rgba(115, 103, 240, 0.15), var(--shadow-inset);
+}
+
+.input-neumorphic:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  background-color: #f1f0f3;
+}
+
+.input-error {
+  border-color: var(--color-status-danger);
+}
+.input-error:focus {
+  box-shadow: 0 0 0 3px rgba(246, 45, 81, 0.15), var(--shadow-inset);
 }

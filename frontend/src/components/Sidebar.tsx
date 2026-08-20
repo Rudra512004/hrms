@@ -7,7 +7,8 @@ import {
   Network,
   Clock,
   Calendar,
-  Users
+  Users,
+  ShieldAlert
 } from 'lucide-react';
 import { authService, type User as AuthUser } from '../services/auth';
 
@@ -31,7 +32,8 @@ const styles = {
     overflowX: 'hidden' as const,
     display: 'flex',
     flexDirection: 'column' as const,
-    boxShadow: 'var(--shadow-sm)',
+    boxShadow: 'var(--shadow-md)', // Neumorphic soft shadow
+    borderRight: '1px solid rgba(255, 255, 255, 0.8)',
   }),
   logoArea: {
     height: 'var(--header-height)',
@@ -68,7 +70,7 @@ const styles = {
     transition: 'all 0.2s',
     borderRadius: 'var(--radius-md)',
     backgroundColor: isActive ? 'var(--color-primary)' : 'transparent',
-    boxShadow: isActive ? '0 2px 6px rgba(115, 103, 240, 0.4)' : 'none',
+    boxShadow: isActive ? '0 2px 4px rgba(115, 103, 240, 0.4)' : 'none',
     marginBottom: '4px',
   }),
   icon: {
@@ -126,6 +128,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen }) => {
         { path: '/admin/office-networks', label: 'Office Networks', icon: Network },
         { path: '/admin/wfh', label: 'WFH Requests', icon: Settings },
         { path: '/admin/leaves', label: 'Leave Requests', icon: Calendar },
+        { path: '/admin/audit-logs', label: 'Audit Logs', icon: ShieldAlert },
       ]
     });
   }

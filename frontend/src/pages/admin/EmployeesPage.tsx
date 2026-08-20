@@ -129,6 +129,7 @@ export const EmployeesPage: React.FC = () => {
   });
   
   const [formError, setFormError] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -197,12 +198,24 @@ export const EmployeesPage: React.FC = () => {
           address: formData.address
         });
       } else {
-        await employeeManagementService.createEmployee({
+        const result = await employeeManagementService.createEmployee({
           email: formData.email,
           first_name: formData.first_name,
           last_name: formData.last_name,
           employee_code: formData.employee_code
         });
+        
+        // Handle notification simulation
+        let msg = `Employee ${formData.first_name} ${formData.last_name} created successfully. `;
+        if (result.activation_info && result.activation_info.email_sent) {
+            msg += "An activation email has been sent.";
+        } else if (result.activation_info && result.activation_info.activation_link) {
+            msg += `Activation link generated (Email integration pending): ${result.activation_info.activation_link}`;
+        } else {
+            msg += "User needs to be activated manually or wait for email delivery.";
+        }
+        setSuccessMessage(msg);
+        setTimeout(() => setSuccessMessage(null), 10000); // Clear after 10s
       }
       setIsModalOpen(false);
       loadEmployees();
@@ -309,10 +322,19 @@ export const EmployeesPage: React.FC = () => {
     <div>
       <div style={styles.header}>
         <h1 style={styles.title}>Employee Management</h1>
-        <button style={styles.button} onClick={openCreateModal}>
+        <button className="btn btn-primary" onClick={openCreateModal}>
           <Plus size={18} /> Add Employee
         </button>
       </div>
+
+      {successMessage && (
+        <Card className="mb-4">
+          <div style={{...styles.errorBox, backgroundColor: 'rgba(34, 197, 94, 0.1)', color: 'var(--color-status-success)'}}>
+            <Shield size={20} />
+            <span>{successMessage}</span>
+          </div>
+        </Card>
+      )}
 
       <Card>
         <div style={{ overflowX: 'auto' }}>
@@ -410,7 +432,7 @@ export const EmployeesPage: React.FC = () => {
                 <button type="button" style={styles.cancelBtn} onClick={() => setIsModalOpen(false)}>
                   Cancel
                 </button>
-                <button type="submit" style={styles.button} disabled={saving}>
+                <button type="submit" className="btn btn-primary" disabled={saving}>
                   {saving ? <Loader2 size={18} style={{ animation: 'spin 1s linear infinite' }}/> : 'Save'}
                 </button>
               </div>

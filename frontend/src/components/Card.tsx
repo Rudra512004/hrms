@@ -10,9 +10,9 @@ interface CardProps {
 const styles = {
   card: {
     backgroundColor: 'var(--color-bg-card)',
-    borderRadius: 'var(--radius-md)',
-    boxShadow: 'var(--shadow-sm)',
-    border: '1px solid var(--color-border)',
+    borderRadius: 'var(--radius-lg)',
+    boxShadow: 'var(--shadow-md)',
+    border: '1px solid rgba(255, 255, 255, 0.8)',
     overflow: 'hidden',
     display: 'flex',
     flexDirection: 'column' as const,

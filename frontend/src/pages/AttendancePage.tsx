@@ -67,33 +67,10 @@ const styles = {
     paddingTop: 'var(--spacing-md)',
     borderTop: '1px solid var(--color-border)',
   },
-  btn: {
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: '8px',
-    padding: '10px 16px',
-    borderRadius: 'var(--radius-md)',
-    fontSize: '0.95rem',
-    fontWeight: 600,
-    cursor: 'pointer',
-    border: 'none',
-    transition: 'background-color 0.2s',
-    flex: 1,
-  },
-  btnPrimary: {
-    backgroundColor: 'var(--color-primary)',
-    color: '#fff',
-  },
-  btnSecondary: {
-    backgroundColor: 'var(--color-status-warning)',
-    color: '#fff',
-  },
-  btnDisabled: {
-    backgroundColor: 'var(--color-text-muted)',
-    cursor: 'not-allowed',
-    opacity: 0.7,
-  },
+  btn: {},
+  btnPrimary: {},
+  btnSecondary: {},
+  btnDisabled: {},
   alert: {
     padding: 'var(--spacing-md)',
     borderRadius: 'var(--radius-md)',
@@ -243,7 +220,8 @@ export const AttendancePage: React.FC = () => {
             <button
               onClick={handleCheckIn}
               disabled={actionLoading || isCheckedIn}
-              style={{ ...styles.btn, ...(actionLoading || isCheckedIn ? styles.btnDisabled : styles.btnPrimary) }}
+              className={`btn btn-primary`}
+              style={{ flex: 1 }}
             >
               {actionLoading && !isCheckedIn ? <Loader2 size={18} style={{ animation: 'spin 1s linear infinite' }} /> : <LogIn size={18} />}
               Check In
@@ -251,7 +229,8 @@ export const AttendancePage: React.FC = () => {
             <button
               onClick={handleCheckOut}
               disabled={actionLoading || !isCheckedIn || isCheckedOut}
-              style={{ ...styles.btn, ...(actionLoading || !isCheckedIn || isCheckedOut ? styles.btnDisabled : styles.btnSecondary) }}
+              className={`btn btn-secondary`}
+              style={{ flex: 1 }}
             >
               {actionLoading && isCheckedIn && !isCheckedOut ? <Loader2 size={18} style={{ animation: 'spin 1s linear infinite' }} /> : <LogOut size={18} />}
               Check Out

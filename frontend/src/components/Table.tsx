@@ -16,6 +16,8 @@ const styles = {
   container: {
     width: '100%',
     overflowX: 'auto' as const,
+    boxShadow: 'var(--shadow-inset)',
+    borderRadius: 'var(--radius-md)',
   },
   table: {
     width: '100%',
@@ -27,12 +29,12 @@ const styles = {
     backgroundColor: 'var(--color-bg-body)',
     color: 'var(--color-text-main)',
     fontWeight: 600,
-    borderBottom: '2px solid var(--color-border)',
+    borderBottom: '1px solid rgba(0,0,0,0.05)',
     whiteSpace: 'nowrap' as const,
   },
   td: {
     padding: 'var(--spacing-md)',
-    borderBottom: '1px solid var(--color-border)',
+    borderBottom: '1px solid rgba(0,0,0,0.03)',
     color: 'var(--color-text-main)',
   },
   row: {

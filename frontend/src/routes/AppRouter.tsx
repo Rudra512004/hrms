@@ -21,6 +21,7 @@ import { OfficeNetworksPage } from '../pages/admin/OfficeNetworksPage';
 import { WfhRequestsPage } from '../pages/admin/WfhRequestsPage';
 import { EmployeesPage } from '../pages/admin/EmployeesPage';
 import { EmployeeAccessPage } from '../pages/admin/EmployeeAccessPage';
+import { AuditLogsPage } from '../pages/admin/AuditLogsPage';
 
 export const AppRouter: React.FC = () => {
   return (
@@ -46,6 +47,7 @@ export const AppRouter: React.FC = () => {
         <Route path="/admin/office-networks" element={<OfficeNetworksPage />} />
         <Route path="/admin/wfh" element={<WfhRequestsPage />} />
         <Route path="/admin/leaves" element={<AdminLeavePage />} />
+        <Route path="/admin/audit-logs" element={<AuditLogsPage />} />
 
         {/* Catch-all within AppLayout */}
         <Route path="*" element={<NotFoundPage />} />
