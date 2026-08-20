@@ -50,7 +50,7 @@ export const employeeManagementService = {
     return await response.json();
   },
 
-  createEmployee: async (data: ProvisionEmployeeData): Promise<{ detail: string, employee: EmployeeProfile, activation_info?: any }> => {
+  createEmployee: async (data: ProvisionEmployeeData): Promise<{ detail: string, employee: EmployeeProfile, activation_info?: any, onboarding_email_status?: string }> => {
     const token = localStorage.getItem('auth_token');
     if (!token) throw new Error('No authentication token');
 

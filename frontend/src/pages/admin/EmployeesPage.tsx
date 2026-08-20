@@ -205,14 +205,13 @@ export const EmployeesPage: React.FC = () => {
           employee_code: formData.employee_code
         });
         
-        // Handle notification simulation
-        let msg = `Employee ${formData.first_name} ${formData.last_name} created successfully. `;
-        if (result.activation_info && result.activation_info.email_sent) {
-            msg += "An activation email has been sent.";
-        } else if (result.activation_info && result.activation_info.activation_link) {
-            msg += `Activation link generated (Email integration pending): ${result.activation_info.activation_link}`;
-        } else {
-            msg += "User needs to be activated manually or wait for email delivery.";
+        let msg = `Employee created.`;
+        if (result.onboarding_email_status === 'sent') {
+          msg = "Employee created. Onboarding email sent.";
+        } else if (result.onboarding_email_status === 'queued') {
+          msg = "Employee created. Onboarding email queued.";
+        } else if (result.onboarding_email_status === 'failed') {
+          msg = "Employee created, but the onboarding email could not be sent.";
         }
         setSuccessMessage(msg);
         setTimeout(() => setSuccessMessage(null), 10000); // Clear after 10s

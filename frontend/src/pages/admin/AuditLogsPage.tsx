@@ -1,15 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Card } from '../../components/Card';
 import { Table } from '../../components/Table';
 import { StatusBadge } from '../../components/StatusBadge';
-import { ShieldAlert, Search } from 'lucide-react';
-
-const mockLogs = [
-  { id: 1, timestamp: '2026-08-20T09:00:00Z', user: 'admin@company.com', action: 'CREATE_EMPLOYEE', target: 'John Doe', status: 'success' },
-  { id: 2, timestamp: '2026-08-20T09:15:00Z', user: 'admin@company.com', action: 'ASSIGN_ROLE', target: 'John Doe (HR Admin)', status: 'success' },
-  { id: 3, timestamp: '2026-08-20T09:30:00Z', user: 'admin@company.com', action: 'REVOKE_PERMISSION', target: 'Jane Smith (payroll.view)', status: 'success' },
-  { id: 4, timestamp: '2026-08-20T10:00:00Z', user: 'system', action: 'SYNC_LDAP', target: 'Global Directory', status: 'failed' },
-];
+import { ShieldAlert, Search, Loader2 } from 'lucide-react';
+import { auditService, type AuditLog } from '../../services/audit';
 
 const styles = {
   header: {
@@ -44,34 +38,69 @@ const styles = {
     paddingLeft: '36px',
     width: '100%',
   },
-  alert: {
-    padding: 'var(--spacing-md)',
+  errorBox: {
+    padding: 'var(--spacing-lg)',
+    backgroundColor: 'var(--color-status-rejected)15',
+    color: 'var(--color-status-rejected)',
     borderRadius: 'var(--radius-md)',
-    backgroundColor: 'var(--color-status-info)15',
-    color: 'var(--color-status-info)',
-    border: '1px solid var(--color-status-info)30',
     display: 'flex',
     alignItems: 'center',
-    gap: 'var(--spacing-sm)',
-    marginBottom: 'var(--spacing-lg)',
+    gap: 'var(--spacing-md)',
+    border: '1px solid var(--color-status-rejected)30',
+  },
+  emptyState: {
+    padding: 'var(--spacing-xl)',
+    textAlign: 'center' as const,
+    color: 'var(--color-text-muted)',
+    backgroundColor: 'var(--color-bg-secondary)',
+    borderRadius: 'var(--radius-md)',
   }
 };
 
 export const AuditLogsPage: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
+  const [logs, setLogs] = useState<AuditLog[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  const filteredLogs = mockLogs.filter(log => 
-    log.user.toLowerCase().includes(searchTerm.toLowerCase()) || 
-    log.action.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    log.target.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  useEffect(() => {
+    loadLogs();
+  }, []);
+
+  const loadLogs = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      const data = await auditService.getLogs();
+      setLogs(data);
+    } catch (err: any) {
+      if (err.message && err.message.includes('403')) {
+        setError('403 / Access Denied. You do not have permission to view audit logs.');
+      } else if (err.message && err.message.includes('401')) {
+        setError('401 / Unauthorized. Please log in again.');
+      } else {
+        setError('A server error occurred while fetching audit logs.');
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const filteredLogs = logs.filter(log => {
+    const term = searchTerm.toLowerCase();
+    return (
+      (log.actor_email && log.actor_email.toLowerCase().includes(term)) ||
+      (log.action && log.action.toLowerCase().includes(term)) ||
+      (log.target_resource && log.target_resource.toLowerCase().includes(term))
+    );
+  });
 
   const columns = [
-    { key: 'timestamp', title: 'Timestamp', render: (log: any) => new Date(log.timestamp).toLocaleString() },
-    { key: 'user', title: 'User / Actor' },
+    { key: 'timestamp', title: 'Timestamp', render: (log: AuditLog) => new Date(log.timestamp).toLocaleString() },
+    { key: 'actor_email', title: 'Actor Email', render: (log: AuditLog) => log.actor_email || 'System' },
     { key: 'action', title: 'Action' },
-    { key: 'target', title: 'Target' },
-    { key: 'status', title: 'Status', render: (log: any) => <StatusBadge status={log.status === 'success' ? 'active' : 'rejected'} label={log.status} /> }
+    { key: 'target_resource', title: 'Target' },
+    { key: 'status', title: 'Status', render: (log: AuditLog) => <StatusBadge status={log.status === 'success' || log.status === '200' || log.status === '201' ? 'active' : 'rejected'} label={log.status || 'unknown'} /> }
   ];
 
   return (
@@ -95,14 +124,33 @@ export const AuditLogsPage: React.FC = () => {
         </div>
       </div>
 
-      <div style={styles.alert}>
-        <ShieldAlert size={20} />
-        <span>Audit Logs are currently simulated. Integration with the backend logging service is pending.</span>
-      </div>
-
-      <Card>
-        <Table data={filteredLogs} columns={columns} keyExtractor={(log) => log.id.toString()} />
-      </Card>
+      {error ? (
+        <Card>
+          <div style={styles.errorBox}>
+            <ShieldAlert size={24} />
+            <div>
+              <h3 style={{ margin: '0 0 var(--spacing-sm) 0' }}>Error Loading Logs</h3>
+              <p style={{ margin: 0 }}>{error}</p>
+            </div>
+          </div>
+        </Card>
+      ) : loading ? (
+        <Card>
+          <div style={{ padding: 'var(--spacing-xl)', display: 'flex', justifyContent: 'center' }}>
+            <Loader2 size={32} style={{ animation: 'spin 1s linear infinite', color: 'var(--color-primary)' }} />
+          </div>
+        </Card>
+      ) : filteredLogs.length === 0 ? (
+        <Card>
+          <div style={styles.emptyState}>
+            {searchTerm ? "No audit activity found matching your search." : "No audit activity found."}
+          </div>
+        </Card>
+      ) : (
+        <Card>
+          <Table data={filteredLogs} columns={columns} keyExtractor={(log) => log.id.toString()} />
+        </Card>
+      )}
     </div>
   );
 };
