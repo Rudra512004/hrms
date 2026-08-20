@@ -68,3 +68,44 @@ class ActivateSerializer(serializers.Serializer):
         user.status = 'active'
         user.save()
         return user
+
+
+class PasswordResetRequestSerializer(serializers.Serializer):
+    email = serializers.EmailField()
+
+
+class PasswordResetConfirmSerializer(serializers.Serializer):
+    uid = serializers.CharField()
+    token = serializers.CharField()
+    new_password = serializers.CharField(write_only=True)
+    confirm_password = serializers.CharField(write_only=True)
+
+    def validate(self, data):
+        if data['new_password'] != data['confirm_password']:
+            raise serializers.ValidationError({"confirm_password": ["Passwords do not match."]})
+
+        try:
+            uid = urlsafe_base64_decode(data['uid']).decode()
+            user = User.objects.get(pk=uid)
+        except (TypeError, ValueError, OverflowError, User.DoesNotExist):
+            raise serializers.ValidationError("Invalid user UID.")
+
+        if not default_token_generator.check_token(user, data['token']):
+            raise serializers.ValidationError("Invalid or expired reset token.")
+
+        if user.status != 'active':
+            raise serializers.ValidationError("Account is not active.")
+
+        try:
+            validate_password(data['new_password'], user=user)
+        except ValidationError as e:
+            raise serializers.ValidationError({"new_password": list(e.messages)})
+
+        data['user'] = user
+        return data
+
+    def save(self):
+        user = self.validated_data['user']
+        user.set_password(self.validated_data['new_password'])
+        user.save()
+        return user

@@ -10,7 +10,7 @@ class NotificationService:
         subject = 'Welcome to HRMS - Your account is ready'
         frontend_url = getattr(settings, 'FRONTEND_URL', 'http://localhost:5173')
         activation_link = f"{frontend_url}/activate?uid={uid}&token={token}"
-        
+
         message = (
             f"Hello {first_name},\n\n"
             f"Welcome to the team! Your employee profile (Code: {employee_code}) has been created.\n\n"
@@ -20,7 +20,7 @@ class NotificationService:
             f"This activation link will expire shortly.\n\n"
             f"Regards,\nHR Team"
         )
-        
+
         try:
             send_mail(
                 subject,
@@ -32,4 +32,32 @@ class NotificationService:
             return True
         except Exception as e:
             logger.error(f"Failed to send onboarding email to {personal_email}: {str(e)}")
+            return False
+
+    @staticmethod
+    def send_password_reset_email(email, first_name, uid, token):
+        subject = 'HRMS - Password Reset Request'
+        frontend_url = getattr(settings, 'FRONTEND_URL', 'http://localhost:5173')
+        reset_link = f"{frontend_url}/reset-password?uid={uid}&token={token}"
+
+        message = (
+            f"Hello {first_name},\n\n"
+            f"We received a request to reset the password for your HRMS account.\n\n"
+            f"To reset your password, please click the link below:\n"
+            f"{reset_link}\n\n"
+            f"If you did not request this, please ignore this email. This link will expire shortly.\n\n"
+            f"Regards,\nHR Team"
+        )
+
+        try:
+            send_mail(
+                subject,
+                message,
+                settings.DEFAULT_FROM_EMAIL,
+                [email],
+                fail_silently=False,
+            )
+            return True
+        except Exception as e:
+            logger.error(f"Failed to send password reset email to {email}: {str(e)}")
             return False
