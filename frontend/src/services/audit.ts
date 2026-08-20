@@ -1,12 +1,13 @@
 export interface AuditLog {
   id: number;
+  actor: number;
   actor_email: string;
   action: string;
-  target_resource: string;
-  status: string;
-  ip_address: string;
+  target_type: string;
+  target_id: number | string | null;
   timestamp: string;
-  details: any;
+  metadata: Record<string, unknown>;
+  ip_address: string | null;
 }
 
 export const auditService = {

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Card } from '../../components/Card';
 import { Table } from '../../components/Table';
-import { StatusBadge } from '../../components/StatusBadge';
+
 import { ShieldAlert, Search, Loader2 } from 'lucide-react';
 import { auditService, type AuditLog } from '../../services/audit';
 
@@ -88,19 +88,44 @@ export const AuditLogsPage: React.FC = () => {
 
   const filteredLogs = logs.filter(log => {
     const term = searchTerm.toLowerCase();
+    const targetStr = (log.target_type && log.target_id) ? `${log.target_type} #${log.target_id}` : 'system';
     return (
       (log.actor_email && log.actor_email.toLowerCase().includes(term)) ||
       (log.action && log.action.toLowerCase().includes(term)) ||
-      (log.target_resource && log.target_resource.toLowerCase().includes(term))
+      targetStr.toLowerCase().includes(term)
     );
   });
+
+  const renderTarget = (log: AuditLog) => {
+    if (log.target_type && log.target_id) {
+      return `${log.target_type} #${log.target_id}`;
+    }
+    return 'System';
+  };
+
+  const renderDetails = (log: AuditLog) => {
+    if (log.action === 'employee_created') return 'Employee created';
+    if (log.action === 'role_assigned') return `Role: ${log.metadata?.role || 'assigned'}`;
+    if (log.action === 'permission_granted') return `Permission: ${log.metadata?.permission || 'granted'}`;
+
+    if (log.metadata && typeof log.metadata === 'object') {
+      const safeKeys = Object.keys(log.metadata).filter(k =>
+        !['password', 'token', 'activation_token', 'secret', 'credentials', 'uid'].includes(k.toLowerCase())
+      );
+      if (safeKeys.length > 0) {
+        return `Updated: ${safeKeys.slice(0, 3).join(', ')}${safeKeys.length > 3 ? '...' : ''}`;
+      }
+    }
+
+    return 'Audit event recorded';
+  };
 
   const columns = [
     { key: 'timestamp', title: 'Timestamp', render: (log: AuditLog) => new Date(log.timestamp).toLocaleString() },
     { key: 'actor_email', title: 'Actor Email', render: (log: AuditLog) => log.actor_email || 'System' },
     { key: 'action', title: 'Action' },
-    { key: 'target_resource', title: 'Target' },
-    { key: 'status', title: 'Status', render: (log: AuditLog) => <StatusBadge status={log.status === 'success' || log.status === '200' || log.status === '201' ? 'active' : 'rejected'} label={log.status || 'unknown'} /> }
+    { key: 'target', title: 'Target', render: renderTarget },
+    { key: 'details', title: 'Details', render: renderDetails }
   ];
 
   return (
@@ -110,12 +135,12 @@ export const AuditLogsPage: React.FC = () => {
           <ShieldAlert size={24} color="var(--color-primary)" />
           <h1 style={styles.title}>System Audit Logs</h1>
         </div>
-        
+
         <div style={styles.searchContainer}>
           <Search size={18} style={styles.searchIcon} />
-          <input 
-            type="text" 
-            placeholder="Search logs..." 
+          <input
+            type="text"
+            placeholder="Search logs..."
             className="input-neumorphic"
             style={styles.searchInput}
             value={searchTerm}
