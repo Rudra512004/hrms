@@ -147,6 +147,67 @@ Set password and activate an invited account using cryptographic tokens.
 
 ---
 
+### Password Reset Request
+
+Request a password reset email for an active account.
+
+- **Method:** `POST`
+- **Path:** `/api/v1/auth/password-reset/request/`
+- **Authentication Requirement:** None (Public)
+- **Rate Limit:** 5 requests per hour.
+
+**Request Body:**
+```json
+{
+  "email": "employee@company.com"
+}
+```
+
+**Response (200 OK):**
+*Note: This endpoint always returns the same generic response to prevent account enumeration, regardless of whether the email exists or if the account is active.*
+```json
+{
+  "detail": "If an account is associated with this email, password reset instructions have been sent."
+}
+```
+
+---
+
+### Password Reset Confirm
+
+Confirm a password reset using the secure token provided via email.
+
+- **Method:** `POST`
+- **Path:** `/api/v1/auth/password-reset/confirm/`
+- **Authentication Requirement:** None (Public)
+- **Rate Limit:** 5 requests per hour.
+- **State Transition:** Updates the password for an `active` user and immediately invalidates all existing authentication tokens to enforce re-login.
+
+**Request Body:**
+```json
+{
+  "uid": "MQ",
+  "token": "base64-token-string",
+  "new_password": "NewSecurePassword123!",
+  "confirm_password": "NewSecurePassword123!"
+}
+```
+
+**Successful Response (200 OK):**
+```json
+{
+  "detail": "Password has been successfully reset."
+}
+```
+
+**Validation Errors (400 Bad Request):**
+- **Token invalid/expired/replayed:** `{"non_field_errors": ["Invalid or expired reset token."]}`
+- **Account not active:** `{"non_field_errors": ["Account is not active."]}`
+- **Passwords mismatch:** `{"confirm_password": ["Passwords do not match."]}`
+- **Weak Password:** `{"new_password": ["This password is too short. It must contain at least 8 characters."]}`
+
+---
+
 ## 3. Employee APIs
 
 ### Provision Employee
