@@ -700,3 +700,52 @@ View audit logs of administrative and employee actions.
 **Authorization Errors:**
 - **401 Unauthorized:** Missing token.
 - **403 Forbidden:** Lacks \udit.view\ permission.
+
+---
+
+## 12. Admin Leave Type Configuration
+
+Manage leave types for the organization.
+
+### List / Create Leave Types (Admin)
+
+- **Method:** `GET` / `POST`
+- **Path:** `/api/v1/leaves/admin/types/`
+- **Authentication Requirement:** Token
+- **Authorization Requirement:** `leave_type.manage`
+
+**POST Request Body:**
+```json
+{
+  "name": "Sick Leave",
+  "description": "Medical leave",
+  "annual_allocation": 10,
+  "is_active": true
+}
+```
+
+**Successful Response (201 Created):**
+```json
+{
+  "id": 1,
+  "organization": 1,
+  "name": "Sick Leave",
+  "description": "Medical leave",
+  "annual_allocation": 10,
+  "is_active": true
+}
+```
+
+**Validation Errors (400 Bad Request):**
+- Duplicate Name: `{"name": ["A leave type with this name already exists."]}`
+- Invalid allocation: `{"annual_allocation": ["Ensure this value is greater than or equal to 0."]}`
+
+### Retrieve / Update / Delete Leave Type (Admin)
+
+- **Method:** `GET` / `PUT` / `PATCH` / `DELETE`
+- **Path:** `/api/v1/leaves/admin/types/<id>/`
+- **Authentication Requirement:** Token
+- **Authorization Requirement:** `leave_type.manage`
+
+**Delete Protection (409 Conflict):**
+- Cannot delete if assigned to an employee or request: `{"detail": "Cannot delete leave type that is in use by balances or requests."}`

@@ -47,12 +47,46 @@ const handleResponse = async (response: Response) => {
     const errorData = await response.json().catch(() => ({}));
     throw { response, errorData };
   }
+  if (response.status === 204) {
+    return null;
+  }
   return response.json();
 };
 
 export const leaveService = {
   getLeaveTypes: async (): Promise<LeaveType[]> => {
     const response = await fetch('/api/v1/leaves/types/', { headers: getHeaders() });
+    return handleResponse(response);
+  },
+
+  getAdminLeaveTypes: async (): Promise<LeaveType[]> => {
+    const response = await fetch('/api/v1/leaves/admin/types/', { headers: getHeaders() });
+    return handleResponse(response);
+  },
+
+  createLeaveType: async (data: Partial<LeaveType>): Promise<LeaveType> => {
+    const response = await fetch('/api/v1/leaves/admin/types/', {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify(data)
+    });
+    return handleResponse(response);
+  },
+
+  updateLeaveType: async (id: number, data: Partial<LeaveType>): Promise<LeaveType> => {
+    const response = await fetch(`/api/v1/leaves/admin/types/${id}/`, {
+      method: 'PATCH',
+      headers: getHeaders(),
+      body: JSON.stringify(data)
+    });
+    return handleResponse(response);
+  },
+
+  deleteLeaveType: async (id: number): Promise<void> => {
+    const response = await fetch(`/api/v1/leaves/admin/types/${id}/`, {
+      method: 'DELETE',
+      headers: getHeaders()
+    });
     return handleResponse(response);
   },
 

@@ -6,6 +6,7 @@ class LeaveTypeSerializer(serializers.ModelSerializer):
     class Meta:
         model = LeaveType
         fields = ['id', 'organization', 'name', 'description', 'annual_allocation', 'is_active']
+        read_only_fields = ['organization']
 
 class LeaveBalanceSerializer(serializers.ModelSerializer):
     remaining = serializers.IntegerField(read_only=True)

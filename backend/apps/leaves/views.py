@@ -1,4 +1,4 @@
-from rest_framework import viewsets, status
+from rest_framework import viewsets, status, permissions
 from apps.audit.services import AuditService
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -7,6 +7,7 @@ from django.utils import timezone
 from django.db import transaction
 from apps.authorization.permissions import require_permission
 from apps.authorization.services import AuthorizationService
+from apps.organization.models import Organization
 from .models import LeaveType, LeaveBalance, LeaveRequest
 from .serializers import LeaveTypeSerializer, LeaveBalanceSerializer, LeaveRequestSerializer, LeaveRequestReviewSerializer
 
@@ -17,6 +18,70 @@ class LeaveTypeViewSet(viewsets.ReadOnlyModelViewSet):
     def get_queryset(self):
         # ARCHITECTURAL LIMITATION: Employee model does not have an organization relationship.
         return LeaveType.objects.filter(is_active=True)
+
+class AdminLeaveTypeViewSet(viewsets.ModelViewSet):
+    queryset = LeaveType.objects.all()
+    serializer_class = LeaveTypeSerializer
+
+    def get_permissions(self):
+        permission_class = require_permission('leave_type.manage')
+        return [permissions.IsAuthenticated(), permission_class()]
+
+    def perform_create(self, serializer):
+        from django.db import IntegrityError
+        from rest_framework.exceptions import ValidationError
+        
+        # ARCHITECTURAL LIMITATION: Assign to default organization for single-tenant setup
+        org = Organization.objects.first()
+        try:
+            leave_type = serializer.save(organization=org)
+            AuditService.log(
+                action='leave_type_created',
+                actor=self.request.user,
+                target_type='leavetype',
+                target_id=leave_type.id,
+                request=self.request
+            )
+        except IntegrityError:
+            raise ValidationError({"name": "A leave type with this name already exists."})
+
+    def perform_update(self, serializer):
+        from django.db import IntegrityError
+        from rest_framework.exceptions import ValidationError
+        
+        try:
+            leave_type = serializer.save()
+            AuditService.log(
+                action='leave_type_updated',
+                actor=self.request.user,
+                target_type='leavetype',
+                target_id=leave_type.id,
+                request=self.request
+            )
+        except IntegrityError:
+            raise ValidationError({"name": "A leave type with this name already exists."})
+
+    def destroy(self, request, *args, **kwargs):
+        leave_type = self.get_object()
+        
+        # Safe deletion: check for references
+        if leave_type.balances.exists() or leave_type.requests.exists():
+            return Response(
+                {"detail": "Cannot delete leave type that is in use by balances or requests."},
+                status=status.HTTP_409_CONFLICT
+            )
+            
+        leave_type_id = leave_type.id
+        leave_type.delete()
+        
+        AuditService.log(
+            action='leave_type_deleted',
+            actor=request.user,
+            target_type='leavetype',
+            target_id=leave_type_id,
+            request=request
+        )
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
 class LeaveBalanceViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = LeaveBalanceSerializer

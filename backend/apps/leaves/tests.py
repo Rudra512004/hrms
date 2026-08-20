@@ -114,3 +114,111 @@ class LeaveAPITests(TestCase):
             self.assertEqual(response.status_code, status.HTTP_200_OK)
             self.balance.refresh_from_db()
             self.assertEqual(self.balance.used, 0)
+
+class AdminLeaveTypeAPITests(TestCase):
+    def setUp(self):
+        self.client = APIClient()
+        self.org = Organization.objects.create(name='Test Org 2')
+        
+        self.superadmin = User.objects.create_user(email='super@example.com', password='Password123!', status='active', is_superuser=True)
+        self.admin = User.objects.create_user(email='admin@example.com', password='Password123!', status='active')
+        self.employee = User.objects.create_user(email='emp2@example.com', password='Password123!', status='active')
+        
+        self.leave_type = LeaveType.objects.create(organization=self.org, name='Initial Leave', annual_allocation=5)
+
+    def test_superadmin_can_create(self):
+        self.client.force_authenticate(user=self.superadmin)
+        from unittest.mock import patch
+        with patch('apps.authorization.services.AuthorizationService.has_permission', return_value=True):
+            response = self.client.post(reverse('admin-leave-types-list'), {
+                'name': 'New Leave',
+                'description': 'Description',
+                'annual_allocation': 15,
+                'is_active': True
+            })
+            self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+            self.assertEqual(LeaveType.objects.count(), 2)
+
+    def test_authorized_admin_can_create(self):
+        self.client.force_authenticate(user=self.admin)
+        from unittest.mock import patch
+        with patch('apps.authorization.services.AuthorizationService.has_permission', return_value=True):
+            response = self.client.post(reverse('admin-leave-types-list'), {
+                'name': 'Admin Leave',
+                'annual_allocation': 10
+            })
+            self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+
+    def test_unauthorized_employee_cannot_create(self):
+        self.client.force_authenticate(user=self.employee)
+        from unittest.mock import patch
+        with patch('apps.authorization.services.AuthorizationService.has_permission', return_value=False):
+            response = self.client.post(reverse('admin-leave-types-list'), {
+                'name': 'Emp Leave',
+                'annual_allocation': 10
+            })
+            self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_unauthenticated_request_returns_401(self):
+        response = self.client.post(reverse('admin-leave-types-list'), {
+            'name': 'Anon Leave',
+            'annual_allocation': 10
+        })
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+
+    def test_duplicate_name_rejected(self):
+        self.client.force_authenticate(user=self.superadmin)
+        from unittest.mock import patch
+        with patch('apps.authorization.services.AuthorizationService.has_permission', return_value=True):
+            response = self.client.post(reverse('admin-leave-types-list'), {
+                'name': 'Initial Leave',
+                'annual_allocation': 10
+            })
+            self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_invalid_allocation_rejected(self):
+        self.client.force_authenticate(user=self.superadmin)
+        from unittest.mock import patch
+        with patch('apps.authorization.services.AuthorizationService.has_permission', return_value=True):
+            response = self.client.post(reverse('admin-leave-types-list'), {
+                'name': 'Invalid Leave',
+                'annual_allocation': -5
+            })
+            self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_update_works(self):
+        self.client.force_authenticate(user=self.superadmin)
+        from unittest.mock import patch
+        with patch('apps.authorization.services.AuthorizationService.has_permission', return_value=True):
+            response = self.client.patch(reverse('admin-leave-types-detail', kwargs={'pk': self.leave_type.id}), {
+                'name': 'Updated Leave'
+            })
+            self.assertEqual(response.status_code, status.HTTP_200_OK)
+            self.leave_type.refresh_from_db()
+            self.assertEqual(self.leave_type.name, 'Updated Leave')
+
+    def test_referenced_leave_type_cannot_be_deleted(self):
+        self.client.force_authenticate(user=self.superadmin)
+        emp_profile = Employee.objects.create(user=self.employee, employee_code='E99')
+        LeaveBalance.objects.create(employee=emp_profile, leave_type=self.leave_type, allocated=5)
+        
+        from unittest.mock import patch
+        with patch('apps.authorization.services.AuthorizationService.has_permission', return_value=True):
+            response = self.client.delete(reverse('admin-leave-types-detail', kwargs={'pk': self.leave_type.id}))
+            self.assertEqual(response.status_code, status.HTTP_409_CONFLICT)
+            self.assertEqual(LeaveType.objects.count(), 1)
+
+    def test_unreferenced_leave_type_can_be_deleted(self):
+        self.client.force_authenticate(user=self.superadmin)
+        from unittest.mock import patch
+        with patch('apps.authorization.services.AuthorizationService.has_permission', return_value=True):
+            response = self.client.delete(reverse('admin-leave-types-detail', kwargs={'pk': self.leave_type.id}))
+            self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+            self.assertEqual(LeaveType.objects.count(), 0)
+
+    def test_employee_facing_get_returns_configured(self):
+        self.client.force_authenticate(user=self.employee)
+        response = self.client.get(reverse('leave-types-list'))
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(response.data), 1)
+        self.assertEqual(response.data[0]['name'], 'Initial Leave')

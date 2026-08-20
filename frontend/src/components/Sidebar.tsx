@@ -128,6 +128,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen }) => {
         { path: '/admin/office-networks', label: 'Office Networks', icon: Network },
         { path: '/admin/wfh', label: 'WFH Requests', icon: Settings },
         { path: '/admin/leaves', label: 'Leave Requests', icon: Calendar },
+        { path: '/admin/leave-types', label: 'Leave Types', icon: Calendar },
         { path: '/admin/audit-logs', label: 'Audit Logs', icon: ShieldAlert },
       ]
     });
