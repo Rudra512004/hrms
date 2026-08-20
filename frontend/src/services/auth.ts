@@ -16,6 +16,7 @@ export interface User {
   lastName: string;
   status?: string;
   isStaff?: boolean;
+  isSuperuser?: boolean;
 }
 
 export const authService = {
@@ -96,7 +97,8 @@ export const authService = {
           hrmsId: data.employee_code,
           status: data.status,
           isStaff: data.is_staff,
-        } as User & { status?: string; isStaff?: boolean };
+          isSuperuser: data.is_superuser,
+        } as User & { status?: string; isStaff?: boolean; isSuperuser?: boolean };
       } else {
         // Token might be invalid
         localStorage.removeItem('auth_token');

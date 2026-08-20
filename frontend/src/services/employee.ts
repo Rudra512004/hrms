@@ -5,6 +5,7 @@ export interface EmployeeProfile {
   last_name: string;
   status: string;
   employee_code: string;
+  personal_email: string;
   phone_number: string;
   address: string;
   emergency_contact_name: string;

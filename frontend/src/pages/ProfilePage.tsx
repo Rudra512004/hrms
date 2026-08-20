@@ -3,6 +3,7 @@ import { Card } from '../components/Card';
 import { StatusBadge } from '../components/StatusBadge';
 import { Loader2, Save, User as UserIcon, Building, ShieldAlert } from 'lucide-react';
 import { employeeService, type EmployeeProfile } from '../services/employee';
+import { authService } from '../services/auth';
 
 const styles = {
   container: {
@@ -93,6 +94,7 @@ const styles = {
 
 export const ProfilePage: React.FC = () => {
   const [profile, setProfile] = useState<EmployeeProfile | null>(null);
+  const [isSuperuser, setIsSuperuser] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -101,6 +103,10 @@ export const ProfilePage: React.FC = () => {
 
   // Editable form state
   const [formData, setFormData] = useState({
+    first_name: '',
+    last_name: '',
+    email: '',
+    personal_email: '',
     phone_number: '',
     address: '',
     emergency_contact_name: '',
@@ -108,10 +114,15 @@ export const ProfilePage: React.FC = () => {
   });
 
   useEffect(() => {
-    employeeService.getProfile()
-      .then(p => {
+    Promise.all([employeeService.getProfile(), authService.getCurrentUser()])
+      .then(([p, user]) => {
         setProfile(p);
+        setIsSuperuser(!!user?.isSuperuser);
         setFormData({
+          first_name: p.first_name || '',
+          last_name: p.last_name || '',
+          email: p.email || '',
+          personal_email: p.personal_email || '',
           phone_number: p.phone_number || '',
           address: p.address || '',
           emergency_contact_name: p.emergency_contact_name || '',
@@ -145,6 +156,10 @@ export const ProfilePage: React.FC = () => {
       const updatedProfile = await employeeService.updateProfile(formData);
       setProfile(updatedProfile);
       setFormData({
+        first_name: updatedProfile.first_name || '',
+        last_name: updatedProfile.last_name || '',
+        email: updatedProfile.email || '',
+        personal_email: updatedProfile.personal_email || '',
         phone_number: updatedProfile.phone_number || '',
         address: updatedProfile.address || '',
         emergency_contact_name: updatedProfile.emergency_contact_name || '',
@@ -215,11 +230,19 @@ export const ProfilePage: React.FC = () => {
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--spacing-lg)' }}>
               <div style={styles.formGroup}>
                 <label style={styles.label}>First Name</label>
-                <div style={styles.readOnlyValue}>{profile.first_name}</div>
+                {isSuperuser ? (
+                  <input type="text" name="first_name" value={formData.first_name} onChange={handleChange} className="input-neumorphic" />
+                ) : (
+                  <div style={styles.readOnlyValue}>{profile.first_name}</div>
+                )}
               </div>
               <div style={styles.formGroup}>
                 <label style={styles.label}>Last Name</label>
-                <div style={styles.readOnlyValue}>{profile.last_name}</div>
+                {isSuperuser ? (
+                  <input type="text" name="last_name" value={formData.last_name} onChange={handleChange} className="input-neumorphic" />
+                ) : (
+                  <div style={styles.readOnlyValue}>{profile.last_name}</div>
+                )}
               </div>
             </div>
           </div>
@@ -229,12 +252,16 @@ export const ProfilePage: React.FC = () => {
           <div style={styles.section}>
             <h2 style={styles.sectionTitle}>
               <Building size={20} /> Company Information
-              <span style={styles.readOnlyBadge}>HR CONTROLLED</span>
+              {!isSuperuser && <span style={styles.readOnlyBadge}>HR CONTROLLED</span>}
             </h2>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--spacing-lg)' }}>
               <div style={styles.formGroup}>
                 <label style={styles.label}>Company Email</label>
-                <div style={styles.readOnlyValue}>{profile.email}</div>
+                {isSuperuser ? (
+                  <input type="email" name="email" value={formData.email} onChange={handleChange} className="input-neumorphic" />
+                ) : (
+                  <div style={styles.readOnlyValue}>{profile.email}</div>
+                )}
               </div>
               <div style={styles.formGroup}>
                 <label style={styles.label}>Employee Code</label>
@@ -253,8 +280,16 @@ export const ProfilePage: React.FC = () => {
         <Card>
           <div style={styles.section}>
             <h2 style={styles.sectionTitle}>Personal Information</h2>
-            
+
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--spacing-lg)' }}>
+              <div style={styles.formGroup}>
+                <label style={styles.label}>Personal Email</label>
+                {isSuperuser ? (
+                  <input type="email" name="personal_email" value={formData.personal_email} onChange={handleChange} className="input-neumorphic" />
+                ) : (
+                  <div style={styles.readOnlyValue}>{profile.personal_email || 'Not provided'}</div>
+                )}
+              </div>
               <div style={styles.formGroup}>
                 <label style={styles.label}>Phone Number</label>
                 <input
@@ -279,7 +314,7 @@ export const ProfilePage: React.FC = () => {
                 placeholder="123 Main St, City, Country"
               />
             </div>
-            
+
             <div style={{ marginTop: 'var(--spacing-md)' }}>
               <h3 style={{ fontSize: '1rem', marginBottom: 'var(--spacing-md)', color: 'var(--color-text-main)' }}>Emergency Contact</h3>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--spacing-lg)' }}>
@@ -310,9 +345,9 @@ export const ProfilePage: React.FC = () => {
           </div>
         </Card>
 
-        <button 
-          type="submit" 
-          disabled={saving} 
+        <button
+          type="submit"
+          disabled={saving}
           className="btn btn-primary"
           style={{ alignSelf: 'flex-start' }}
         >
