@@ -4,6 +4,7 @@ from django.conf import settings
 class Employee(models.Model):
     user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='employee')
     employee_code = models.CharField(max_length=50, unique=True, help_text="Assigned HRMS/Employee ID")
+    personal_email = models.EmailField(unique=True, null=True, blank=True, help_text="Employee's personal email for onboarding")
     phone_number = models.CharField(max_length=20, blank=True)
     address = models.TextField(blank=True)
     emergency_contact_name = models.CharField(max_length=150, blank=True)

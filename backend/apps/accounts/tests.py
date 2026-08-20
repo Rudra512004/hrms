@@ -152,21 +152,21 @@ class ProvisioningAPITests(TestCase):
 
     def test_unauthenticated_user_cannot_provision(self):
         response = self.client.post(self.provision_url, {
-            'email': 'new@company.com', 'first_name': 'New', 'last_name': 'Employee', 'employee_code': 'EMP003'
+            'email': 'new@company.com', 'personal_email': 'new.p@gmail.com', 'first_name': 'New', 'last_name': 'Employee', 'employee_code': 'EMP003'
         })
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
 
     def test_unauthorized_user_cannot_provision(self):
         self.client.force_authenticate(user=self.regular_user)
         response = self.client.post(self.provision_url, {
-            'email': 'new@company.com', 'first_name': 'New', 'last_name': 'Employee', 'employee_code': 'EMP003'
+            'email': 'new@company.com', 'personal_email': 'new.p@gmail.com', 'first_name': 'New', 'last_name': 'Employee', 'employee_code': 'EMP003'
         })
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
     def test_authorized_user_can_provision(self):
         self.client.force_authenticate(user=self.hr_user)
         response = self.client.post(self.provision_url, {
-            'email': 'new@company.com', 'first_name': 'New', 'last_name': 'Employee', 'employee_code': 'EMP003'
+            'email': 'new@company.com', 'personal_email': 'new.p@gmail.com', 'first_name': 'New', 'last_name': 'Employee', 'employee_code': 'EMP003'
         })
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         self.assertTrue(User.objects.filter(email='new@company.com').exists())

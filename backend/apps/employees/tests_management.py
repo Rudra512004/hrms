@@ -27,14 +27,16 @@ class EmployeeManagementAPITests(TestCase):
 
     def test_employee_creation_superadmin(self):
         self.client.force_authenticate(user=self.super_user)
-        response = self.client.post(reverse('employee-management-list'), {
-            'email': 'new_emp@example.com',
+        data = {
+            'email': 'new@company.com',
+            'personal_email': 'new.personal@gmail.com',
             'first_name': 'New',
-            'last_name': 'Emp',
-            'employee_code': 'EMP_NEW'
-        })
+            'last_name': 'User',
+            'employee_code': 'NEW001'
+        }
+        response = self.client.post(reverse('employee-management-list'), data)
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
-        self.assertTrue(User.objects.filter(email='new_emp@example.com').exists())
+        self.assertTrue(User.objects.filter(email='new@company.com').exists())
 
     def test_employee_creation_unauthorized(self):
         self.client.force_authenticate(user=self.normal_user)

@@ -163,6 +163,7 @@ Create a new employee record and associated invited user account.
 ```json
 {
   "email": "new@company.com",
+  "personal_email": "alice.personal@gmail.com",
   "first_name": "Alice",
   "last_name": "Smith",
   "employee_code": "EMP002"
@@ -186,6 +187,7 @@ Create a new employee record and associated invited user account.
     "emergency_contact_name": "",
     "emergency_contact_phone": ""
   },
+  "onboarding_email_status": "sent",
   "activation_info": {
     "uid": "Mg",
     "token": "token-string"
@@ -471,7 +473,8 @@ Manage and approve WFH requests.
  
  * * A u t h o r i z a t i o n   E r r o r s : * * 
  -   * * 4 0 3   F o r b i d d e n : * *   L a c k s   v a l i d   n e t w o r k   c o n t e x t   ( n o t   i n   o f f i c e ,   n o   W F H ) . 
-  
+ 
+ 
  
  - - - 
  
@@ -576,7 +579,8 @@ Manage and approve WFH requests.
  -   * * P a t h : * *   ` / a p i / v 1 / l e a v e s / r e q u e s t s / < i d > / c a n c e l / ` 
  -   * * A u t h e n t i c a t i o n   R e q u i r e m e n t : * *   T o k e n 
  -   * * A u t h o r i z a t i o n   R e q u i r e m e n t : * *   M u s t   o w n   t h e   r e q u e s t   o r   h o l d   ` l e a v e . c a n c e l ` .   R e q u e s t   m u s t   b e   ` p e n d i n g ` . 
-  
+ 
+ 
  
  - - - 
  
@@ -656,5 +660,43 @@ Manage and approve WFH requests.
  -   * * P a t h : * *   ` / a p i / v 1 / a u t h o r i z a t i o n / p e r m i s s i o n s / m y _ p e r m i s s i o n s / ` 
  -   * * A u t h e n t i c a t i o n   R e q u i r e m e n t : * *   T o k e n 
  -   * * R e s p o n s e : * *   ` [ " e m p l o y e e . v i e w " ,   " r o l e . a s s i g n " ] ` 
-  
  
+ 
+ 
+---
+
+## 11. Audit Logs
+
+View audit logs of administrative and employee actions.
+
+### List Audit Logs
+
+- **Method:** GET
+- **Path:** /api/v1/audit-logs/
+- **Authentication Requirement:** Token
+- **Authorization Requirement:** udit.view
+
+**Query Parameters (Optional):**
+- ctor: Filter by actor's email.
+- ction: Filter by action (e.g., employee_created).
+- 	arget: Filter by target ID.
+
+**Successful Response (200 OK):**
+\\json
+[
+    {
+        "id": 1,
+        "actor": 1,
+        "actor_email": "admin@company.com",
+        "action": "employee_created",
+        "target_type": "employee",
+        "target_id": "2",
+        "timestamp": "2023-11-05T10:00:00Z",
+        "metadata": {},
+        "ip_address": "127.0.0.1"
+    }
+]
+\
+**Authorization Errors:**
+- **401 Unauthorized:** Missing token.
+- **403 Forbidden:** Lacks \udit.view\ permission.
