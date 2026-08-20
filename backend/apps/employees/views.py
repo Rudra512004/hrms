@@ -11,6 +11,8 @@ from apps.authorization.permissions import HasRequiredPermission, IsNetworkAllow
 from apps.authorization.services import AuthorizationService
 from .models import Employee, WFHRequest
 from .serializers import EmployeeSerializer, ProvisionEmployeeSerializer
+from apps.notifications.services import NotificationService
+from apps.audit.services import AuditService
 
 class EmployeeSelfServiceView(APIView):
     permission_classes = [IsAuthenticated, IsNetworkAllowed]
@@ -33,6 +35,13 @@ class EmployeeSelfServiceView(APIView):
         serializer = EmployeeSerializer(employee, data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
         serializer.save()
+        AuditService.log(
+            action='employee_updated',
+            actor=request.user,
+            target_type='employee',
+            target_id=employee.id,
+            request=request
+        )
         return Response(serializer.data, status=status.HTTP_200_OK)
 
 class ProvisionEmployeeView(APIView):
@@ -44,6 +53,14 @@ class ProvisionEmployeeView(APIView):
         serializer.is_valid(raise_exception=True)
         employee = serializer.save()
 
+        AuditService.log(
+            action='employee_created',
+            actor=request.user,
+            target_type='employee',
+            target_id=employee.id,
+            request=request
+        )
+
         uid = urlsafe_base64_encode(force_bytes(employee.user.pk))
         token = default_token_generator.make_token(employee.user)
 
@@ -52,12 +69,14 @@ class ProvisionEmployeeView(APIView):
             'employee': EmployeeSerializer(employee).data,
         }
 
-        # Only expose activation secrets in DEBUG mode for local development/testing
-        if settings.DEBUG:
-            response_data['activation_info'] = {
-                'uid': uid,
-                'token': token
-            }
+        email_sent = NotificationService.send_employee_onboarding_email(
+            personal_email=employee.personal_email,
+            first_name=employee.user.first_name,
+            employee_code=employee.employee_code,
+            uid=uid,
+            token=token
+        )
+        response_data['onboarding_email_status'] = 'sent' if email_sent else 'failed'
 
         return Response(response_data, status=status.HTTP_201_CREATED)
 
@@ -87,6 +106,14 @@ class EmployeeManagementViewSet(viewsets.ModelViewSet):
         serializer.is_valid(raise_exception=True)
         employee = serializer.save()
 
+        AuditService.log(
+            action='employee_created',
+            actor=request.user,
+            target_type='employee',
+            target_id=employee.id,
+            request=request
+        )
+
         uid = urlsafe_base64_encode(force_bytes(employee.user.pk))
         token = default_token_generator.make_token(employee.user)
 
@@ -95,11 +122,14 @@ class EmployeeManagementViewSet(viewsets.ModelViewSet):
             'employee': EmployeeSerializer(employee).data,
         }
 
-        if settings.DEBUG:
-            response_data['activation_info'] = {
-                'uid': uid,
-                'token': token
-            }
+        email_sent = NotificationService.send_employee_onboarding_email(
+            personal_email=employee.personal_email,
+            first_name=employee.user.first_name,
+            employee_code=employee.employee_code,
+            uid=uid,
+            token=token
+        )
+        response_data['onboarding_email_status'] = 'sent' if email_sent else 'failed'
 
         return Response(response_data, status=status.HTTP_201_CREATED)
 
@@ -116,6 +146,13 @@ class EmployeeManagementViewSet(viewsets.ModelViewSet):
 
         user.status = 'active'
         user.save()
+        AuditService.log(
+            action='employee_activated',
+            actor=request.user,
+            target_type='employee',
+            target_id=employee.id,
+            request=request
+        )
         return Response(EmployeeSerializer(employee).data)
 
     @action(detail=True, methods=['post'])
@@ -142,6 +179,13 @@ class EmployeeManagementViewSet(viewsets.ModelViewSet):
 
         user.status = 'inactive'
         user.save()
+        AuditService.log(
+            action='employee_deactivated',
+            actor=request.user,
+            target_type='employee',
+            target_id=employee.id,
+            request=request
+        )
         return Response(EmployeeSerializer(employee).data)
 
 from django.utils import timezone
@@ -167,7 +211,14 @@ class WFHRequestViewSet(viewsets.ModelViewSet):
         return [IsAuthenticated()]
 
     def perform_create(self, serializer):
-        serializer.save(employee=self.request.user.employee)
+        wfh = serializer.save(employee=self.request.user.employee)
+        AuditService.log(
+            action='wfh_request_created',
+            actor=self.request.user,
+            target_type='wfhrequest',
+            target_id=wfh.id,
+            request=self.request
+        )
 
     @action(detail=True, methods=['post'])
     def approve(self, request, pk=None):
@@ -186,6 +237,13 @@ class WFHRequestViewSet(viewsets.ModelViewSet):
         wfh.reviewed_at = timezone.now()
         wfh.reviewer_comment = serializer.validated_data.get('reviewer_comment', '')
         wfh.save()
+        AuditService.log(
+            action=f'wfh_request_{wfh.status}',
+            actor=request.user,
+            target_type='wfhrequest',
+            target_id=wfh.id,
+            request=request
+        )
         return Response(WFHRequestSerializer(wfh).data)
 
     @action(detail=True, methods=['post'])
@@ -203,6 +261,13 @@ class WFHRequestViewSet(viewsets.ModelViewSet):
         wfh.reviewed_at = timezone.now()
         wfh.reviewer_comment = serializer.validated_data.get('reviewer_comment', '')
         wfh.save()
+        AuditService.log(
+            action=f'wfh_request_{wfh.status}',
+            actor=request.user,
+            target_type='wfhrequest',
+            target_id=wfh.id,
+            request=request
+        )
         return Response(WFHRequestSerializer(wfh).data)
 
     @action(detail=True, methods=['post'])
@@ -215,4 +280,11 @@ class WFHRequestViewSet(viewsets.ModelViewSet):
             return Response({"detail": "Only pending requests can be cancelled."}, status=status.HTTP_400_BAD_REQUEST)
         wfh.status = 'cancelled'
         wfh.save()
+        AuditService.log(
+            action=f'wfh_request_{wfh.status}',
+            actor=request.user,
+            target_type='wfhrequest',
+            target_id=wfh.id,
+            request=request
+        )
         return Response(WFHRequestSerializer(wfh).data)

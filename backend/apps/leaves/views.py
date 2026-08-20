@@ -1,4 +1,5 @@
 from rest_framework import viewsets, status
+from apps.audit.services import AuditService
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
@@ -48,7 +49,14 @@ class LeaveRequestViewSet(viewsets.ModelViewSet):
         return permissions
 
     def perform_create(self, serializer):
-        serializer.save(employee=self.request.user.employee)
+        leave = serializer.save(employee=self.request.user.employee)
+        AuditService.log(
+            action='leave_request_created',
+            actor=self.request.user,
+            target_type='leaverequest',
+            target_id=leave.id,
+            request=self.request
+        )
 
     @action(detail=True, methods=['post'])
     def approve(self, request, pk=None):
@@ -84,6 +92,13 @@ class LeaveRequestViewSet(viewsets.ModelViewSet):
             leave.reviewer_comment = serializer.validated_data.get('reviewer_comment', '')
             leave.save()
 
+        AuditService.log(
+            action='leave_request_approved',
+            actor=request.user,
+            target_type='leaverequest',
+            target_id=leave.id,
+            request=request
+        )
         return Response(LeaveRequestSerializer(leave).data)
 
     @action(detail=True, methods=['post'])
@@ -102,6 +117,13 @@ class LeaveRequestViewSet(viewsets.ModelViewSet):
         leave.reviewed_at = timezone.now()
         leave.reviewer_comment = serializer.validated_data.get('reviewer_comment', '')
         leave.save()
+        AuditService.log(
+            action='leave_request_rejected',
+            actor=request.user,
+            target_type='leaverequest',
+            target_id=leave.id,
+            request=request
+        )
         return Response(LeaveRequestSerializer(leave).data)
 
     @action(detail=True, methods=['post'])
@@ -116,4 +138,11 @@ class LeaveRequestViewSet(viewsets.ModelViewSet):
 
         leave.status = 'cancelled'
         leave.save()
+        AuditService.log(
+            action='leave_request_cancelled',
+            actor=request.user,
+            target_type='leaverequest',
+            target_id=leave.id,
+            request=request
+        )
         return Response(LeaveRequestSerializer(leave).data)

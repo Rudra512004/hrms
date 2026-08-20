@@ -14,21 +14,27 @@ class EmployeeSerializer(serializers.ModelSerializer):
     class Meta:
         model = Employee
         fields = (
-            'id', 'email', 'first_name', 'last_name', 'status', 'employee_code',
+            'id', 'email', 'first_name', 'last_name', 'status', 'employee_code', 'personal_email',
             'phone_number', 'address', 'emergency_contact_name', 'emergency_contact_phone'
         )
-        read_only_fields = ('id', 'email', 'first_name', 'last_name', 'status', 'employee_code')
+        read_only_fields = ('id', 'email', 'first_name', 'last_name', 'status', 'employee_code', 'personal_email')
 
 class ProvisionEmployeeSerializer(serializers.Serializer):
     email = serializers.EmailField()
     first_name = serializers.CharField(max_length=150)
     last_name = serializers.CharField(max_length=150)
     employee_code = serializers.CharField(max_length=50)
+    personal_email = serializers.EmailField()
 
     def validate_email(self, value):
         value = User.objects.normalize_email(value)
         if User.objects.filter(email=value).exists():
             raise serializers.ValidationError("A user with this email already exists.")
+        return value
+
+    def validate_personal_email(self, value):
+        if Employee.objects.filter(personal_email=value).exists():
+            raise serializers.ValidationError("An employee with this personal email already exists.")
         return value
 
     def validate_employee_code(self, value):
@@ -45,7 +51,8 @@ class ProvisionEmployeeSerializer(serializers.Serializer):
 
         employee = Employee.objects.create(
             user=user,
-            employee_code=validated_data['employee_code']
+            employee_code=validated_data['employee_code'],
+            personal_email=validated_data.get('personal_email')
         )
         return employee
 

@@ -152,29 +152,30 @@ class ProvisioningAPITests(TestCase):
 
     def test_unauthenticated_user_cannot_provision(self):
         response = self.client.post(self.provision_url, {
-            'email': 'new@company.com', 'first_name': 'New', 'last_name': 'Employee', 'employee_code': 'EMP003'
+            'email': 'new@company.com', 'personal_email': 'new.p@gmail.com', 'first_name': 'New', 'last_name': 'Employee', 'employee_code': 'EMP003'
         })
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
 
     def test_unauthorized_user_cannot_provision(self):
         self.client.force_authenticate(user=self.regular_user)
         response = self.client.post(self.provision_url, {
-            'email': 'new@company.com', 'first_name': 'New', 'last_name': 'Employee', 'employee_code': 'EMP003'
+            'email': 'new@company.com', 'personal_email': 'new.p@gmail.com', 'first_name': 'New', 'last_name': 'Employee', 'employee_code': 'EMP003'
         })
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
     def test_authorized_user_can_provision(self):
         self.client.force_authenticate(user=self.hr_user)
         response = self.client.post(self.provision_url, {
-            'email': 'new@company.com', 'first_name': 'New', 'last_name': 'Employee', 'employee_code': 'EMP003'
+            'email': 'new@company.com', 'personal_email': 'new.p@gmail.com', 'first_name': 'New', 'last_name': 'Employee', 'employee_code': 'EMP003'
         })
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         self.assertTrue(User.objects.filter(email='new@company.com').exists())
         self.assertTrue(Employee.objects.filter(employee_code='EMP003').exists())
-        # In testing (DEBUG defaults to True or testing mode ignores it depending on settings), it may return activation_info
-        if 'activation_info' in response.data:
-            self.assertIn('uid', response.data['activation_info'])
-            self.assertIn('token', response.data['activation_info'])
+        # SECURITY: activation token must NEVER appear in the API response
+        self.assertNotIn('activation_info', response.data)
+        self.assertNotIn('token', response.data)
+        # Onboarding email status must always be present
+        self.assertIn('onboarding_email_status', response.data)
 
     def test_duplicate_employee_code_rejected(self):
         User.objects.create_user(email='existing@company.com', password='Password123!')

@@ -1,4 +1,5 @@
 from rest_framework import viewsets, status
+from apps.audit.services import AuditService
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
@@ -53,7 +54,15 @@ class UserRoleViewSet(viewsets.ModelViewSet):
         return UserRole.objects.filter(is_revoked=False)
 
     def perform_create(self, serializer):
-        serializer.save(assigned_by=self.request.user)
+        user_role = serializer.save(assigned_by=self.request.user)
+        AuditService.log(
+            action='role_assigned',
+            actor=self.request.user,
+            target_type='user',
+            target_id=user_role.user.id,
+            metadata={'role_id': user_role.role.id, 'role_name': user_role.role.name},
+            request=self.request
+        )
 
     @action(detail=True, methods=['post'])
     def revoke(self, request, pk=None):
@@ -75,6 +84,14 @@ class UserRoleViewSet(viewsets.ModelViewSet):
         user_role.is_revoked = True
         user_role.revoked_at = timezone.now()
         user_role.save()
+        AuditService.log(
+            action='role_revoked',
+            actor=request.user,
+            target_type='user',
+            target_id=user_role.user.id,
+            metadata={'role_id': user_role.role.id, 'role_name': user_role.role.name},
+            request=request
+        )
         return Response(UserRoleSerializer(user_role).data)
 
 class UserPermissionGrantViewSet(viewsets.ModelViewSet):
@@ -92,7 +109,15 @@ class UserPermissionGrantViewSet(viewsets.ModelViewSet):
         return UserPermissionGrant.objects.filter(is_revoked=False)
 
     def perform_create(self, serializer):
-        serializer.save(granted_by=self.request.user)
+        user_permission = serializer.save(granted_by=self.request.user)
+        AuditService.log(
+            action='permission_granted',
+            actor=self.request.user,
+            target_type='user',
+            target_id=user_permission.user.id,
+            metadata={'permission_id': user_permission.permission.id, 'codename': user_permission.permission.codename},
+            request=self.request
+        )
 
     @action(detail=True, methods=['post'])
     def revoke(self, request, pk=None):
@@ -110,4 +135,12 @@ class UserPermissionGrantViewSet(viewsets.ModelViewSet):
         grant.is_revoked = True
         grant.revoked_at = timezone.now()
         grant.save()
+        AuditService.log(
+            action='permission_revoked',
+            actor=request.user,
+            target_type='user',
+            target_id=grant.user.id,
+            metadata={'permission_id': grant.permission.id, 'codename': grant.permission.codename},
+            request=request
+        )
         return Response(UserPermissionGrantSerializer(grant).data)
