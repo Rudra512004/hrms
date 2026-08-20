@@ -65,6 +65,8 @@ export function LeavePage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  const activeTypes = types.filter(t => t.is_active);
+
   // Form state
   const [showForm, setShowForm] = useState(false);
   const [formType, setFormType] = useState('');
@@ -141,8 +143,8 @@ export function LeavePage() {
     { key: 'start_date', title: 'Start Date' },
     { key: 'end_date', title: 'End Date' },
     { key: 'reason', title: 'Reason' },
-    { 
-      key: 'status', 
+    {
+      key: 'status',
       title: 'Status',
       render: (r: LeaveRequest) => <StatusBadge status={r.status} />
     },
@@ -155,7 +157,7 @@ export function LeavePage() {
       key: 'actions',
       title: 'Actions',
       render: (r: LeaveRequest) => r.status === 'pending' ? (
-        <button 
+        <button
           onClick={() => handleCancel(r.id)}
           className="btn btn-danger"
           style={{ padding: '4px 8px', fontSize: '12px' }}
@@ -182,7 +184,7 @@ export function LeavePage() {
             <h1 style={styles.title}>Leave Management</h1>
             <p style={styles.subtitle}>View your balances and manage leave requests.</p>
           </div>
-          <button 
+          <button
             className="btn btn-primary"
             onClick={() => setShowForm(!showForm)}
           >
@@ -203,7 +205,7 @@ export function LeavePage() {
         <Card>
           <div style={{ padding: 'var(--spacing-lg)' }}>
             <h2 style={{ fontSize: '18px', fontWeight: 600, marginBottom: 'var(--spacing-lg)', color: 'var(--color-text-main)' }}>Create Leave Request</h2>
-            
+
             {formError && (
               <div style={styles.alert('error')}>
                 <AlertCircle size={18} />
@@ -215,23 +217,29 @@ export function LeavePage() {
               <div style={styles.grid}>
                 <div style={styles.formGroup}>
                   <label style={styles.label}>Leave Type</label>
-                  <select 
-                    className="input-neumorphic"
-                    value={formType} 
-                    onChange={e => setFormType(e.target.value)}
-                    required
-                  >
-                    <option value="">Select a leave type</option>
-                    {types.filter(t => t.is_active).map(t => (
-                      <option key={t.id} value={t.id}>{t.name} (Allocated: {t.annual_allocation})</option>
-                    ))}
-                  </select>
+                  {activeTypes.length === 0 ? (
+                    <div style={{ padding: '10px 14px', backgroundColor: 'var(--color-bg-body)', borderRadius: 'var(--radius-md)', color: 'var(--color-text-muted)', fontSize: '14px', boxShadow: 'var(--shadow-inset)' }}>
+                      No leave types are currently configured. Please contact HR.
+                    </div>
+                  ) : (
+                    <select
+                      className="input-neumorphic"
+                      value={formType}
+                      onChange={e => setFormType(e.target.value)}
+                      required
+                    >
+                      <option value="">Select a leave type</option>
+                      {activeTypes.map(t => (
+                        <option key={t.id} value={t.id}>{t.name} (Allocated: {t.annual_allocation})</option>
+                      ))}
+                    </select>
+                  )}
                 </div>
-                
+
                 <div style={styles.formGroup}>
                   <label style={styles.label}>Start Date</label>
-                  <input 
-                    type="date" 
+                  <input
+                    type="date"
                     className="input-neumorphic"
                     value={formStart}
                     onChange={e => setFormStart(e.target.value)}
@@ -241,8 +249,8 @@ export function LeavePage() {
 
                 <div style={styles.formGroup}>
                   <label style={styles.label}>End Date</label>
-                  <input 
-                    type="date" 
+                  <input
+                    type="date"
                     className="input-neumorphic"
                     value={formEnd}
                     onChange={e => setFormEnd(e.target.value)}
@@ -253,7 +261,7 @@ export function LeavePage() {
 
               <div style={styles.formGroup}>
                 <label style={styles.label}>Reason</label>
-                <textarea 
+                <textarea
                   className="input-neumorphic"
                   style={{ minHeight: '100px', resize: 'vertical' }}
                   value={formReason}
@@ -267,7 +275,7 @@ export function LeavePage() {
                 <button type="button" className="btn btn-secondary" onClick={() => setShowForm(false)}>
                   Cancel
                 </button>
-                <button type="submit" className="btn btn-primary" disabled={formSubmitting}>
+                <button type="submit" className="btn btn-primary" disabled={formSubmitting || activeTypes.length === 0}>
                   {formSubmitting ? <Loader2 size={18} className="animate-spin" /> : 'Submit Request'}
                 </button>
               </div>
@@ -314,7 +322,7 @@ export function LeavePage() {
                 <Calendar size={20} style={{ color: 'var(--color-primary)' }} />
                 <h2 style={{ fontSize: '18px', fontWeight: 600, color: 'var(--color-text-main)' }}>Request History</h2>
               </div>
-              <Table 
+              <Table
                 columns={columns}
                 data={requests}
                 keyExtractor={(r) => r.id.toString()}
