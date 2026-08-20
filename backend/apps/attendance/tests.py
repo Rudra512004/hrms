@@ -116,3 +116,86 @@ class AttendanceAPITests(TestCase):
         # Inject HTTP_X_FORWARDED_FOR with an office IP, while REMOTE_ADDR is external
         response = self.client.post(reverse('attendance-check-in'), REMOTE_ADDR=self.external_ip, HTTP_X_FORWARDED_FOR=self.office_ip)
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_start_break(self):
+        self.client.force_authenticate(user=self.user)
+        self.client.post(reverse('attendance-check-in'), REMOTE_ADDR=self.office_ip)
+        response = self.client.post(reverse('attendance-start-break'), REMOTE_ADDR=self.office_ip)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertTrue(response.data['is_on_break'])
+        self.assertEqual(len(response.data['breaks']), 1)
+        self.assertIsNone(response.data['breaks'][0]['ended_at'])
+
+    def test_end_break(self):
+        self.client.force_authenticate(user=self.user)
+        self.client.post(reverse('attendance-check-in'), REMOTE_ADDR=self.office_ip)
+        self.client.post(reverse('attendance-start-break'), REMOTE_ADDR=self.office_ip)
+        response = self.client.post(reverse('attendance-end-break'), REMOTE_ADDR=self.office_ip)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertFalse(response.data['is_on_break'])
+        self.assertIsNotNone(response.data['breaks'][0]['ended_at'])
+
+    def test_multiple_breaks(self):
+        self.client.force_authenticate(user=self.user)
+        self.client.post(reverse('attendance-check-in'), REMOTE_ADDR=self.office_ip)
+        
+        self.client.post(reverse('attendance-start-break'), REMOTE_ADDR=self.office_ip)
+        self.client.post(reverse('attendance-end-break'), REMOTE_ADDR=self.office_ip)
+        
+        self.client.post(reverse('attendance-start-break'), REMOTE_ADDR=self.office_ip)
+        self.client.post(reverse('attendance-end-break'), REMOTE_ADDR=self.office_ip)
+        
+        response = self.client.get(reverse('attendance-list'), REMOTE_ADDR=self.office_ip)
+        self.assertEqual(len(response.data[0]['breaks']), 2)
+
+    def test_cannot_start_break_while_on_break(self):
+        self.client.force_authenticate(user=self.user)
+        self.client.post(reverse('attendance-check-in'), REMOTE_ADDR=self.office_ip)
+        self.client.post(reverse('attendance-start-break'), REMOTE_ADDR=self.office_ip)
+        response = self.client.post(reverse('attendance-start-break'), REMOTE_ADDR=self.office_ip)
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_cannot_end_nonexistent_break(self):
+        self.client.force_authenticate(user=self.user)
+        self.client.post(reverse('attendance-check-in'), REMOTE_ADDR=self.office_ip)
+        response = self.client.post(reverse('attendance-end-break'), REMOTE_ADDR=self.office_ip)
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_cannot_break_before_checkin(self):
+        self.client.force_authenticate(user=self.user)
+        response = self.client.post(reverse('attendance-start-break'), REMOTE_ADDR=self.office_ip)
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_cannot_checkout_while_on_break(self):
+        self.client.force_authenticate(user=self.user)
+        self.client.post(reverse('attendance-check-in'), REMOTE_ADDR=self.office_ip)
+        self.client.post(reverse('attendance-start-break'), REMOTE_ADDR=self.office_ip)
+        response = self.client.post(reverse('attendance-check-out'), REMOTE_ADDR=self.office_ip)
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_checkout_calculates_duration(self):
+        self.client.force_authenticate(user=self.user)
+        self.client.post(reverse('attendance-check-in'), REMOTE_ADDR=self.office_ip)
+        
+        att = Attendance.objects.get(employee=self.employee, date=timezone.now().date())
+        att.check_in = timezone.now() - timedelta(hours=9)
+        att.save()
+
+        self.client.post(reverse('attendance-start-break'), REMOTE_ADDR=self.office_ip)
+        b = att.breaks.first()
+        b.started_at = timezone.now() - timedelta(hours=5)
+        b.save()
+
+        self.client.post(reverse('attendance-end-break'), REMOTE_ADDR=self.office_ip)
+        b.refresh_from_db()
+        b.ended_at = b.started_at + timedelta(minutes=45)
+        b.save()
+        
+        response = self.client.post(reverse('attendance-check-out'), REMOTE_ADDR=self.office_ip)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        
+        att.refresh_from_db()
+        # Roughly 9 hours elapsed, 45 minutes break => roughly 8h 15m productive. 
+        # Using almostEqual logic manually because of execution delay
+        self.assertTrue(att.total_break_duration.total_seconds() == 45 * 60)
+        self.assertTrue(att.productive_work_duration.total_seconds() > 8 * 3600)

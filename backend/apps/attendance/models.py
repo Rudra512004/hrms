@@ -14,6 +14,8 @@ class Attendance(models.Model):
     check_in = models.DateTimeField(null=True, blank=True)
     check_out = models.DateTimeField(null=True, blank=True)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='present')
+    total_break_duration = models.DurationField(null=True, blank=True)
+    productive_work_duration = models.DurationField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -23,3 +25,15 @@ class Attendance(models.Model):
 
     def __str__(self):
         return f"{self.employee} - {self.date}"
+
+class AttendanceBreak(models.Model):
+    attendance = models.ForeignKey(Attendance, on_delete=models.CASCADE, related_name='breaks')
+    started_at = models.DateTimeField(default=timezone.now)
+    ended_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['started_at']
+
+    def __str__(self):
+        return f"Break for {self.attendance} starting {self.started_at}"
