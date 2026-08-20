@@ -199,3 +199,56 @@ h1, h2, h3, h4, h5, h6 {
 .input-error:focus {
   box-shadow: 0 0 0 3px rgba(246, 45, 81, 0.15), var(--shadow-inset);
 }
+
+/* Animations */
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(5px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.2s ease-out forwards;
+}
+
+.transition-all {
+  transition: all 0.2s ease-in-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, ::before, ::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* Responsiveness helpers */
+.container {
+  max-width: 1440px;
+  margin: 0 auto;
+  padding: 0 var(--spacing-md);
+}
+
+@media (max-width: 768px) {
+  .grid-cols-2 { grid-template-columns: 1fr; }
+  .grid-cols-3 { grid-template-columns: 1fr; }
+  .card-stack { display: flex; flex-direction: column; }
+}
+
+@media (max-width: 390px) {
+  body { font-size: 14px; }
+  .hide-on-mobile { display: none; }
+  .table-responsive { overflow-x: auto; }
+}
+
+.table-row {
+  transition: background-color 0.2s ease;
+}
+.table-row:hover {
+  background-color: rgba(115, 103, 240, 0.04);
+}

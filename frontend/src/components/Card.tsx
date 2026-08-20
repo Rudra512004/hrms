@@ -34,7 +34,7 @@ const styles = {
 
 export const Card: React.FC<CardProps> = ({ children, title, className = '', style = {} }) => {
   return (
-    <div style={{ ...styles.card, ...style }} className={className}>
+    <div style={{ ...styles.card, ...style }} className={`transition-all ${className}`}>
       {title && (
         <div style={styles.header}>
           <h3 style={styles.title}>{title}</h3>

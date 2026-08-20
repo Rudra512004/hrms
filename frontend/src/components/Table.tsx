@@ -64,7 +64,7 @@ export function Table<T>({ data, columns, keyExtractor }: TableProps<T>) {
             </tr>
           ) : (
             data.map((item) => (
-              <tr key={keyExtractor(item)} style={styles.row}>
+              <tr key={keyExtractor(item)} className="table-row" style={styles.row}>
                 {columns.map((col) => (
                   <td key={col.key.toString()} style={styles.td}>
                     {col.render ? col.render(item) : (item[col.key as keyof T] as React.ReactNode)}
