@@ -137,5 +137,27 @@ export const employeeManagementService = {
     }
 
     return await response.json();
+  },
+
+  changeEmploymentStatus: async (id: number, employment_status: string): Promise<EmployeeProfile> => {
+    const token = localStorage.getItem('auth_token');
+    if (!token) throw new Error('No authentication token');
+
+    const response = await fetch(`/api/v1/employees/management/${id}/change_employment_status/`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Token ${token}`,
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
+      },
+      body: JSON.stringify({ employment_status })
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw { response, errorData };
+    }
+
+    return await response.json();
   }
 };
