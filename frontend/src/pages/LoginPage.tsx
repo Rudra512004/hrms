@@ -119,7 +119,7 @@ export const LoginPage: React.FC = () => {
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    await authService.login(email, password);
+    await authService.login(email.toLowerCase().trim(), password);
     // Temporary redirect for development shell
     navigate('/dashboard');
   };
@@ -139,6 +139,8 @@ export const LoginPage: React.FC = () => {
               placeholder="email@company.com"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
+              autoCapitalize="none"
+              autoCorrect="off"
               required
             />
           </div>
