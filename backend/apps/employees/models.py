@@ -1,8 +1,13 @@
 from django.db import models
 from django.conf import settings
 
+from apps.organization.models import Organization, Department, Designation
+
 class Employee(models.Model):
     user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='employee')
+    organization = models.ForeignKey(Organization, on_delete=models.CASCADE, related_name='employees', null=True, blank=True)
+    department = models.ForeignKey(Department, on_delete=models.SET_NULL, related_name='employees', null=True, blank=True)
+    designation = models.ForeignKey(Designation, on_delete=models.SET_NULL, related_name='employees', null=True, blank=True)
     employee_code = models.CharField(max_length=50, unique=True, help_text="Assigned HRMS/Employee ID")
     personal_email = models.EmailField(unique=True, null=True, blank=True, help_text="Employee's personal email for onboarding")
     phone_number = models.CharField(max_length=20, blank=True)
