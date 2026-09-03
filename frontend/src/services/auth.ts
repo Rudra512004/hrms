@@ -15,8 +15,12 @@ export interface User {
   firstName: string;
   lastName: string;
   status?: string;
-  isStaff?: boolean;
-  isSuperuser?: boolean;
+}
+
+export interface AuthSession {
+  user: User;
+  roles: string[];
+  permissions: string[];
 }
 
 export const authService = {
@@ -73,15 +77,12 @@ export const authService = {
     }
   },
 
-  /**
-   * Fetch the currently authenticated user session.
-   */
-  getCurrentUser: async (): Promise<User | null> => {
+  getCurrentUser: async (): Promise<AuthSession | null> => {
     const token = localStorage.getItem('auth_token');
     if (!token) return null;
 
     try {
-      const response = await fetch('/api/v1/auth/me/', {
+      const response = await fetch('/api/v1/authorization/me/', {
         headers: {
           'Authorization': `Token ${token}`
         }
@@ -90,15 +91,17 @@ export const authService = {
       if (response.ok) {
         const data = await response.json();
         return {
-          id: data.id.toString(),
-          email: data.email,
-          firstName: data.first_name,
-          lastName: data.last_name,
-          hrmsId: data.employee_code,
-          status: data.status,
-          isStaff: data.is_staff,
-          isSuperuser: data.is_superuser,
-        } as User & { status?: string; isStaff?: boolean; isSuperuser?: boolean };
+          user: {
+            id: data.user.id.toString(),
+            email: data.user.email,
+            firstName: data.user.first_name,
+            lastName: data.user.last_name,
+            hrmsId: data.user.employee_code,
+            status: data.user.status,
+          },
+          roles: data.roles || [],
+          permissions: data.permissions || [],
+        };
       } else {
         // Token might be invalid
         localStorage.removeItem('auth_token');

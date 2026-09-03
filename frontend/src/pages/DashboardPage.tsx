@@ -6,13 +6,13 @@ import {
   User as UserIcon, AlertCircle, Loader2,
   Clock, Calendar, Shield, Settings, Users, LogIn, LogOut, Coffee
 } from 'lucide-react';
-import { authService, type User as AuthUser } from '../services/auth';
+import { useAuth } from '../contexts/AuthContext';
 import { attendanceService, type AttendanceRecord } from '../services/attendance';
 import { leaveService, type LeaveBalance } from '../services/leaves';
 
 const DashboardPage: React.FC = () => {
   const navigate = useNavigate();
-  const [user, setUser] = useState<AuthUser | null>(null);
+  const { user, hasPermission } = useAuth();
   const [attendanceToday, setAttendanceToday] = useState<AttendanceRecord | null>(null);
   const [leaveBalances, setLeaveBalances] = useState<LeaveBalance[]>([]);
   const [loading, setLoading] = useState(true);
@@ -22,9 +22,7 @@ const DashboardPage: React.FC = () => {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const u = await authService.getCurrentUser();
-        if (!u) throw new Error("Could not load user data.");
-        setUser(u);
+        if (!user) return;
 
         // Fetch Attendance
         try {
@@ -51,7 +49,7 @@ const DashboardPage: React.FC = () => {
       }
     };
     fetchData();
-  }, []);
+  }, [user]);
 
   const handleCheckIn = async () => {
     setActionLoading(true);
@@ -205,21 +203,29 @@ const DashboardPage: React.FC = () => {
             <button className="btn btn-secondary" onClick={() => navigate('/profile')} style={{ justifyContent: 'flex-start' }}><UserIcon size={18}/> Profile</button>
             <button className="btn btn-secondary" onClick={() => navigate('/leaves')} style={{ justifyContent: 'flex-start' }}><Calendar size={18}/> My Leaves</button>
 
-            {user.isStaff && (
+            {(hasPermission('employee.view') || hasPermission('leave.manage')) && (
               <>
                 <div style={{ height: '1px', backgroundColor: 'var(--color-border)', margin: 'var(--spacing-sm) 0' }} />
                 <p style={{ color: 'var(--color-text-muted)', fontSize: '0.85em', textTransform: 'uppercase', fontWeight: 600, margin: '0 0 var(--spacing-xs) 0' }}>HR / Admin</p>
-                <button className="btn btn-ghost" onClick={() => navigate('/admin/employees')} style={{ justifyContent: 'flex-start' }}><Users size={18}/> Manage Employees</button>
-                <button className="btn btn-ghost" onClick={() => navigate('/admin/leaves')} style={{ justifyContent: 'flex-start' }}><Calendar size={18}/> Manage Leaves</button>
+                {hasPermission('employee.view') && (
+                  <button className="btn btn-ghost" onClick={() => navigate('/admin/employees')} style={{ justifyContent: 'flex-start' }}><Users size={18}/> Manage Employees</button>
+                )}
+                {hasPermission('leave.manage') && (
+                  <button className="btn btn-ghost" onClick={() => navigate('/admin/leaves')} style={{ justifyContent: 'flex-start' }}><Calendar size={18}/> Manage Leaves</button>
+                )}
               </>
             )}
 
-            {user.isSuperuser && (
+            {(hasPermission('leave_type.manage') || hasPermission('audit.view')) && (
               <>
                 <div style={{ height: '1px', backgroundColor: 'var(--color-border)', margin: 'var(--spacing-sm) 0' }} />
                 <p style={{ color: 'var(--color-text-muted)', fontSize: '0.85em', textTransform: 'uppercase', fontWeight: 600, margin: '0 0 var(--spacing-xs) 0' }}>Superadmin</p>
-                <button className="btn btn-ghost" onClick={() => navigate('/admin/leave-types')} style={{ justifyContent: 'flex-start' }}><Settings size={18}/> Leave Types</button>
-                <button className="btn btn-ghost" onClick={() => navigate('/admin/audit-logs')} style={{ justifyContent: 'flex-start' }}><Shield size={18}/> Audit Logs</button>
+                {hasPermission('leave_type.manage') && (
+                  <button className="btn btn-ghost" onClick={() => navigate('/admin/leave-types')} style={{ justifyContent: 'flex-start' }}><Settings size={18}/> Leave Types</button>
+                )}
+                {hasPermission('audit.view') && (
+                  <button className="btn btn-ghost" onClick={() => navigate('/admin/audit-logs')} style={{ justifyContent: 'flex-start' }}><Shield size={18}/> Audit Logs</button>
+                )}
               </>
             )}
           </div>

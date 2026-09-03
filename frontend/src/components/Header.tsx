@@ -1,7 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React from 'react';
 import { Menu, Search, Bell, User, LogOut } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { authService, type User as AuthUser } from '../services/auth';
+import { useAuth } from '../contexts/AuthContext';
 
 interface HeaderProps {
   toggleSidebar: () => void;
@@ -113,14 +113,10 @@ const styles = {
 
 export const Header: React.FC<HeaderProps> = ({ toggleSidebar, isSidebarOpen }) => {
   const navigate = useNavigate();
-  const [user, setUser] = useState<AuthUser | null>(null);
-
-  useEffect(() => {
-    authService.getCurrentUser().then(setUser);
-  }, []);
+  const { user, logout } = useAuth();
 
   const handleLogout = async () => {
-    await authService.logout();
+    await logout();
     navigate('/login');
   };
 

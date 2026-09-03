@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React from 'react';
 import { NavLink } from 'react-router-dom';
 import { 
   LayoutDashboard, 
@@ -8,9 +8,12 @@ import {
   Clock,
   Calendar,
   Users,
-  ShieldAlert
+  ShieldAlert,
+  Building2,
+  Briefcase,
+  GitBranch
 } from 'lucide-react';
-import { authService, type User as AuthUser } from '../services/auth';
+import { useAuth } from '../contexts/AuthContext';
 
 interface SidebarProps {
   isOpen: boolean;
@@ -101,11 +104,7 @@ interface NavSection {
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({ isOpen }) => {
-  const [user, setUser] = useState<AuthUser | null>(null);
-
-  useEffect(() => {
-    authService.getCurrentUser().then(setUser);
-  }, []);
+  const { hasPermission } = useAuth();
 
   const navigation: NavSection[] = [
     {
@@ -119,18 +118,24 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen }) => {
     }
   ];
 
-  if (user?.isStaff) {
+  const adminItems: NavItem[] = [];
+  if (hasPermission('employee.view') || hasPermission('office_network.view') || hasPermission('wfh.view') || hasPermission('leave.view') || hasPermission('leave_type.manage') || hasPermission('audit.view') || hasPermission('organization.view') || hasPermission('department.view') || hasPermission('designation.view')) {
+    adminItems.push({ path: '/admin', label: 'Overview', icon: Settings });
+  }
+  if (hasPermission('employee.view')) adminItems.push({ path: '/admin/employees', label: 'Employees', icon: Users });
+  if (hasPermission('organization.view')) adminItems.push({ path: '/admin/organizations', label: 'Organizations', icon: Building2 });
+  if (hasPermission('department.view')) adminItems.push({ path: '/admin/departments', label: 'Departments', icon: GitBranch });
+  if (hasPermission('designation.view')) adminItems.push({ path: '/admin/designations', label: 'Designations', icon: Briefcase });
+  if (hasPermission('office_network.view')) adminItems.push({ path: '/admin/office-networks', label: 'Office Networks', icon: Network });
+  if (hasPermission('wfh.view')) adminItems.push({ path: '/admin/wfh', label: 'WFH Requests', icon: Settings });
+  if (hasPermission('leave.view') || hasPermission('leave_type.manage')) adminItems.push({ path: '/admin/leaves', label: 'Leave Requests', icon: Calendar });
+  if (hasPermission('leave_type.manage')) adminItems.push({ path: '/admin/leave-types', label: 'Leave Types', icon: Calendar });
+  if (hasPermission('audit.view')) adminItems.push({ path: '/admin/audit-logs', label: 'Audit Logs', icon: ShieldAlert });
+
+  if (adminItems.length > 0) {
     navigation.push({
       title: 'Administration',
-      items: [
-        { path: '/admin', label: 'Overview', icon: Settings },
-        { path: '/admin/employees', label: 'Employees', icon: Users },
-        { path: '/admin/office-networks', label: 'Office Networks', icon: Network },
-        { path: '/admin/wfh', label: 'WFH Requests', icon: Settings },
-        { path: '/admin/leaves', label: 'Leave Requests', icon: Calendar },
-        { path: '/admin/leave-types', label: 'Leave Types', icon: Calendar },
-        { path: '/admin/audit-logs', label: 'Audit Logs', icon: ShieldAlert },
-      ]
+      items: adminItems
     });
   }
 

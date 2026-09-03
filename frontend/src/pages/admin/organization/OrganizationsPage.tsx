@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { officeNetworkService, type OfficeNetwork } from '../../services/officeNetwork';
-import { Card } from '../../components/Card';
-import { Table } from '../../components/Table';
-import { StatusBadge } from '../../components/StatusBadge';
+import { organizationService, type Organization } from '../../../services/organization';
+import { Card } from '../../../components/Card';
+import { Table } from '../../../components/Table';
+import { StatusBadge } from '../../../components/StatusBadge';
 import { Plus, Edit2, Trash2, Power, AlertCircle, Loader2 } from 'lucide-react';
-
+import { useAuth } from '../../../contexts/AuthContext';
 
 const styles = {
   header: {
@@ -105,32 +105,35 @@ const styles = {
   }
 };
 
-export const OfficeNetworksPage: React.FC = () => {
-  const [networks, setNetworks] = useState<OfficeNetwork[]>([]);
+export const OrganizationsPage: React.FC = () => {
+  const [organizations, setOrganizations] = useState<Organization[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [editingNetwork, setEditingNetwork] = useState<OfficeNetwork | null>(null);
-  const [formData, setFormData] = useState({ name: '', network: '', description: '', is_active: true });
+  const [editingOrg, setEditingOrg] = useState<Organization | null>(null);
+  const [formData, setFormData] = useState({ name: '', description: '', is_active: true });
   const [formError, setFormError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const { hasPermission } = useAuth();
+  
+  const canManage = hasPermission('organization.manage');
 
   useEffect(() => {
-    loadNetworks();
+    loadOrganizations();
   }, []);
 
-  const loadNetworks = async () => {
+  const loadOrganizations = async () => {
     setLoading(true);
     try {
-      const data = await officeNetworkService.getAll();
-      setNetworks(data);
+      const data = await organizationService.listOrganizations();
+      setOrganizations(data);
       setError(null);
     } catch (err: any) {
       if (err.response?.status === 403) {
-        setError("403 Forbidden: You do not have permission to view office networks.");
+        setError("403 Forbidden: You do not have permission to view organizations.");
       } else {
-        setError("Failed to load office networks. Backend might be unavailable.");
+        setError("Failed to load organizations. Backend might be unavailable.");
       }
     } finally {
       setLoading(false);
@@ -138,15 +141,19 @@ export const OfficeNetworksPage: React.FC = () => {
   };
 
   const openCreateModal = () => {
-    setEditingNetwork(null);
-    setFormData({ name: '', network: '', description: '', is_active: true });
+    setEditingOrg(null);
+    setFormData({ name: '', description: '', is_active: true });
     setFormError(null);
     setIsModalOpen(true);
   };
 
-  const openEditModal = (network: OfficeNetwork) => {
-    setEditingNetwork(network);
-    setFormData({ name: network.name, network: network.network, description: network.description, is_active: network.is_active });
+  const openEditModal = (org: Organization) => {
+    setEditingOrg(org);
+    setFormData({ 
+      name: org.name, 
+      description: org.description, 
+      is_active: org.is_active 
+    });
     setFormError(null);
     setIsModalOpen(true);
   };
@@ -157,23 +164,23 @@ export const OfficeNetworksPage: React.FC = () => {
     setFormError(null);
 
     try {
-      // API requires organization ID. Usually in a multi-tenant app it's passed or derived.
-      // For this HRMS, we assume org ID 1 or the backend handles it. If backend requires it, we add it.
-      // Let's pass organization: 1 as per contract example.
-      const payload = { ...formData, organization: 1 };
+      const payload = { ...formData };
       
-      if (editingNetwork) {
-        await officeNetworkService.update(editingNetwork.id, payload);
+      if (editingOrg) {
+        await organizationService.updateOrganization(editingOrg.id, payload);
       } else {
-        await officeNetworkService.create(payload);
+        await organizationService.createOrganization(payload);
       }
       setIsModalOpen(false);
-      loadNetworks();
+      loadOrganizations();
     } catch (err: any) {
-      if (err.errorData && err.errorData.network) {
-        setFormError(`Network: ${err.errorData.network[0]}`);
+      if (err.errorData && err.errorData.name) {
+        setFormError(err.errorData.name[0]);
       } else if (err.response?.status === 403) {
         setFormError("Permission denied.");
+      } else if (err.errorData && typeof err.errorData === 'object') {
+        const errorMsgs = Object.entries(err.errorData).map(([key, val]) => `${key}: ${val}`).join(' | ');
+        setFormError(errorMsgs || "Validation error.");
       } else {
         setFormError("An error occurred while saving.");
       }
@@ -182,40 +189,47 @@ export const OfficeNetworksPage: React.FC = () => {
     }
   };
 
-  const toggleActive = async (network: OfficeNetwork) => {
+  const toggleActive = async (org: Organization) => {
     try {
-      await officeNetworkService.update(network.id, { is_active: !network.is_active });
-      loadNetworks();
+      await organizationService.updateOrganization(org.id, { is_active: !org.is_active });
+      loadOrganizations();
     } catch {
       alert("Failed to toggle status.");
     }
   };
 
-  const handleDelete = async (network: OfficeNetwork) => {
-    if (!window.confirm(`Are you sure you want to delete the network "${network.name}"?`)) return;
+  const handleDelete = async (org: Organization) => {
+    if (!window.confirm(`Are you sure you want to delete the organization "${org.name}"?`)) return;
     try {
-      await officeNetworkService.delete(network.id);
-      loadNetworks();
-    } catch {
-      alert("Failed to delete network.");
+      await organizationService.deleteOrganization(org.id);
+      loadOrganizations();
+    } catch (err: any) {
+      if (err.response?.status === 409) {
+        alert(err.errorData?.detail || "Cannot delete organization that is in use.");
+      } else {
+        alert("Failed to delete organization.");
+      }
     }
   };
 
   const columns = [
+    { key: 'id', title: 'ID' },
     { key: 'name', title: 'Name' },
-    { key: 'network', title: 'Network (CIDR)' },
     { key: 'description', title: 'Description' },
     { 
       key: 'is_active', 
       title: 'Status', 
-      render: (n: OfficeNetwork) => (
+      render: (n: Organization) => (
         <StatusBadge status={n.is_active ? 'active' : 'inactive'} />
       ) 
-    },
-    { 
+    }
+  ];
+
+  if (canManage) {
+    columns.push({ 
       key: 'actions', 
       title: 'Actions', 
-      render: (n: OfficeNetwork) => (
+      render: (n: Organization) => (
         <div>
           <button style={styles.actionBtn} onClick={() => openEditModal(n)} title="Edit">
             <Edit2 size={18} />
@@ -228,10 +242,10 @@ export const OfficeNetworksPage: React.FC = () => {
           </button>
         </div>
       ) 
-    }
-  ];
+    });
+  }
 
-  if (loading && networks.length === 0) {
+  if (loading && organizations.length === 0) {
     return (
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '400px' }}>
         <Loader2 size={32} color="var(--color-primary)" style={{ animation: 'spin 1s linear infinite' }} />
@@ -239,7 +253,7 @@ export const OfficeNetworksPage: React.FC = () => {
     );
   }
 
-  if (error && networks.length === 0) {
+  if (error && organizations.length === 0) {
     return (
       <Card>
         <div style={styles.errorBox}>
@@ -253,20 +267,30 @@ export const OfficeNetworksPage: React.FC = () => {
   return (
     <div>
       <div style={styles.header}>
-        <h1 style={styles.title}>Office Networks</h1>
-        <button style={styles.button} onClick={openCreateModal}>
-          <Plus size={18} /> Add Network
-        </button>
+        <h1 style={styles.title}>Organizations</h1>
+        {canManage && (
+          <button style={styles.button} onClick={openCreateModal}>
+            <Plus size={18} /> Add Organization
+          </button>
+        )}
       </div>
 
       <Card>
-        <Table data={networks} columns={columns} keyExtractor={(n) => n.id} />
+        {organizations.length === 0 ? (
+          <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--color-text-muted)' }}>
+            No organizations found.
+          </div>
+        ) : (
+          <div style={{ overflowX: 'auto' }}>
+            <Table data={organizations} columns={columns} keyExtractor={(n) => n.id} />
+          </div>
+        )}
       </Card>
 
       {isModalOpen && (
         <div style={styles.modalOverlay}>
           <div style={styles.modalContent}>
-            <h2 style={{ marginTop: 0 }}>{editingNetwork ? 'Edit Network' : 'Add Network'}</h2>
+            <h2 style={{ marginTop: 0 }}>{editingOrg ? 'Edit Organization' : 'Add Organization'}</h2>
             
             {formError && (
               <div style={styles.errorBox}>
@@ -282,17 +306,6 @@ export const OfficeNetworksPage: React.FC = () => {
                   value={formData.name}
                   onChange={(e) => setFormData({...formData, name: e.target.value})}
                   required
-                />
-              </div>
-              <div style={styles.formGroup}>
-                <label style={styles.label}>Network CIDR (e.g., 203.0.113.0/24)</label>
-                <input 
-                  style={styles.input} 
-                  value={formData.network}
-                  onChange={(e) => setFormData({...formData, network: e.target.value})}
-                  required
-                  pattern="^([0-9]{1,3}\.){3}[0-9]{1,3}(\/([0-9]|[1-2][0-9]|3[0-2]))?$"
-                  title="Must be a valid IPv4 CIDR"
                 />
               </div>
               <div style={styles.formGroup}>
