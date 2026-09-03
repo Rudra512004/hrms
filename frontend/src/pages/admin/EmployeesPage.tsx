@@ -6,7 +6,7 @@ import { Card } from '../../components/Card';
 import { Table } from '../../components/Table';
 import { StatusBadge } from '../../components/StatusBadge';
 import { Plus, Edit2, Shield, Power, AlertCircle, Loader2 } from 'lucide-react';
-import { authService } from '../../services/auth';
+
 
 const styles = {
   header: {
@@ -134,18 +134,7 @@ export const EmployeesPage: React.FC = () => {
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    authService.getCurrentUser().then(u => {
-      // Basic check, API will enforce actual permissions
-      if (u) {
-        loadEmployees();
-      } else {
-        setError("You are not authenticated.");
-        setLoading(false);
-      }
-    }).catch(() => {
-      setError("Authentication error.");
-      setLoading(false);
-    });
+    loadEmployees();
   }, []);
 
   const loadEmployees = async () => {

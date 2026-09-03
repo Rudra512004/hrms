@@ -4,7 +4,7 @@ import { Card } from '../../components/Card';
 import { Table } from '../../components/Table';
 import { StatusBadge } from '../../components/StatusBadge';
 import { Check, X, Ban, AlertCircle, Loader2 } from 'lucide-react';
-import { authService } from '../../services/auth';
+
 
 const styles = {
   header: {
@@ -125,18 +125,7 @@ export const WfhRequestsPage: React.FC = () => {
   const [actionLoading, setActionLoading] = useState(false);
 
   useEffect(() => {
-    authService.getCurrentUser().then(u => {
-
-      if (u?.isStaff) {
-        loadRequests();
-      } else {
-        setError("You do not have permission to view all WFH requests.");
-        setLoading(false);
-      }
-    }).catch(() => {
-      setError("Authentication error.");
-      setLoading(false);
-    });
+    loadRequests();
   }, []);
 
   const loadRequests = async () => {

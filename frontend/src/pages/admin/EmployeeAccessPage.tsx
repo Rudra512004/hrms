@@ -13,7 +13,7 @@ import { Card } from '../../components/Card';
 import { Table } from '../../components/Table';
 import { StatusBadge } from '../../components/StatusBadge';
 import { Shield, Plus, Trash2, ArrowLeft, AlertCircle, Loader2 } from 'lucide-react';
-import { authService } from '../../services/auth';
+
 
 const styles = {
   header: {
@@ -221,17 +221,7 @@ export const EmployeeAccessPage: React.FC = () => {
   }, [employeeId]);
 
   useEffect(() => {
-    authService.getCurrentUser().then(u => {
-      if (u) {
-        loadData();
-      } else {
-        setError("You are not authenticated.");
-        setLoading(false);
-      }
-    }).catch(() => {
-      setError("Authentication error.");
-      setLoading(false);
-    });
+    loadData();
   }, [employeeId, loadData]);
 
   const handleAssignRole = async (e: React.FormEvent) => {

@@ -4,7 +4,7 @@ import { Table } from '../../components/Table';
 import { StatusBadge } from '../../components/StatusBadge';
 import { leaveService, type LeaveRequest } from '../../services/leaves';
 import { AlertCircle, FileCheck2, Loader2, Check, X } from 'lucide-react';
-import { authService, type User } from '../../services/auth';
+import { useAuth } from '../../contexts/AuthContext';
 
 const styles = {
   container: {
@@ -101,18 +101,14 @@ export function AdminLeavePage() {
   const [reviewComment, setReviewComment] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const [user, setUser] = useState<User | null>(null);
+  const { user } = useAuth();
 
   const loadRequests = async () => {
     try {
       setLoading(true);
       setError(null);
       setIsDenied(false);
-      const [u, data] = await Promise.all([
-        authService.getCurrentUser(),
-        leaveService.getRequests()
-      ]);
-      setUser(u);
+      const data = await leaveService.getRequests();
       setRequests(data);
     } catch (err: any) {
       if (err.response?.status === 403) {

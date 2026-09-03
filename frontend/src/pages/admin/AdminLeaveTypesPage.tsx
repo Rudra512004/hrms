@@ -4,7 +4,7 @@ import { Card } from '../../components/Card';
 import { Table } from '../../components/Table';
 import { StatusBadge } from '../../components/StatusBadge';
 import { Plus, Edit2, Trash2, Power, AlertCircle, Loader2 } from 'lucide-react';
-import { authService } from '../../services/auth';
+
 
 const styles = {
   header: {
@@ -117,19 +117,7 @@ export const AdminLeaveTypesPage: React.FC = () => {
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    authService.getCurrentUser().then(u => {
-      // Typically, permissions should be checked explicitly via roles/permissions.
-      // Assuming isStaff handles basic admin interface access as in OfficeNetworksPage.
-      if (u?.isStaff) {
-        loadLeaveTypes();
-      } else {
-        setError("You do not have permission to view leave types.");
-        setLoading(false);
-      }
-    }).catch(() => {
-      setError("Authentication error.");
-      setLoading(false);
-    });
+    loadLeaveTypes();
   }, []);
 
   const loadLeaveTypes = async () => {

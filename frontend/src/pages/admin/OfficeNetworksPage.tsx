@@ -4,7 +4,7 @@ import { Card } from '../../components/Card';
 import { Table } from '../../components/Table';
 import { StatusBadge } from '../../components/StatusBadge';
 import { Plus, Edit2, Trash2, Power, AlertCircle, Loader2 } from 'lucide-react';
-import { authService } from '../../services/auth';
+
 
 const styles = {
   header: {
@@ -117,18 +117,7 @@ export const OfficeNetworksPage: React.FC = () => {
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    authService.getCurrentUser().then(u => {
-
-      if (u?.isStaff) {
-        loadNetworks();
-      } else {
-        setError("You do not have permission to view office networks.");
-        setLoading(false);
-      }
-    }).catch(() => {
-      setError("Authentication error.");
-      setLoading(false);
-    });
+    loadNetworks();
   }, []);
 
   const loadNetworks = async () => {

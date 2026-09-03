@@ -1,7 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React from 'react';
 import { Card } from '../../components/Card';
-import { Network, FileText, AlertCircle, Loader2, Settings } from 'lucide-react';
-import { authService, type User as AuthUser } from '../../services/auth';
+import { Network, FileText, Loader2, Settings } from 'lucide-react';
+import { useAuth } from '../../contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
 
 const styles = {
@@ -92,26 +92,11 @@ const NavCard = ({ title, desc, icon, color, onClick }: { title: string, desc: s
 
 export const AdminDashboardPage: React.FC = () => {
   const navigate = useNavigate();
-  const [user, setUser] = useState<AuthUser | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const { user } = useAuth();
+  // ProtectedRoute ensures this page is only accessible if user is loaded
+  // No additional fetching needed.
 
-  useEffect(() => {
-    authService.getCurrentUser()
-      .then(u => {
-        if (!u) throw new Error("Could not load user data.");
-        if (!u.isStaff) throw new Error("You do not have permission to view the admin control plane.");
-        setUser(u);
-      })
-      .catch(err => {
-        setError(err.message || "An unexpected error occurred.");
-      })
-      .finally(() => {
-        setLoading(false);
-      });
-  }, []);
-
-  if (loading) {
+  if (!user) {
     return (
       <div style={styles.centerState}>
         <Loader2 size={32} color="var(--color-primary)" style={{ animation: 'spin 1s linear infinite', marginBottom: 'var(--spacing-md)' }} />
@@ -120,15 +105,9 @@ export const AdminDashboardPage: React.FC = () => {
     );
   }
 
-  if (error || !user) {
-    return (
-      <div style={styles.centerState}>
-        <AlertCircle size={48} color="var(--color-status-danger)" style={{ marginBottom: 'var(--spacing-md)' }} />
-        <h3 style={{ color: 'var(--color-text-main)', marginBottom: 'var(--spacing-xs)' }}>Access Denied</h3>
-        <p>{error}</p>
-      </div>
-    );
-  }
+  // No error handling needed here as ProtectedRoute handles it
+
+
 
   return (
     <div style={styles.container}>

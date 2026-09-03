@@ -25,6 +25,7 @@ import { EmployeesPage } from '../pages/admin/EmployeesPage';
 import { EmployeeAccessPage } from '../pages/admin/EmployeeAccessPage';
 import { AuditLogsPage } from '../pages/admin/AuditLogsPage';
 import { AdminLeaveTypesPage } from '../pages/admin/AdminLeaveTypesPage';
+import { ProtectedRoute } from '../components/ProtectedRoute';
 
 export const AppRouter: React.FC = () => {
   return (
@@ -38,23 +39,40 @@ export const AppRouter: React.FC = () => {
         <Route path="/pending-activation" element={<PendingActivationPage />} />
       </Route>
 
-      {/* Protected Routes (Simulated) */}
+      {/* Protected Routes */}
       <Route element={<AppLayout />}>
-        <Route path="/" element={<Navigate to="/dashboard" replace />} />
-        <Route path="/dashboard" element={<DashboardPage />} />
-        <Route path="/attendance" element={<AttendancePage />} />
-        <Route path="/leaves" element={<LeavePage />} />
-        <Route path="/profile" element={<ProfilePage />} />
+        <Route element={<ProtectedRoute />}>
+          <Route path="/" element={<Navigate to="/dashboard" replace />} />
+          <Route path="/dashboard" element={<DashboardPage />} />
+          <Route path="/attendance" element={<AttendancePage />} />
+          <Route path="/leaves" element={<LeavePage />} />
+          <Route path="/profile" element={<ProfilePage />} />
 
-        {/* Admin Routes */}
-        <Route path="/admin" element={<AdminDashboardPage />} />
-        <Route path="/admin/employees" element={<EmployeesPage />} />
-        <Route path="/admin/employees/:employeeId/access" element={<EmployeeAccessPage />} />
-        <Route path="/admin/office-networks" element={<OfficeNetworksPage />} />
-        <Route path="/admin/wfh" element={<WfhRequestsPage />} />
-        <Route path="/admin/leaves" element={<AdminLeavePage />} />
-        <Route path="/admin/leave-types" element={<AdminLeaveTypesPage />} />
-        <Route path="/admin/audit-logs" element={<AuditLogsPage />} />
+          {/* Admin Routes */}
+          <Route path="/admin" element={<AdminDashboardPage />} />
+
+          <Route element={<ProtectedRoute requiredPermission="employee.view" />}>
+            <Route path="/admin/employees" element={<EmployeesPage />} />
+            <Route path="/admin/employees/:employeeId/access" element={<EmployeeAccessPage />} />
+          </Route>
+
+          <Route element={<ProtectedRoute requiredPermission="office_network.view" />}>
+            <Route path="/admin/office-networks" element={<OfficeNetworksPage />} />
+          </Route>
+
+          <Route element={<ProtectedRoute requiredPermission="wfh.view" />}>
+            <Route path="/admin/wfh" element={<WfhRequestsPage />} />
+          </Route>
+
+          <Route element={<ProtectedRoute requiredPermission="leave_type.manage" />}>
+            <Route path="/admin/leaves" element={<AdminLeavePage />} />
+            <Route path="/admin/leave-types" element={<AdminLeaveTypesPage />} />
+          </Route>
+
+          <Route element={<ProtectedRoute requiredPermission="audit.view" />}>
+            <Route path="/admin/audit-logs" element={<AuditLogsPage />} />
+          </Route>
+        </Route>
 
         {/* Catch-all within AppLayout */}
         <Route path="*" element={<NotFoundPage />} />
