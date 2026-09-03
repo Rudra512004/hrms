@@ -9,8 +9,33 @@ from .serializers import RoleSerializer, PermissionSerializer, UserRoleSerialize
 from apps.authorization.permissions import require_permission
 from apps.authorization.services import AuthorizationService
 from django.contrib.auth import get_user_model
+from rest_framework.views import APIView
 
 User = get_user_model()
+
+class CurrentUserPermissionsView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        user = request.user
+        perms = AuthorizationService.get_effective_permissions(user)
+        roles = Role.objects.filter(
+            user_roles__user=user,
+            user_roles__is_revoked=False,
+            is_active=True
+        ).values_list('name', flat=True)
+
+        return Response({
+            'user': {
+                'id': user.id,
+                'email': user.email,
+                'first_name': user.first_name,
+                'last_name': user.last_name,
+                'is_superuser': user.is_superuser,
+            },
+            'roles': list(roles),
+            'permissions': list(perms)
+        })
 
 class RoleViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = RoleSerializer

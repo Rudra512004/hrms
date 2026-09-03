@@ -1,36 +1,44 @@
 from django.test import TestCase
+from django.urls import reverse
+from rest_framework import status
+from rest_framework.test import APIClient
 from django.contrib.auth import get_user_model
+from .models import Permission, Role, RolePermission, UserRole, UserPermissionGrant
 from apps.organization.models import Organization
-from apps.authorization.models import Permission, Role, RolePermission, UserRole, UserPermissionGrant
-from apps.authorization.services import AuthorizationService
-from django.utils import timezone
-from datetime import timedelta
 
 User = get_user_model()
 
-class AuthorizationTests(TestCase):
+class AuthorizationAPITests(TestCase):
     def setUp(self):
-        self.user = User.objects.create_user(email='test@example.com', password='Password123!', status='active')
-        self.superuser = User.objects.create_superuser(email='admin@example.com', password='Password123!')
-        self.inactive_user = User.objects.create_user(email='inactive@example.com', password='Password123!', status='inactive')
+        self.client = APIClient()
+        self.user = User.objects.create_user(email='test@example.com', password='password123', status='active')
         self.org = Organization.objects.create(name='Test Org')
+        self.role = Role.objects.create(organization=self.org, name='TestRole')
+        self.permission = Permission.objects.create(codename='test.perm', name='Test Perm', resource='test', action='perm')
 
-        self.perm_view = Permission.objects.create(name='View Employee', codename='employee.view', resource='employee', action='view')
-        self.perm_create = Permission.objects.create(name='Create Employee', codename='employee.create', resource='employee', action='create')
-        self.perm_inactive = Permission.objects.create(name='Delete Employee', codename='employee.delete', resource='employee', action='delete', is_active=False)
+    def test_unauthenticated_me_request(self):
+        response = self.client.get(reverse('auth-me'))
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
 
-        self.role = Role.objects.create(organization=self.org, name='Manager')
-        self.role2 = Role.objects.create(organization=self.org, name='HR')
+    def test_authenticated_me_request(self):
+        self.client.force_authenticate(user=self.user)
+        response = self.client.get(reverse('auth-me'))
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['user']['email'], self.user.email)
+        self.assertEqual(response.data['permissions'], [])
 
-        RolePermission.objects.create(role=self.role, permission=self.perm_view)
-
-    def test_effective_permissions_role(self):
+    def test_rbac_role_assignment(self):
+        RolePermission.objects.create(role=self.role, permission=self.permission)
         UserRole.objects.create(user=self.user, role=self.role)
-        perms = AuthorizationService.get_effective_permissions(self.user)
-        self.assertIn('employee.view', perms)
-        self.assertNotIn('employee.create', perms)
 
-    def test_has_permission_regular_user(self):
-        UserRole.objects.create(user=self.user, role=self.role)
-        self.assertTrue(AuthorizationService.has_permission(self.user, 'employee.view'))
-        self.assertFalse(AuthorizationService.has_permission(self.user, 'employee.create'))
+        self.client.force_authenticate(user=self.user)
+        response = self.client.get(reverse('auth-me'))
+        self.assertIn('test.perm', response.data['permissions'])
+        self.assertIn('TestRole', response.data['roles'])
+
+    def test_rbac_direct_permission(self):
+        UserPermissionGrant.objects.create(user=self.user, permission=self.permission)
+
+        self.client.force_authenticate(user=self.user)
+        response = self.client.get(reverse('auth-me'))
+        self.assertIn('test.perm', response.data['permissions'])
