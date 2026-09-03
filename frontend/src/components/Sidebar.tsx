@@ -142,7 +142,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen }) => {
   return (
     <aside style={styles.sidebar(isOpen)}>
       <div style={styles.logoArea}>
-        {isOpen ? 'Vuexy HRMS' : 'VH'}
+        {isOpen ? 'BEYONDSURE HRMS' : 'BH'}
       </div>
       <nav style={styles.menu}>
         {navigation.map((section, idx) => (

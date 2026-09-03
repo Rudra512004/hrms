@@ -126,7 +126,7 @@ export const ForgotPasswordPage: React.FC = () => {
 
   return (
     <div style={styles.container}>
-      <div style={styles.logo}>SmartHR</div>
+      <div style={styles.logo}>BEYONDSURE HRMS</div>
       <div style={styles.card}>
         <h2 style={styles.title}>Forgot Password?</h2>
         <p style={styles.subtitle}>Enter your email and we'll send you instructions to reset your password</p>

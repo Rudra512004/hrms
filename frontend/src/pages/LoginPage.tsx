@@ -126,7 +126,7 @@ export const LoginPage: React.FC = () => {
 
   return (
     <div style={styles.container}>
-      <div style={styles.logo}>SmartHR</div>
+      <div style={styles.logo}>BEYONDSURE HRMS</div>
       <div style={styles.card}>
         <h2 style={styles.title}>Welcome Back</h2>
 
