@@ -372,9 +372,11 @@ export const EmployeesPage: React.FC = () => {
       title: 'Actions',
       render: (e: EmployeeProfile) => (
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
-          <button style={styles.actionBtn} onClick={() => openEditModal(e)} title="Edit Employee">
-            <Edit2 size={18} />
-          </button>
+          {hasPermission('employee.update') && (
+            <button style={styles.actionBtn} onClick={() => openEditModal(e)} title="Edit Employee">
+              <Edit2 size={18} />
+            </button>
+          )}
 
           {hasPermission('employee.manage_status') && (
             <button style={styles.actionBtn} onClick={() => openStatusModal(e)} title="Change Lifecycle Status">
@@ -382,9 +384,11 @@ export const EmployeesPage: React.FC = () => {
             </button>
           )}
 
-          <button style={styles.actionBtn} onClick={() => navigate(`/admin/employees/${e.id}/access`)} title="RBAC Access">
-            <Shield size={18} color="var(--color-primary)" />
-          </button>
+          {(hasPermission('role.assign') || hasPermission('permission.assign')) && (
+            <button style={styles.actionBtn} onClick={() => navigate(`/admin/employees/${e.id}/access`)} title="RBAC Access">
+              <Shield size={18} color="var(--color-primary)" />
+            </button>
+          )}
         </div>
       )
     }
@@ -413,9 +417,11 @@ export const EmployeesPage: React.FC = () => {
     <div>
       <div style={styles.header}>
         <h1 style={styles.title}>Employee Management</h1>
-        <button className="btn btn-primary" onClick={openCreateModal}>
-          <Plus size={18} /> Add Employee
-        </button>
+        {hasPermission('employee.create') && (
+          <button className="btn btn-primary" onClick={openCreateModal}>
+            <Plus size={18} /> Add Employee
+          </button>
+        )}
       </div>
 
       {successMessage && (
@@ -559,16 +565,22 @@ export const EmployeesPage: React.FC = () => {
                       required
                     />
                   </div>
-                  <div style={styles.formGroup}>
-                    <label style={styles.label}>Personal Email</label>
-                    <input
-                      style={styles.input}
-                      type="email"
-                      value={formData.personal_email}
-                      onChange={(e) => setFormData({...formData, personal_email: e.target.value})}
-                      required
-                    />
-                  </div>
+                  {hasPermission('employee.view_sensitive') ? (
+                    <div style={styles.formGroup}>
+                      <label style={styles.label}>Personal Email</label>
+                      <input
+                        style={styles.input}
+                        type="email"
+                        value={formData.personal_email}
+                        onChange={(e) => setFormData({...formData, personal_email: e.target.value})}
+                        required
+                      />
+                    </div>
+                  ) : (
+                    <div style={{ fontSize: '0.9rem', color: 'var(--color-text-muted)', fontStyle: 'italic', marginBottom: '16px' }}>
+                      Sensitive contact fields are hidden due to permissions.
+                    </div>
+                  )}
                 </>
               )}
 
