@@ -186,7 +186,31 @@ class EmployeeManagementViewSet(viewsets.ModelViewSet):
             target_id=employee.id,
             request=request
         )
-        return Response(EmployeeSerializer(employee).data)
+        return Response(EmployeeSerializer(employee, context={'request': request}).data)
+
+    @action(detail=True, methods=['post'])
+    def change_employment_status(self, request, pk=None):
+        if not AuthorizationService.has_permission(request.user, 'employee.manage_status'):
+            return Response(status=status.HTTP_403_FORBIDDEN)
+
+        employee = self.get_object()
+        new_status = request.data.get('employment_status')
+
+        from apps.employees.models import EmploymentStatus
+        if new_status not in [choice[0] for choice in EmploymentStatus.choices]:
+            return Response({'detail': 'Invalid employment status.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        employee.employment_status = new_status
+        employee.save()
+
+        AuditService.log(
+            action='employee_employment_status_changed',
+            actor=request.user,
+            target_type='employee',
+            target_id=employee.id,
+            request=request
+        )
+        return Response(EmployeeSerializer(employee, context={'request': request}).data)
 
 from django.utils import timezone
 from .serializers import WFHRequestSerializer, WFHRequestReviewSerializer

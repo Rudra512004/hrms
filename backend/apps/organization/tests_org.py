@@ -3,7 +3,7 @@ from django.urls import reverse
 from rest_framework import status
 from rest_framework.test import APIClient
 from django.contrib.auth import get_user_model
-from apps.authorization.models import Permission, Role, UserRole
+from apps.authorization.models import Permission, Role, UserRole, RolePermission
 from apps.organization.models import Organization, Department, Designation
 
 User = get_user_model()
@@ -17,10 +17,10 @@ class OrganizationAPITests(TestCase):
         self.role = Role.objects.create(organization=self.org, name='AdminRole')
         UserRole.objects.create(user=self.user, role=self.role)
         
-        # Give manage permissions
         for codename in ['organization.manage', 'department.manage', 'designation.manage']:
-            perm, _ = Permission.objects.get_or_create(codename=codename, defaults={'name': codename, 'resource': 'org', 'action': 'manage'})
-            self.role.permissions.add(perm)
+            resource = codename.split('.')[0]
+            perm, _ = Permission.objects.get_or_create(codename=codename, defaults={'name': codename, 'resource': resource, 'action': 'manage'})
+            RolePermission.objects.create(role=self.role, permission=perm)
 
     def test_create_organization(self):
         self.client.force_authenticate(user=self.user)
@@ -41,7 +41,7 @@ class OrganizationAPITests(TestCase):
         self.assertEqual(Designation.objects.count(), 1)
 
     def test_no_permission(self):
-        self.role.permissions.clear()
+        RolePermission.objects.filter(role=self.role).delete()
         self.client.force_authenticate(user=self.user)
         response = self.client.post(reverse('organization-list'), {'name': 'New Org'})
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)

@@ -30,7 +30,9 @@ class Command(BaseCommand):
             {'codename': 'employee.view', 'resource': 'employee', 'action': 'view', 'name': 'View Employees'},
             {'codename': 'employee.create', 'resource': 'employee', 'action': 'create', 'name': 'Create Employee'},
             {'codename': 'employee.update', 'resource': 'employee', 'action': 'update', 'name': 'Update Employee'},
-            {'codename': 'employee.status', 'resource': 'employee', 'action': 'status', 'name': 'Change Employee Status'},
+            {'codename': 'employee.status', 'resource': 'employee', 'action': 'status', 'name': 'Change Employee Login Status'},
+            {'codename': 'employee.manage_status', 'resource': 'employee', 'action': 'manage_status', 'name': 'Manage Employment Status'},
+            {'codename': 'employee.view_sensitive', 'resource': 'employee', 'action': 'view_sensitive', 'name': 'View Sensitive Info'},
             
             # WFH
             {'codename': 'wfh.view', 'resource': 'wfh', 'action': 'view', 'name': 'View WFH Requests'},
@@ -85,7 +87,7 @@ class Command(BaseCommand):
         for p in Permission.objects.all():
             RolePermission.objects.get_or_create(role=hr_role, permission=p)
 
-        mgr_perms = emp_perms + ['leave.approve', 'leave.reject', 'wfh.approve', 'wfh.reject', 'employee.view']
+        mgr_perms = emp_perms + ['leave.approve', 'leave.reject', 'wfh.approve', 'wfh.reject', 'employee.view', 'employee.view_sensitive']
         for codename in mgr_perms:
             p = Permission.objects.get(codename=codename)
             RolePermission.objects.get_or_create(role=manager_role, permission=p)
