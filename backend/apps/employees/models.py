@@ -4,6 +4,12 @@ from django.core.exceptions import ValidationError
 
 from apps.organization.models import Organization, Department, Designation
 
+class EmploymentStatus(models.TextChoices):
+    ONBOARDING = 'onboarding', 'Onboarding'
+    ACTIVE = 'active', 'Active'
+    INACTIVE = 'inactive', 'Inactive'
+    EXITED = 'exited', 'Exited'
+
 class Employee(models.Model):
     user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='employee')
     organization = models.ForeignKey(Organization, on_delete=models.CASCADE, related_name='employees', null=True, blank=True)
@@ -16,6 +22,11 @@ class Employee(models.Model):
     address = models.TextField(blank=True)
     emergency_contact_name = models.CharField(max_length=150, blank=True)
     emergency_contact_phone = models.CharField(max_length=20, blank=True)
+
+    employment_status = models.CharField(max_length=20, choices=EmploymentStatus.choices, default=EmploymentStatus.ONBOARDING)
+    joining_date = models.DateField(null=True, blank=True)
+    exit_date = models.DateField(null=True, blank=True)
+
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -38,6 +49,9 @@ class Employee(models.Model):
                 raise ValidationError({'reporting_manager': 'Employee cannot report to themselves.'})
             if self.reporting_manager.organization_id != self.organization_id:
                 raise ValidationError({'reporting_manager': 'Reporting manager must belong to the same organization.'})
+
+        if self.joining_date and self.exit_date and self.exit_date < self.joining_date:
+            raise ValidationError({'exit_date': 'Exit date cannot be before joining date.'})
 
     def save(self, *args, **kwargs):
         self.clean()

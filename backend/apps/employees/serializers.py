@@ -16,9 +16,10 @@ class EmployeeSerializer(serializers.ModelSerializer):
         fields = (
             'id', 'email', 'first_name', 'last_name', 'status', 'employee_code', 'personal_email',
             'phone_number', 'address', 'emergency_contact_name', 'emergency_contact_phone',
-            'organization', 'department', 'designation', 'reporting_manager'
+            'organization', 'department', 'designation', 'reporting_manager',
+            'employment_status', 'joining_date', 'exit_date'
         )
-        read_only_fields = ('id', 'email', 'first_name', 'last_name', 'status', 'employee_code', 'personal_email')
+        read_only_fields = ('id', 'email', 'first_name', 'last_name', 'status', 'employee_code', 'personal_email', 'employment_status')
 
     def validate(self, attrs):
         org = attrs.get('organization', getattr(self.instance, 'organization', None))
@@ -41,7 +42,24 @@ class EmployeeSerializer(serializers.ModelSerializer):
             if manager.organization_id != (org.id if org else None):
                 raise serializers.ValidationError({'reporting_manager': 'Reporting manager must belong to the same organization.'})
 
+        joining_date = attrs.get('joining_date', getattr(self.instance, 'joining_date', None))
+        exit_date = attrs.get('exit_date', getattr(self.instance, 'exit_date', None))
+        if joining_date and exit_date and exit_date < joining_date:
+            raise serializers.ValidationError({'exit_date': 'Exit date cannot be before joining date.'})
+
         return attrs
+
+    def to_representation(self, instance):
+        ret = super().to_representation(instance)
+        request = self.context.get('request')
+        from apps.authorization.services import AuthorizationService
+        if request and request.user.is_authenticated:
+            if request.user != instance.user and not AuthorizationService.has_permission(request.user, 'employee.view_sensitive'):
+                ret.pop('personal_email', None)
+                ret.pop('address', None)
+                ret.pop('emergency_contact_name', None)
+                ret.pop('emergency_contact_phone', None)
+        return ret
 
 class ProvisionEmployeeSerializer(serializers.Serializer):
     email = serializers.EmailField()

@@ -85,9 +85,26 @@ All endpoints are relative to `/api/v1/`
     "personal_email": "...",
     "organization": 1,
     "department": null,
-    "designation": null
+    "designation": null,
+    "reporting_manager": null,
+    "employment_status": "onboarding",
+    "joining_date": "2026-01-01",
+    "exit_date": null
   }
   ```
+
+### Change Employment Status
+* **Method:** `POST`
+* **Path:** `/employees/management/<id>/change_employment_status/`
+* **Authentication:** Required
+* **Permissions:** `employee.manage_status`
+* **Request:**
+  ```json
+  {
+    "employment_status": "active"
+  }
+  ```
+* **Response:** Employee Object (Updated)
 
 ---
 
