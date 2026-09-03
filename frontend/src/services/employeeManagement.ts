@@ -6,6 +6,10 @@ export interface ProvisionEmployeeData {
   first_name: string;
   last_name: string;
   employee_code: string;
+  organization?: number;
+  department?: number;
+  designation?: number;
+  reporting_manager?: number;
 }
 
 export const employeeManagementService = {

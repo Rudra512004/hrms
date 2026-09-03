@@ -10,6 +10,14 @@ export interface EmployeeProfile {
   address: string;
   emergency_contact_name: string;
   emergency_contact_phone: string;
+  organization?: number;
+  department?: number;
+  designation?: number;
+  reporting_manager?: number;
+  organization_name?: string;
+  department_name?: string;
+  designation_name?: string;
+  reporting_manager_name?: string;
 }
 
 export const employeeService = {

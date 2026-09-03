@@ -25,6 +25,9 @@ import { EmployeesPage } from '../pages/admin/EmployeesPage';
 import { EmployeeAccessPage } from '../pages/admin/EmployeeAccessPage';
 import { AuditLogsPage } from '../pages/admin/AuditLogsPage';
 import { AdminLeaveTypesPage } from '../pages/admin/AdminLeaveTypesPage';
+import { OrganizationsPage } from '../pages/admin/organization/OrganizationsPage';
+import { DepartmentsPage } from '../pages/admin/organization/DepartmentsPage';
+import { DesignationsPage } from '../pages/admin/organization/DesignationsPage';
 import { ProtectedRoute } from '../components/ProtectedRoute';
 
 export const AppRouter: React.FC = () => {
@@ -58,6 +61,18 @@ export const AppRouter: React.FC = () => {
 
           <Route element={<ProtectedRoute requiredPermission="office_network.view" />}>
             <Route path="/admin/office-networks" element={<OfficeNetworksPage />} />
+          </Route>
+
+          <Route element={<ProtectedRoute requiredPermission="organization.view" />}>
+            <Route path="/admin/organizations" element={<OrganizationsPage />} />
+          </Route>
+
+          <Route element={<ProtectedRoute requiredPermission="department.view" />}>
+            <Route path="/admin/departments" element={<DepartmentsPage />} />
+          </Route>
+
+          <Route element={<ProtectedRoute requiredPermission="designation.view" />}>
+            <Route path="/admin/designations" element={<DesignationsPage />} />
           </Route>
 
           <Route element={<ProtectedRoute requiredPermission="wfh.view" />}>

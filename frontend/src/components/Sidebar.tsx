@@ -8,7 +8,10 @@ import {
   Clock,
   Calendar,
   Users,
-  ShieldAlert
+  ShieldAlert,
+  Building2,
+  Briefcase,
+  GitBranch
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -116,10 +119,13 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen }) => {
   ];
 
   const adminItems: NavItem[] = [];
-  if (hasPermission('employee.view') || hasPermission('office_network.view') || hasPermission('wfh.view') || hasPermission('leave.view') || hasPermission('leave_type.manage') || hasPermission('audit.view')) {
+  if (hasPermission('employee.view') || hasPermission('office_network.view') || hasPermission('wfh.view') || hasPermission('leave.view') || hasPermission('leave_type.manage') || hasPermission('audit.view') || hasPermission('organization.view') || hasPermission('department.view') || hasPermission('designation.view')) {
     adminItems.push({ path: '/admin', label: 'Overview', icon: Settings });
   }
   if (hasPermission('employee.view')) adminItems.push({ path: '/admin/employees', label: 'Employees', icon: Users });
+  if (hasPermission('organization.view')) adminItems.push({ path: '/admin/organizations', label: 'Organizations', icon: Building2 });
+  if (hasPermission('department.view')) adminItems.push({ path: '/admin/departments', label: 'Departments', icon: GitBranch });
+  if (hasPermission('designation.view')) adminItems.push({ path: '/admin/designations', label: 'Designations', icon: Briefcase });
   if (hasPermission('office_network.view')) adminItems.push({ path: '/admin/office-networks', label: 'Office Networks', icon: Network });
   if (hasPermission('wfh.view')) adminItems.push({ path: '/admin/wfh', label: 'WFH Requests', icon: Settings });
   if (hasPermission('leave.view') || hasPermission('leave_type.manage')) adminItems.push({ path: '/admin/leaves', label: 'Leave Requests', icon: Calendar });
