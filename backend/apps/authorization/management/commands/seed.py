@@ -46,6 +46,15 @@ class Command(BaseCommand):
             {'codename': 'permission.view', 'resource': 'permission', 'action': 'view', 'name': 'View Permissions'},
             {'codename': 'permission.assign', 'resource': 'permission', 'action': 'assign', 'name': 'Assign Permissions'},
             {'codename': 'permission.revoke', 'resource': 'permission', 'action': 'revoke', 'name': 'Revoke Permissions'},
+
+            # Organization
+            {'codename': 'organization.view', 'resource': 'organization', 'action': 'view', 'name': 'View Organizations'},
+            {'codename': 'organization.manage', 'resource': 'organization', 'action': 'manage', 'name': 'Manage Organizations'},
+            {'codename': 'department.view', 'resource': 'department', 'action': 'view', 'name': 'View Departments'},
+            {'codename': 'department.manage', 'resource': 'department', 'action': 'manage', 'name': 'Manage Departments'},
+            {'codename': 'designation.view', 'resource': 'designation', 'action': 'view', 'name': 'View Designations'},
+            {'codename': 'designation.manage', 'resource': 'designation', 'action': 'manage', 'name': 'Manage Designations'},
+            {'codename': 'hierarchy.manage', 'resource': 'hierarchy', 'action': 'manage', 'name': 'Manage Reporting Hierarchy'},
         ]
 
         for p_data in permissions_data:
@@ -65,7 +74,10 @@ class Command(BaseCommand):
         manager_role, _ = Role.objects.get_or_create(organization=org, name='Manager', defaults={'description': 'Team Manager'})
 
         # Assign permissions to Roles
-        emp_perms = ['leave.view', 'leave.request', 'leave.cancel', 'wfh.view', 'wfh.request', 'wfh.cancel']
+        emp_perms = [
+            'leave.view', 'leave.request', 'leave.cancel', 'wfh.view', 'wfh.request', 'wfh.cancel',
+            'organization.view', 'department.view', 'designation.view'
+        ]
         for codename in emp_perms:
             p = Permission.objects.get(codename=codename)
             RolePermission.objects.get_or_create(role=employee_role, permission=p)

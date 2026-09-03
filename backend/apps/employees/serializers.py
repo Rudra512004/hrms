@@ -15,9 +15,33 @@ class EmployeeSerializer(serializers.ModelSerializer):
         model = Employee
         fields = (
             'id', 'email', 'first_name', 'last_name', 'status', 'employee_code', 'personal_email',
-            'phone_number', 'address', 'emergency_contact_name', 'emergency_contact_phone'
+            'phone_number', 'address', 'emergency_contact_name', 'emergency_contact_phone',
+            'organization', 'department', 'designation', 'reporting_manager'
         )
         read_only_fields = ('id', 'email', 'first_name', 'last_name', 'status', 'employee_code', 'personal_email')
+
+    def validate(self, attrs):
+        org = attrs.get('organization', getattr(self.instance, 'organization', None))
+        dept = attrs.get('department', getattr(self.instance, 'department', None))
+        desig = attrs.get('designation', getattr(self.instance, 'designation', None))
+        manager = attrs.get('reporting_manager', getattr(self.instance, 'reporting_manager', None))
+
+        if org:
+            if dept and dept.organization_id != org.id:
+                raise serializers.ValidationError({'department': 'Department must belong to the same organization.'})
+            if desig and desig.organization_id != org.id:
+                raise serializers.ValidationError({'designation': 'Designation must belong to the same organization.'})
+        else:
+            if dept or desig:
+                raise serializers.ValidationError('Cannot assign department or designation without an organization.')
+
+        if manager:
+            if self.instance and manager.id == self.instance.id:
+                raise serializers.ValidationError({'reporting_manager': 'Employee cannot report to themselves.'})
+            if manager.organization_id != (org.id if org else None):
+                raise serializers.ValidationError({'reporting_manager': 'Reporting manager must belong to the same organization.'})
+
+        return attrs
 
 class ProvisionEmployeeSerializer(serializers.Serializer):
     email = serializers.EmailField()

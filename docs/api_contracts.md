@@ -122,6 +122,53 @@ All endpoints are relative to `/api/v1/`
     "leave_type": 1,
     "start_date": "2026-10-01",
     "end_date": "2026-10-05",
-    "reason": "Vacation"
+  }
+  ```
+
+---
+
+## 5. Organization Management
+
+### Organization
+* **Methods:** `GET`, `POST`, `PUT`, `PATCH`, `DELETE`
+* **Path:** `/organization/organizations/`
+* **Authentication:** Required
+* **Permissions:** `organization.view` (List/Retrieve), `organization.manage` (Mutations)
+* **Request:** 
+  ```json
+  {
+    "name": "Acme Corp",
+    "status": "active"
+  }
+  ```
+* **Response:** Organization Object (including IDs, timestamps).
+
+### Department
+* **Methods:** `GET`, `POST`, `PUT`, `PATCH`, `DELETE`
+* **Path:** `/organization/departments/`
+* **Authentication:** Required
+* **Permissions:** `department.view`, `department.manage`
+* **Request:**
+  ```json
+  {
+    "organization": 1,
+    "name": "Engineering",
+    "description": "Dev Team",
+    "is_active": true
+  }
+  ```
+
+### Designation
+* **Methods:** `GET`, `POST`, `PUT`, `PATCH`, `DELETE`
+* **Path:** `/organization/designations/`
+* **Authentication:** Required
+* **Permissions:** `designation.view`, `designation.manage`
+* **Request:**
+  ```json
+  {
+    "organization": 1,
+    "name": "Software Engineer",
+    "description": "Backend Dev",
+    "is_active": true
   }
   ```
