@@ -1,7 +1,9 @@
 from django.core.management.base import BaseCommand
-from apps.authorization.models import Permission, Role, RolePermission
+from apps.authorization.models import Permission, Role, RolePermission, UserRole
 from apps.leaves.models import LeaveType
 from apps.organization.models import Organization
+from apps.employees.models import Employee
+from django.contrib.auth import get_user_model
 from django.db import transaction
 
 class Command(BaseCommand):
@@ -112,3 +114,35 @@ class Command(BaseCommand):
                 }
             )
         self.stdout.write(self.style.SUCCESS(f'Seeded {len(leave_types)} Leave Types'))
+
+        # 5. Demo Users
+        User = get_user_model()
+        demo_users = [
+            {'email': 'hr@demo.local', 'first_name': 'HR', 'last_name': 'Demo', 'role': hr_role, 'code': 'DEMO-HR'},
+            {'email': 'manager@demo.local', 'first_name': 'Manager', 'last_name': 'Demo', 'role': manager_role, 'code': 'DEMO-MGR'},
+            {'email': 'employee@demo.local', 'first_name': 'Employee', 'last_name': 'Demo', 'role': employee_role, 'code': 'DEMO-EMP'},
+            {'email': 'noperm@demo.local', 'first_name': 'NoPerm', 'last_name': 'Demo', 'role': None, 'code': 'DEMO-NONE'},
+        ]
+        
+        for data in demo_users:
+            user, created = User.objects.get_or_create(email=data['email'], defaults={
+                'first_name': data['first_name'],
+                'last_name': data['last_name'],
+                'status': 'active'
+            })
+            if created or not user.has_usable_password():
+                user.set_password('DevPass123!')
+                user.status = 'active'
+                user.save()
+                
+            if data['role']:
+                UserRole.objects.get_or_create(user=user, role=data['role'])
+                
+            Employee.objects.get_or_create(user=user, defaults={
+                'employee_code': data['code'],
+                'organization': org,
+                'personal_email': data['email'].replace('@demo.local', '@personal.local'),
+                'employment_status': 'active'
+            })
+            
+        self.stdout.write(self.style.SUCCESS(f'Seeded {len(demo_users)} Demo Users with password "DevPass123!"'))
