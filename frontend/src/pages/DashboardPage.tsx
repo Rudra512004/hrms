@@ -59,7 +59,7 @@ const DashboardPage: React.FC = () => {
       const rec = await attendanceService.checkIn();
       setAttendanceToday(rec);
     } catch (e: any) {
-      alert(e.errorData?.non_field_errors?.[0] || 'Check-in failed');
+      alert(e.errorData?.detail || 'Check-in failed');
     } finally {
       setActionLoading(false);
     }
@@ -71,7 +71,7 @@ const DashboardPage: React.FC = () => {
       const rec = await attendanceService.checkOut();
       setAttendanceToday(rec);
     } catch (e: any) {
-      alert(e.errorData?.non_field_errors?.[0] || 'Check-out failed');
+      alert(e.errorData?.detail || 'Check-out failed');
     } finally {
       setActionLoading(false);
     }
@@ -117,13 +117,49 @@ const DashboardPage: React.FC = () => {
             <Clock size={48} color="var(--color-primary)" style={{ opacity: 0.8 }} />
             {attendanceToday ? (
               <>
-                <p><strong>Status:</strong> <StatusBadge status={attendanceToday.status as any} /></p>
+                <p>
+                  <strong>Status:</strong>{' '}
+                  <StatusBadge 
+                    status={
+                      attendanceToday.check_out ? 'present' : 
+                      attendanceToday.is_on_break ? 'warning' : 'present'
+                    } 
+                    label={
+                      attendanceToday.check_out ? 'COMPLETED' : 
+                      attendanceToday.is_on_break ? 'ON BREAK' : 'WORKING'
+                    }
+                  />
+                </p>
                 {attendanceToday.check_in && <p><strong>In:</strong> {new Date(attendanceToday.check_in).toLocaleTimeString()}</p>}
                 {attendanceToday.check_out && <p><strong>Out:</strong> {new Date(attendanceToday.check_out).toLocaleTimeString()}</p>}
 
-                {!attendanceToday.check_out && (
-                  <button className="btn btn-primary" onClick={handleCheckOut} disabled={actionLoading} style={{ width: '100%', marginTop: 'var(--spacing-sm)' }}>
-                    {actionLoading ? <Loader2 size={16} style={{ animation: 'spin 1s linear infinite' }} /> : <LogOut size={16} />} Check Out
+                {!attendanceToday.check_out && !attendanceToday.is_on_break && (
+                  <div style={{ display: 'flex', gap: 'var(--spacing-sm)', width: '100%', marginTop: 'var(--spacing-sm)' }}>
+                    <button className="btn btn-secondary" onClick={async () => {
+                      setActionLoading(true);
+                      try {
+                        const rec = await attendanceService.startBreak();
+                        setAttendanceToday(rec);
+                      } catch (e: any) { alert(e.errorData?.detail || 'Failed'); }
+                      finally { setActionLoading(false); }
+                    }} disabled={actionLoading} style={{ flex: 1 }}>
+                      {actionLoading ? <Loader2 size={16} className="animate-spin" /> : <Clock size={16} />} Break
+                    </button>
+                    <button className="btn btn-primary" onClick={handleCheckOut} disabled={actionLoading} style={{ flex: 1 }}>
+                      {actionLoading ? <Loader2 size={16} className="animate-spin" /> : <LogOut size={16} />} Check Out
+                    </button>
+                  </div>
+                )}
+                {!attendanceToday.check_out && attendanceToday.is_on_break && (
+                  <button className="btn btn-primary" onClick={async () => {
+                    setActionLoading(true);
+                    try {
+                      const rec = await attendanceService.endBreak();
+                      setAttendanceToday(rec);
+                    } catch (e: any) { alert(e.errorData?.detail || 'Failed'); }
+                    finally { setActionLoading(false); }
+                  }} disabled={actionLoading} style={{ width: '100%', marginTop: 'var(--spacing-sm)' }}>
+                    {actionLoading ? <Loader2 size={16} className="animate-spin" /> : <Clock size={16} />} End Break
                   </button>
                 )}
               </>
