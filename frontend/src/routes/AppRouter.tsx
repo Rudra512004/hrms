@@ -79,8 +79,11 @@ export const AppRouter: React.FC = () => {
             <Route path="/admin/wfh" element={<WfhRequestsPage />} />
           </Route>
 
-          <Route element={<ProtectedRoute requiredPermission="leave_type.manage" />}>
+          <Route element={<ProtectedRoute requiredPermission="leave.view" />}>
             <Route path="/admin/leaves" element={<AdminLeavePage />} />
+          </Route>
+
+          <Route element={<ProtectedRoute requiredPermission="leave_type.manage" />}>
             <Route path="/admin/leave-types" element={<AdminLeaveTypesPage />} />
           </Route>
 

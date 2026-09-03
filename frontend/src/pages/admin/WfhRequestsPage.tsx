@@ -4,6 +4,7 @@ import { Card } from '../../components/Card';
 import { Table } from '../../components/Table';
 import { StatusBadge } from '../../components/StatusBadge';
 import { Check, X, Ban, AlertCircle, Loader2 } from 'lucide-react';
+import { useAuth } from '../../contexts/AuthContext';
 
 
 const styles = {
@@ -116,6 +117,7 @@ const styles = {
 };
 
 export const WfhRequestsPage: React.FC = () => {
+  const { hasPermission } = useAuth();
   const [requests, setRequests] = useState<WfhRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -176,48 +178,54 @@ export const WfhRequestsPage: React.FC = () => {
 
   const columns = [
     { key: 'employee', title: 'Employee ID' },
-    { 
-      key: 'start_at', 
+    {
+      key: 'start_at',
       title: 'Start Date',
       render: (r: WfhRequest) => new Date(r.start_at).toLocaleDateString()
     },
-    { 
-      key: 'end_at', 
+    {
+      key: 'end_at',
       title: 'End Date',
       render: (r: WfhRequest) => new Date(r.end_at).toLocaleDateString()
     },
     { key: 'reason', title: 'Reason' },
-    { 
-      key: 'status', 
+    {
+      key: 'status',
       title: 'Status',
       render: (r: WfhRequest) => <StatusBadge status={r.status as any} />
     },
-    { 
-      key: 'actions', 
-      title: 'Actions', 
+    {
+      key: 'actions',
+      title: 'Actions',
       render: (r: WfhRequest) => {
         if (r.status !== 'pending') return <span style={{ color: 'var(--color-text-muted)' }}>-</span>;
-        
+
         return (
           <div>
-            <button 
-              style={{...styles.actionBtn, ...styles.btnApprove}} 
-              onClick={() => { setModalState({ isOpen: true, type: 'approve', request: r }); setComment(''); }}
-            >
-              <Check size={14} style={{ marginRight: '4px' }} /> Approve
-            </button>
-            <button 
-              style={{...styles.actionBtn, ...styles.btnReject}} 
-              onClick={() => { setModalState({ isOpen: true, type: 'reject', request: r }); setComment(''); }}
-            >
-              <X size={14} style={{ marginRight: '4px' }} /> Reject
-            </button>
-            <button 
-              style={{...styles.actionBtn, ...styles.btnCancel}} 
-              onClick={() => handleCancel(r)}
-            >
-              <Ban size={14} style={{ marginRight: '4px' }} /> Cancel
-            </button>
+            {hasPermission('wfh.approve') && (
+              <button
+                style={{...styles.actionBtn, ...styles.btnApprove}}
+                onClick={() => { setModalState({ isOpen: true, type: 'approve', request: r }); setComment(''); }}
+              >
+                <Check size={14} style={{ marginRight: '4px' }} /> Approve
+              </button>
+            )}
+            {hasPermission('wfh.reject') && (
+              <button
+                style={{...styles.actionBtn, ...styles.btnReject}}
+                onClick={() => { setModalState({ isOpen: true, type: 'reject', request: r }); setComment(''); }}
+              >
+                <X size={14} style={{ marginRight: '4px' }} /> Reject
+              </button>
+            )}
+            {hasPermission('wfh.cancel') && (
+              <button
+                style={{...styles.actionBtn, ...styles.btnCancel}}
+                onClick={() => handleCancel(r)}
+              >
+                <Ban size={14} style={{ marginRight: '4px' }} /> Cancel
+              </button>
+            )}
           </div>
         );
       }
@@ -259,26 +267,26 @@ export const WfhRequestsPage: React.FC = () => {
             <h2 style={{ marginTop: 0 }}>
               {modalState.type === 'approve' ? 'Approve Request' : 'Reject Request'}
             </h2>
-            
+
             <div style={styles.formGroup}>
               <label style={styles.label}>Reviewer Comment (Optional)</label>
-              <textarea 
-                style={{ ...styles.input, minHeight: '80px', resize: 'vertical' }} 
+              <textarea
+                style={{ ...styles.input, minHeight: '80px', resize: 'vertical' }}
                 value={comment}
                 onChange={(e) => setComment(e.target.value)}
                 placeholder="Add an optional comment..."
               />
             </div>
-            
+
             <div style={styles.modalActions}>
               <button style={styles.cancelBtn} onClick={() => setModalState({ isOpen: false, type: 'approve', request: null })}>
                 Cancel
               </button>
-              <button 
+              <button
                 style={{
-                  ...styles.confirmBtn, 
+                  ...styles.confirmBtn,
                   backgroundColor: modalState.type === 'approve' ? 'var(--color-status-success)' : 'var(--color-status-danger)'
-                }} 
+                }}
                 onClick={handleAction}
                 disabled={actionLoading}
               >

@@ -4,6 +4,7 @@ import { Card } from '../../components/Card';
 import { Table } from '../../components/Table';
 import { StatusBadge } from '../../components/StatusBadge';
 import { Plus, Edit2, Trash2, Power, AlertCircle, Loader2 } from 'lucide-react';
+import { useAuth } from '../../contexts/AuthContext';
 
 
 const styles = {
@@ -106,6 +107,7 @@ const styles = {
 };
 
 export const OfficeNetworksPage: React.FC = () => {
+  const { hasPermission } = useAuth();
   const [networks, setNetworks] = useState<OfficeNetwork[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -217,15 +219,21 @@ export const OfficeNetworksPage: React.FC = () => {
       title: 'Actions', 
       render: (n: OfficeNetwork) => (
         <div>
-          <button style={styles.actionBtn} onClick={() => openEditModal(n)} title="Edit">
-            <Edit2 size={18} />
-          </button>
-          <button style={styles.actionBtn} onClick={() => toggleActive(n)} title={n.is_active ? "Deactivate" : "Activate"}>
-            <Power size={18} color={n.is_active ? "var(--color-status-success)" : "var(--color-text-muted)"} />
-          </button>
-          <button style={styles.actionBtn} onClick={() => handleDelete(n)} title="Delete">
-            <Trash2 size={18} color="var(--color-status-danger)" />
-          </button>
+          {hasPermission('office_network.update') && (
+            <>
+              <button style={styles.actionBtn} onClick={() => openEditModal(n)} title="Edit">
+                <Edit2 size={18} />
+              </button>
+              <button style={styles.actionBtn} onClick={() => toggleActive(n)} title={n.is_active ? "Deactivate" : "Activate"}>
+                <Power size={18} color={n.is_active ? "var(--color-status-success)" : "var(--color-text-muted)"} />
+              </button>
+            </>
+          )}
+          {hasPermission('office_network.delete') && (
+            <button style={styles.actionBtn} onClick={() => handleDelete(n)} title="Delete">
+              <Trash2 size={18} color="var(--color-status-danger)" />
+            </button>
+          )}
         </div>
       ) 
     }
@@ -254,9 +262,11 @@ export const OfficeNetworksPage: React.FC = () => {
     <div>
       <div style={styles.header}>
         <h1 style={styles.title}>Office Networks</h1>
-        <button style={styles.button} onClick={openCreateModal}>
-          <Plus size={18} /> Add Network
-        </button>
+        {hasPermission('office_network.create') && (
+          <button style={styles.button} onClick={openCreateModal}>
+            <Plus size={18} /> Add Network
+          </button>
+        )}
       </div>
 
       <Card>
