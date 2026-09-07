@@ -199,3 +199,11 @@ class AttendanceAPITests(TestCase):
         # Using almostEqual logic manually because of execution delay
         self.assertTrue(att.total_break_duration.total_seconds() == 45 * 60)
         self.assertTrue(att.productive_work_duration.total_seconds() > 8 * 3600)
+
+    def test_admin_attendance_list_scoping(self):
+        # Super user should be able to view attendance records
+        Attendance.objects.create(employee=self.employee, date=timezone.now().date(), status='present')
+        self.client.force_authenticate(user=self.super_user)
+        response = self.client.get(reverse('attendance-management-list'), REMOTE_ADDR=self.office_ip)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(response.data), 1)

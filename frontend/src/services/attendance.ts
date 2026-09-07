@@ -7,6 +7,8 @@ export interface AttendanceBreak {
 export interface AttendanceRecord {
   id: number;
   employee: number;
+  employee_name?: string;
+  employee_code?: string;
   date: string;
   check_in: string | null;
   check_out: string | null;
@@ -99,6 +101,24 @@ export const attendanceService = {
     
     const response = await fetch('/api/v1/attendance/end-break/', {
       method: 'POST',
+      headers: {
+        'Authorization': `Token ${token}` 
+      }
+    });
+    
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw { response, errorData };
+    }
+    
+    return await response.json();
+  },
+
+  getManagementHistory: async (): Promise<AttendanceRecord[]> => {
+    const token = localStorage.getItem('auth_token');
+    if (!token) throw new Error('No authentication token');
+    
+    const response = await fetch('/api/v1/attendance/management/', {
       headers: {
         'Authorization': `Token ${token}` 
       }

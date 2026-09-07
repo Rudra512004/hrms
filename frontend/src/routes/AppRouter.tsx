@@ -14,6 +14,7 @@ import { PendingActivationPage } from '../pages/PendingActivationPage';
 import { NotFoundPage } from '../pages/NotFoundPage';
 import { ProfilePage } from '../pages/ProfilePage';
 import { AttendancePage } from '../pages/AttendancePage';
+import { AttendanceManagementPage } from '../pages/admin/AttendanceManagementPage';
 import { LeavePage } from '../pages/LeavePage';
 
 // Admin Pages
@@ -60,6 +61,10 @@ export const AppRouter: React.FC = () => {
             <Route path="/admin/employees" element={<EmployeesPage />} />
             <Route path="/admin/employees/:id" element={<EmployeeProfilePage />} />
             <Route path="/admin/employees/:employeeId/access" element={<EmployeeAccessPage />} />
+          </Route>
+
+          <Route element={<ProtectedRoute requiredPermission="attendance.view" />}>
+            <Route path="/admin/attendance" element={<AttendanceManagementPage />} />
           </Route>
 
           <Route element={<ProtectedRoute requiredPermission="office_network.view" />}>

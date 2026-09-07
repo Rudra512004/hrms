@@ -54,6 +54,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen }) => {
       title: 'Time',
       items: [
         { path: '/attendance', label: 'My Attendance', icon: Clock },
+        { path: '/admin/attendance', label: 'Attendance Management', icon: Clock, permission: 'attendance.view_all' },
         { path: '/leaves', label: 'My Leave', icon: Calendar },
         { path: '/admin/leaves', label: 'Leave Requests', icon: Calendar, permission: 'leave.view' },
         { path: '/admin/leave-types', label: 'Leave Types', icon: Calendar, permission: 'leave_type.manage' },

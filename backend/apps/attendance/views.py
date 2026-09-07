@@ -6,7 +6,7 @@ from rest_framework.permissions import IsAuthenticated
 from django.utils import timezone
 from django.db import transaction
 from datetime import timedelta
-from apps.authorization.permissions import IsNetworkAllowed
+from apps.authorization.permissions import IsNetworkAllowed, require_permission
 from .models import Attendance, AttendanceBreak
 from .serializers import AttendanceSerializer
 
@@ -168,3 +168,22 @@ class AttendanceViewSet(viewsets.GenericViewSet):
 
         serializer = self.get_serializer(attendance)
         return Response(serializer.data, status=status.HTTP_200_OK)
+
+class AttendanceManagementViewSet(viewsets.GenericViewSet):
+    serializer_class = AttendanceSerializer
+    
+    def get_permissions(self):
+        return [IsAuthenticated(), IsNetworkAllowed(), require_permission('attendance.view_all')()]
+
+    def get_queryset(self):
+        user = self.request.user
+        if user.is_superuser:
+            return Attendance.objects.all()
+        if hasattr(user, 'employee') and user.employee.organization_id:
+            return Attendance.objects.filter(employee__organization_id=user.employee.organization_id)
+        return Attendance.objects.none()
+
+    def list(self, request):
+        queryset = self.get_queryset()
+        serializer = self.get_serializer(queryset, many=True)
+        return Response(serializer.data)
