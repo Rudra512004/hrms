@@ -1,66 +1,99 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { Card } from '../components/Card';
-import { StatusBadge } from '../components/StatusBadge';
-import {
-  User as UserIcon, AlertCircle, Loader2,
-  Clock, Calendar, Shield, Settings, Users, LogIn, LogOut, Coffee
-} from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
-import { attendanceService, type AttendanceRecord } from '../services/attendance';
-import { leaveService, type LeaveBalance } from '../services/leaves';
+import { Card } from '../components/Card';
+import { StatCard } from '../components/StatCard';
+import { EmptyState } from '../components/EmptyState';
+import { StatusBadge } from '../components/StatusBadge';
+import { 
+  Users, 
+  Calendar, 
+  Clock, 
+  Activity, 
+  LogIn, 
+  LogOut, 
+  Coffee, 
+  Loader2, 
+  ChevronRight, 
+  Plus, 
+  ShieldAlert
+} from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 
-const DashboardPage: React.FC = () => {
-  const navigate = useNavigate();
+// Services
+import { attendanceService, type AttendanceRecord } from '../services/attendance';
+import { leaveService, type LeaveBalance, type LeaveRequest } from '../services/leaves';
+import { employeeManagementService } from '../services/employeeManagement';
+import { type EmployeeProfile } from '../services/employee';
+import { auditService, type AuditLog } from '../services/audit';
+
+export const DashboardPage: React.FC = () => {
   const { user, hasPermission } = useAuth();
+  const navigate = useNavigate();
+
+  // Personal States
   const [attendanceToday, setAttendanceToday] = useState<AttendanceRecord | null>(null);
   const [leaveBalances, setLeaveBalances] = useState<LeaveBalance[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState(false);
+  const [personalLoading, setPersonalLoading] = useState(true);
+
+  // Admin States
+  const [employees, setEmployees] = useState<EmployeeProfile[]>([]);
+  const [allLeaves, setAllLeaves] = useState<LeaveRequest[]>([]);
+  const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
+  const [adminLoading, setAdminLoading] = useState(true);
 
   useEffect(() => {
-    const fetchData = async () => {
+    // Load Personal Data (Attendance, Leave Balances)
+    const loadPersonalData = async () => {
       try {
-        if (!user) return;
-
-        // Fetch Attendance
-        try {
-          const history = await attendanceService.getHistory();
-          const today = new Date().toISOString().split('T')[0];
-          const todayRecord = history.find(r => r.date === today);
-          setAttendanceToday(todayRecord || null);
-        } catch (e) {
-          console.error("Attendance fetch failed", e);
-        }
-
-        // Fetch Leaves
-        try {
-          const balances = await leaveService.getBalances();
-          setLeaveBalances(balances);
-        } catch (e) {
-          console.error("Leaves fetch failed", e);
-        }
-
-      } catch (err: any) {
-        setError(err.message || "An unexpected error occurred.");
+        const [attHistory, lb] = await Promise.all([
+          attendanceService.getHistory().catch(() => []),
+          leaveService.getBalances().catch(() => [])
+        ]);
+        const todayStr = new Date().toLocaleDateString('en-CA'); // YYYY-MM-DD
+        const todayAtt = attHistory.find(h => h.date === todayStr) || null;
+        setAttendanceToday(todayAtt);
+        setLeaveBalances(lb);
+      } catch (err) {
+        console.error("Error loading personal data", err);
       } finally {
-        setLoading(false);
+        setPersonalLoading(false);
       }
     };
-    fetchData();
-  }, [user]);
 
+    loadPersonalData();
+  }, []);
+
+  useEffect(() => {
+    // Load Admin Data (conditional based on RBAC)
+    const loadAdminData = async () => {
+      setAdminLoading(true);
+      try {
+        const promises: Promise<any>[] = [];
+        
+        if (hasPermission('employee.view')) promises.push(employeeManagementService.listEmployees().then(setEmployees).catch(() => []));
+        if (hasPermission('leave.view')) promises.push(leaveService.getRequests().then(setAllLeaves).catch(() => []));
+        if (hasPermission('audit.view')) promises.push(auditService.getLogs().then(setAuditLogs).catch(() => []));
+        
+        await Promise.all(promises);
+      } catch (err) {
+        console.error("Error loading admin data", err);
+      } finally {
+        setAdminLoading(false);
+      }
+    };
+
+    loadAdminData();
+  }, [hasPermission]);
+
+  // Actions
   const handleCheckIn = async () => {
     setActionLoading(true);
     try {
       const rec = await attendanceService.checkIn();
       setAttendanceToday(rec);
-    } catch (e: any) {
-      alert(e.errorData?.detail || 'Check-in failed');
-    } finally {
-      setActionLoading(false);
-    }
+    } catch (e: any) { alert(e.errorData?.detail || 'Failed'); }
+    finally { setActionLoading(false); }
   };
 
   const handleCheckOut = async () => {
@@ -68,172 +101,202 @@ const DashboardPage: React.FC = () => {
     try {
       const rec = await attendanceService.checkOut();
       setAttendanceToday(rec);
-    } catch (e: any) {
-      alert(e.errorData?.detail || 'Check-out failed');
-    } finally {
-      setActionLoading(false);
-    }
+    } catch (e: any) { alert(e.errorData?.detail || 'Failed'); }
+    finally { setActionLoading(false); }
   };
 
-  if (loading) {
-    return (
-      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '400px', color: 'var(--color-text-muted)' }}>
-        <Loader2 size={32} color="var(--color-primary)" style={{ animation: 'spin 1s linear infinite', marginBottom: 'var(--spacing-md)' }} />
-        <p>Loading your dashboard...</p>
-      </div>
-    );
-  }
+  // Derived Admin Metrics
+  const pendingLeaves = allLeaves.filter(l => l.status === 'pending');
+  const activeEmployees = employees.filter(e => e.status === 'active');
+  const recentHires = [...employees].sort((a, b) => b.id - a.id).slice(0, 5);
+  const recentActivity = [...auditLogs].slice(0, 5);
 
-  if (error || !user) {
-    return (
-      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '400px' }}>
-        <AlertCircle size={48} color="var(--color-status-danger)" style={{ marginBottom: 'var(--spacing-md)' }} />
-        <h3 style={{ fontSize: '1.25rem', fontWeight: 700, marginBottom: 'var(--spacing-sm)' }}>Unable to load dashboard</h3>
-        <p style={{ color: 'var(--color-text-muted)' }}>{error}</p>
-      </div>
-    );
-  }
+  const dateStr = new Date().toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric' });
 
-  const hour = new Date().getHours();
-  const greeting = hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening';
-  const dateStr = new Date().toLocaleDateString(undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+  if (!user) return <div style={{ display: 'flex', justifyContent: 'center', padding: '2rem' }}><Loader2 className="animate-spin text-muted" size={32} /></div>;
 
   return (
-    <div className="container animate-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: 'var(--spacing-xl)', padding: 'var(--spacing-md) 0' }}>
-
-      {/* Header */}
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--spacing-xl)' }}>
+      
+      {/* Page Header */}
       <div>
-        <h1 style={{ fontSize: '1.5rem', fontWeight: 700, margin: '0 0 var(--spacing-xs) 0' }}>{greeting}, {user.firstName}!</h1>
-        <p style={{ color: 'var(--color-text-muted)', margin: 0 }}>{dateStr} • Here is your HRMS overview.</p>
+        <h1 style={{ fontSize: '1.75rem', fontWeight: 700, margin: '0 0 var(--spacing-xs) 0' }}>
+          Good morning, {user.firstName}
+        </h1>
+        <p style={{ color: 'var(--color-text-muted)', margin: 0, fontSize: '0.95rem' }}>
+          {dateStr} &bull; Here's your HR overview
+        </p>
       </div>
 
-      <div className="grid-cols-3" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 'var(--spacing-lg)' }}>
-
-        {/* Attendance Card */}
-        <Card title="Today's Attendance">
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--spacing-md)', alignItems: 'center', textAlign: 'center', padding: 'var(--spacing-md) 0' }}>
-            <Clock size={48} color="var(--color-primary)" style={{ opacity: 0.8 }} />
-            {attendanceToday ? (
-              <>
-                <p>
-                  <strong>Status:</strong>{' '}
-                  <StatusBadge 
-                    status={
-                      attendanceToday.check_out ? 'present' : 
-                      attendanceToday.is_on_break ? 'warning' : 'present'
-                    } 
-                    label={
-                      attendanceToday.check_out ? 'COMPLETED' : 
-                      attendanceToday.is_on_break ? 'ON BREAK' : 'WORKING'
-                    }
-                  />
-                </p>
-                {attendanceToday.check_in && <p><strong>In:</strong> {new Date(attendanceToday.check_in).toLocaleTimeString()}</p>}
-                {attendanceToday.check_out && <p><strong>Out:</strong> {new Date(attendanceToday.check_out).toLocaleTimeString()}</p>}
-
-                {!attendanceToday.check_out && !attendanceToday.is_on_break && (
-                  <div style={{ display: 'flex', gap: 'var(--spacing-sm)', width: '100%', marginTop: 'var(--spacing-sm)' }}>
-                    <button className="btn btn-secondary" onClick={async () => {
-                      setActionLoading(true);
-                      try {
-                        const rec = await attendanceService.startBreak();
-                        setAttendanceToday(rec);
-                      } catch (e: any) { alert(e.errorData?.detail || 'Failed'); }
-                      finally { setActionLoading(false); }
-                    }} disabled={actionLoading} style={{ flex: 1 }}>
-                      {actionLoading ? <Loader2 size={16} className="animate-spin" /> : <Clock size={16} />} Break
-                    </button>
-                    <button className="btn btn-primary" onClick={handleCheckOut} disabled={actionLoading} style={{ flex: 1 }}>
-                      {actionLoading ? <Loader2 size={16} className="animate-spin" /> : <LogOut size={16} />} Check Out
-                    </button>
-                  </div>
-                )}
-                {!attendanceToday.check_out && attendanceToday.is_on_break && (
-                  <button className="btn btn-primary" onClick={async () => {
-                    setActionLoading(true);
-                    try {
-                      const rec = await attendanceService.endBreak();
-                      setAttendanceToday(rec);
-                    } catch (e: any) { alert(e.errorData?.detail || 'Failed'); }
-                    finally { setActionLoading(false); }
-                  }} disabled={actionLoading} style={{ width: '100%', marginTop: 'var(--spacing-sm)' }}>
-                    {actionLoading ? <Loader2 size={16} className="animate-spin" /> : <Clock size={16} />} End Break
-                  </button>
-                )}
-              </>
-            ) : (
-              <>
-                <p style={{ color: 'var(--color-text-muted)' }}>You have not checked in today.</p>
-                <button className="btn btn-primary" onClick={handleCheckIn} disabled={actionLoading} style={{ width: '100%', marginTop: 'var(--spacing-sm)' }}>
-                  {actionLoading ? <Loader2 size={16} style={{ animation: 'spin 1s linear infinite' }} /> : <LogIn size={16} />} Check In
-                </button>
-              </>
-            )}
-          </div>
-        </Card>
-
-        {/* Leave Balances */}
-        <Card title="Leave Balances">
-          {leaveBalances.length > 0 ? (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--spacing-md)' }}>
-              {leaveBalances.map(lb => (
-                <div key={lb.id} style={{ display: 'flex', justifyContent: 'space-between', padding: 'var(--spacing-sm) 0', borderBottom: '1px solid var(--color-border)' }}>
-                  <span style={{ fontWeight: 500 }}>{lb.leave_type_name}</span>
-                  <div style={{ display: 'flex', gap: 'var(--spacing-md)' }}>
-                    <span style={{ color: 'var(--color-text-muted)', fontSize: '0.9em' }}>Used: {lb.used}</span>
-                    <span style={{ color: 'var(--color-status-success)', fontWeight: 600 }}>{lb.remaining} left</span>
-                  </div>
-                </div>
-              ))}
-              <button className="btn btn-secondary" onClick={() => navigate('/leaves')} style={{ marginTop: 'var(--spacing-sm)' }}>
-                Apply Leave
-              </button>
-            </div>
-          ) : (
-            <div style={{ textAlign: 'center', padding: 'var(--spacing-xl) 0', color: 'var(--color-text-muted)' }}>
-              <Coffee size={32} style={{ margin: '0 auto var(--spacing-sm) auto', opacity: 0.5 }} />
-              <p>No leave balances available.</p>
-            </div>
+      {/* Admin Metrics Grid (Only if permitted) */}
+      {(hasPermission('employee.view') || hasPermission('leave.view')) && (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 'var(--spacing-lg)' }}>
+          {hasPermission('employee.view') && (
+            <StatCard 
+              title="Total Employees" 
+              value={adminLoading ? '-' : employees.length} 
+              icon={Users} 
+              color="var(--color-primary)" 
+            />
           )}
-        </Card>
+          {hasPermission('employee.view') && (
+            <StatCard 
+              title="Active Employees" 
+              value={adminLoading ? '-' : activeEmployees.length} 
+              icon={Activity} 
+              color="var(--color-status-success)" 
+            />
+          )}
+          {hasPermission('leave.view') && (
+            <StatCard 
+              title="Pending Leaves" 
+              value={adminLoading ? '-' : pendingLeaves.length} 
+              icon={Calendar} 
+              color="var(--color-status-warning)" 
+            />
+          )}
+        </div>
+      )}
 
-        {/* Quick Actions */}
-        <Card title="Quick Actions">
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 'var(--spacing-sm)' }}>
-            <button className="btn btn-secondary" onClick={() => navigate('/profile')} style={{ justifyContent: 'flex-start' }}><UserIcon size={18}/> Profile</button>
-            <button className="btn btn-secondary" onClick={() => navigate('/leaves')} style={{ justifyContent: 'flex-start' }}><Calendar size={18}/> My Leaves</button>
+      {/* Main Content Layout */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 'var(--spacing-lg)' }}>
+        
+        {/* Left Column: Personal Data */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--spacing-lg)' }}>
+          
+          <Card title="Today's Attendance">
+            {personalLoading ? (
+              <div style={{ display: 'flex', justifyContent: 'center', padding: '2rem' }}><Loader2 className="animate-spin text-muted" /></div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--spacing-md)' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                    <div style={{ padding: '12px', borderRadius: '50%', backgroundColor: 'var(--color-primary-light)', color: 'var(--color-primary)' }}>
+                      <Clock size={24} />
+                    </div>
+                    <div>
+                      <p style={{ margin: 0, fontWeight: 600 }}>{attendanceToday ? 'Clocked In' : 'Not Clocked In'}</p>
+                      <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--color-text-muted)' }}>
+                        {attendanceToday?.check_in ? new Date(attendanceToday.check_in).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : '--:--'}
+                        {' - '}
+                        {attendanceToday?.check_out ? new Date(attendanceToday.check_out).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : '--:--'}
+                      </p>
+                    </div>
+                  </div>
+                  <StatusBadge 
+                    status={!attendanceToday ? 'absent' : attendanceToday.check_out ? 'present' : attendanceToday.is_on_break ? 'warning' : 'info'} 
+                    label={!attendanceToday ? 'Absent' : attendanceToday.check_out ? 'Completed' : attendanceToday.is_on_break ? 'On Break' : 'Working'}
+                  />
+                </div>
 
-            {(hasPermission('employee.view') || hasPermission('leave.manage')) && (
-              <>
-                <div style={{ height: '1px', backgroundColor: 'var(--color-border)', margin: 'var(--spacing-sm) 0' }} />
-                <p style={{ color: 'var(--color-text-muted)', fontSize: '0.85em', textTransform: 'uppercase', fontWeight: 600, margin: '0 0 var(--spacing-xs) 0' }}>HR / Admin</p>
-                {hasPermission('employee.view') && (
-                  <button className="btn btn-ghost" onClick={() => navigate('/admin/employees')} style={{ justifyContent: 'flex-start' }}><Users size={18}/> Manage Employees</button>
+                {!attendanceToday?.check_out && (
+                  <div style={{ display: 'flex', gap: 'var(--spacing-sm)', marginTop: 'var(--spacing-sm)' }}>
+                    {!attendanceToday ? (
+                      <button className="btn btn-primary" onClick={handleCheckIn} disabled={actionLoading} style={{ flex: 1 }}>
+                        {actionLoading ? <Loader2 size={16} className="animate-spin" /> : <LogIn size={16} />} Web Clock In
+                      </button>
+                    ) : (
+                      <>
+                        <button className="btn btn-primary" onClick={handleCheckOut} disabled={actionLoading} style={{ flex: 1 }}>
+                          {actionLoading ? <Loader2 size={16} className="animate-spin" /> : <LogOut size={16} />} Clock Out
+                        </button>
+                      </>
+                    )}
+                  </div>
                 )}
-                {hasPermission('leave.manage') && (
-                  <button className="btn btn-ghost" onClick={() => navigate('/admin/leaves')} style={{ justifyContent: 'flex-start' }}><Calendar size={18}/> Manage Leaves</button>
-                )}
-              </>
+              </div>
             )}
+          </Card>
 
-            {(hasPermission('leave_type.manage') || hasPermission('audit.view')) && (
-              <>
-                <div style={{ height: '1px', backgroundColor: 'var(--color-border)', margin: 'var(--spacing-sm) 0' }} />
-                <p style={{ color: 'var(--color-text-muted)', fontSize: '0.85em', textTransform: 'uppercase', fontWeight: 600, margin: '0 0 var(--spacing-xs) 0' }}>Superadmin</p>
-                {hasPermission('leave_type.manage') && (
-                  <button className="btn btn-ghost" onClick={() => navigate('/admin/leave-types')} style={{ justifyContent: 'flex-start' }}><Settings size={18}/> Leave Types</button>
-                )}
-                {hasPermission('audit.view') && (
-                  <button className="btn btn-ghost" onClick={() => navigate('/admin/audit-logs')} style={{ justifyContent: 'flex-start' }}><Shield size={18}/> Audit Logs</button>
-                )}
-              </>
+          <Card title="My Leave Balances">
+            {personalLoading ? (
+               <div style={{ display: 'flex', justifyContent: 'center', padding: '2rem' }}><Loader2 className="animate-spin text-muted" /></div>
+            ) : leaveBalances.length > 0 ? (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--spacing-sm)' }}>
+                {leaveBalances.map(lb => (
+                  <div key={lb.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 0', borderBottom: '1px solid var(--color-border)' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <div style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: 'var(--color-primary)' }} />
+                      <span style={{ fontWeight: 500, fontSize: '0.9rem' }}>{lb.leave_type_name}</span>
+                    </div>
+                    <div style={{ textAlign: 'right' }}>
+                      <span style={{ fontWeight: 600, color: 'var(--color-text-main)' }}>{lb.remaining} days</span>
+                      <span style={{ display: 'block', fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>Used: {lb.used}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <EmptyState title="No Balances" description="You don't have any active leave balances." icon={Coffee} />
             )}
-          </div>
-        </Card>
+            <button className="btn btn-secondary w-full" onClick={() => navigate('/leaves')} style={{ marginTop: 'var(--spacing-md)' }}>
+              <Plus size={16} /> Request Leave
+            </button>
+          </Card>
 
+        </div>
+
+        {/* Right Column: Admin Data */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--spacing-lg)' }}>
+          
+          {hasPermission('employee.view') && (
+            <Card title="Recent Hires">
+              {adminLoading ? (
+                <div style={{ display: 'flex', justifyContent: 'center', padding: '2rem' }}><Loader2 className="animate-spin text-muted" /></div>
+              ) : recentHires.length > 0 ? (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--spacing-sm)' }}>
+                  {recentHires.map(emp => (
+                    <div key={emp.id} style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '8px 0', borderBottom: '1px solid var(--color-border)' }}>
+                      <div style={{ width: '36px', height: '36px', borderRadius: '50%', backgroundColor: 'var(--color-bg-body)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--color-text-muted)', fontWeight: 600 }}>
+                        {emp.first_name[0]}{emp.last_name[0]}
+                      </div>
+                      <div style={{ flex: 1 }}>
+                        <p style={{ margin: 0, fontWeight: 500, fontSize: '0.9rem' }}>{emp.first_name} {emp.last_name}</p>
+                        <p style={{ margin: 0, fontSize: '0.8rem', color: 'var(--color-text-muted)' }}>{emp.designation_name || 'No Designation'} &bull; {emp.department_name || 'No Dept'}</p>
+                      </div>
+                    </div>
+                  ))}
+                  <button className="btn btn-ghost" onClick={() => navigate('/admin/employees')} style={{ marginTop: '8px', width: '100%' }}>
+                    View All <ChevronRight size={16} />
+                  </button>
+                </div>
+              ) : (
+                <EmptyState title="No Employees" description="No employees found in the organization." icon={Users} />
+              )}
+            </Card>
+          )}
+
+          {hasPermission('audit.view') && (
+            <Card title="Recent Activity">
+              {adminLoading ? (
+                 <div style={{ display: 'flex', justifyContent: 'center', padding: '2rem' }}><Loader2 className="animate-spin text-muted" /></div>
+              ) : recentActivity.length > 0 ? (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--spacing-md)' }}>
+                  {recentActivity.map(log => (
+                    <div key={log.id} style={{ display: 'flex', gap: '12px' }}>
+                      <div style={{ marginTop: '4px', color: 'var(--color-primary)' }}>
+                        <ShieldAlert size={16} />
+                      </div>
+                      <div>
+                        <p style={{ margin: 0, fontSize: '0.9rem', fontWeight: 500 }}>{log.action.replace(/_/g, ' ')}</p>
+                        <p style={{ margin: 0, fontSize: '0.8rem', color: 'var(--color-text-muted)' }}>
+                          by {log.actor_email} &bull; {new Date(log.timestamp).toLocaleDateString()}
+                        </p>
+                      </div>
+                    </div>
+                  ))}
+                  <button className="btn btn-ghost" onClick={() => navigate('/admin/audit-logs')} style={{ marginTop: '8px', width: '100%' }}>
+                    View Audit Logs <ChevronRight size={16} />
+                  </button>
+                </div>
+              ) : (
+                <EmptyState title="No Activity" description="No recent system activity recorded." icon={Activity} />
+              )}
+            </Card>
+          )}
+          
+        </div>
       </div>
     </div>
   );
 };
-
-export { DashboardPage };

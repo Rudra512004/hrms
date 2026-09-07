@@ -17,7 +17,6 @@ import { AttendancePage } from '../pages/AttendancePage';
 import { LeavePage } from '../pages/LeavePage';
 
 // Admin Pages
-import { AdminDashboardPage } from '../pages/admin/AdminDashboardPage';
 import { AdminLeavePage } from '../pages/admin/AdminLeavePage';
 import { OfficeNetworksPage } from '../pages/admin/OfficeNetworksPage';
 import { WfhRequestsPage } from '../pages/admin/WfhRequestsPage';
@@ -54,7 +53,7 @@ export const AppRouter: React.FC = () => {
           <Route path="/profile" element={<ProfilePage />} />
 
           {/* Admin Routes */}
-          <Route path="/admin" element={<AdminDashboardPage />} />
+          <Route path="/admin" element={<Navigate to="/dashboard" replace />} />
 
           <Route element={<ProtectedRoute requiredPermission="employee.view" />}>
             <Route path="/admin/employees" element={<EmployeesPage />} />

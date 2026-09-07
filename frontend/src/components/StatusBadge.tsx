@@ -1,6 +1,6 @@
 import React from 'react';
 
-export type StatusType = 'active' | 'inactive' | 'pending' | 'approved' | 'rejected' | 'present' | 'absent' | 'warning' | 'cancelled' | 'onboarding' | 'exited';
+export type StatusType = 'active' | 'inactive' | 'pending' | 'approved' | 'rejected' | 'present' | 'absent' | 'warning' | 'info' | 'cancelled' | 'onboarding' | 'exited';
 
 interface StatusBadgeProps {
   status: StatusType;
@@ -23,6 +23,7 @@ const statusColors: Record<StatusType, string> = {
   exited: 'var(--color-status-danger)',
   
   warning: 'var(--color-status-warning)',
+  info: 'var(--color-status-info)',
   cancelled: 'var(--color-text-muted)',
 };
 
