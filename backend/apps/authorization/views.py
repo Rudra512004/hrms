@@ -59,8 +59,13 @@ class RoleViewSet(viewsets.ModelViewSet):
         return Role.objects.all()
 
     def perform_create(self, serializer):
-        from apps.organization.models import Organization
-        org = Organization.objects.first()
+        user = self.request.user
+        org = None
+        if hasattr(user, 'employee') and user.employee.organization_id:
+            org = user.employee.organization
+        else:
+            from apps.organization.models import Organization
+            org = Organization.objects.first()
         serializer.save(organization=org)
 
 

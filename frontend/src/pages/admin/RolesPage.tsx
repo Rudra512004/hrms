@@ -3,7 +3,8 @@ import { Card } from '../../components/Card';
 import { Table } from '../../components/Table';
 import { StatusBadge } from '../../components/StatusBadge';
 import { Edit2, Plus, AlertCircle, Loader2, Power, Shield } from 'lucide-react';
-import { authorizationManagementService, Role } from '../../services/authorizationManagement';
+import { authorizationManagementService } from '../../services/authorizationManagement';
+import type { Role } from '../../services/authorizationManagement';
 import { useNavigate } from 'react-router-dom';
 
 const styles = {

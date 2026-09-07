@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { Card } from '../../components/Card';
 import { Loader2, AlertCircle, ArrowLeft } from 'lucide-react';
-import { authorizationManagementService, Role, Permission, RolePermission } from '../../services/authorizationManagement';
+import { authorizationManagementService } from '../../services/authorizationManagement';
+import type { Role, Permission, RolePermission } from '../../services/authorizationManagement';
 import { useParams, useNavigate } from 'react-router-dom';
 
 const styles = {
