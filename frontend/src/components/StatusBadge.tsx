@@ -1,51 +1,49 @@
 import React from 'react';
 
-export type StatusType = 'active' | 'inactive' | 'pending' | 'approved' | 'rejected' | 'present' | 'absent' | 'warning' | 'info' | 'cancelled' | 'onboarding' | 'exited';
+export type StatusType =
+  | 'active' | 'inactive'
+  | 'pending' | 'approved' | 'rejected' | 'cancelled'
+  | 'present' | 'absent' | 'half_day'
+  | 'warning' | 'info'
+  | 'onboarding' | 'exited';
 
 interface StatusBadgeProps {
-  status: StatusType;
+  status: StatusType | string;
   label?: string;
   className?: string;
 }
 
-const statusColors: Record<StatusType, string> = {
-  active: 'var(--color-status-success)',
-  present: 'var(--color-status-success)',
-  approved: 'var(--color-status-success)',
-  
-  inactive: 'var(--color-text-muted)',
-  
-  pending: 'var(--color-status-pending)',
-  onboarding: 'var(--color-status-pending)',
-  
-  rejected: 'var(--color-status-danger)',
-  absent: 'var(--color-status-danger)',
-  exited: 'var(--color-status-danger)',
-  
-  warning: 'var(--color-status-warning)',
-  info: 'var(--color-status-info)',
-  cancelled: 'var(--color-text-muted)',
+const statusClass: Record<string, string> = {
+  active:     'badge badge-success',
+  present:    'badge badge-success',
+  approved:   'badge badge-success',
+
+  pending:    'badge badge-pending',
+  onboarding: 'badge badge-pending',
+
+  rejected:   'badge badge-danger',
+  absent:     'badge badge-danger',
+  exited:     'badge badge-danger',
+
+  warning:    'badge badge-warning',
+  half_day:   'badge badge-warning',
+
+  info:       'badge badge-info',
+
+  inactive:   'badge badge-neutral',
+  cancelled:  'badge badge-neutral',
+};
+
+const defaultLabel: Record<string, string> = {
+  half_day: 'Half Day',
 };
 
 export const StatusBadge: React.FC<StatusBadgeProps> = ({ status, label, className = '' }) => {
-  const color = statusColors[status] || 'var(--color-text-muted)';
-  
-  const style = {
-    display: 'inline-flex',
-    alignItems: 'center',
-    padding: '0.25em 0.7em',
-    fontSize: '0.75rem',
-    fontWeight: 600,
-    lineHeight: 1,
-    color: color,
-    backgroundColor: 'var(--color-bg-body)',
-    borderRadius: '10px',
-    boxShadow: 'var(--shadow-inset)',
-  };
-  
+  const cls = statusClass[status] ?? 'badge badge-neutral';
+  const text = label ?? defaultLabel[status] ?? (status.charAt(0).toUpperCase() + status.slice(1).replace(/_/g, ' '));
   return (
-    <span style={style} className={className}>
-      {label || status.charAt(0).toUpperCase() + status.slice(1)}
+    <span className={`${cls} ${className}`}>
+      {text}
     </span>
   );
 };

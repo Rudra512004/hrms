@@ -2,105 +2,13 @@ import React, { useState, useEffect } from 'react';
 import { Card } from '../../components/Card';
 import { Table } from '../../components/Table';
 import { StatusBadge } from '../../components/StatusBadge';
-import { Edit2, Plus, AlertCircle, Loader2, Power, Shield } from 'lucide-react';
+import { PageHeader } from '../../components/PageHeader';
+import { Modal } from '../../components/Modal';
+import { AlertBanner } from '../../components/AlertBanner';
+import { Edit2, Plus, Loader2, Power, Shield, ShieldAlert } from 'lucide-react';
 import { authorizationManagementService } from '../../services/authorizationManagement';
 import type { Role } from '../../services/authorizationManagement';
 import { useNavigate } from 'react-router-dom';
-
-const styles = {
-  header: {
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: '24px',
-  },
-  title: {
-    margin: 0,
-    color: 'var(--color-text-main)',
-    fontSize: '1.75rem',
-  },
-  button: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '8px',
-    backgroundColor: 'var(--color-primary)',
-    color: 'white',
-    border: 'none',
-    padding: '10px 20px',
-    borderRadius: 'var(--radius-md)',
-    cursor: 'pointer',
-    fontWeight: 500,
-  },
-  actionBtn: {
-    background: 'none',
-    border: 'none',
-    cursor: 'pointer',
-    padding: '4px',
-    marginRight: '8px',
-    display: 'inline-flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  modalOverlay: {
-    position: 'fixed' as const,
-    top: 0, left: 0, right: 0, bottom: 0,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    zIndex: 1000,
-  },
-  modalContent: {
-    backgroundColor: 'var(--color-bg-main)',
-    padding: '24px',
-    borderRadius: 'var(--radius-lg)',
-    width: '100%',
-    maxWidth: '500px',
-    boxShadow: 'var(--shadow-lg)',
-  },
-  formGroup: {
-    marginBottom: '16px',
-  },
-  label: {
-    display: 'block',
-    marginBottom: '8px',
-    fontWeight: 500,
-    color: 'var(--color-text-main)',
-  },
-  input: {
-    width: '100%',
-    padding: '10px',
-    borderRadius: 'var(--radius-md)',
-    border: '1px solid var(--color-border)',
-    backgroundColor: 'var(--color-bg-secondary)',
-    color: 'var(--color-text-main)',
-  },
-  modalActions: {
-    display: 'flex',
-    justifyContent: 'flex-end',
-    gap: '12px',
-    marginTop: '24px',
-  },
-  cancelBtn: {
-    backgroundColor: 'transparent',
-    color: 'var(--color-text-main)',
-    border: '1px solid var(--color-border)',
-    padding: '8px 16px',
-    borderRadius: 'var(--radius-md)',
-    cursor: 'pointer',
-  },
-  errorBox: {
-    backgroundColor: 'rgba(234, 84, 85, 0.1)',
-    color: 'var(--color-status-danger)',
-    padding: '12px',
-    borderRadius: 'var(--radius-md)',
-    marginBottom: '16px',
-    fontSize: '0.9rem',
-    display: 'flex',
-    alignItems: 'center',
-    gap: '8px',
-  }
-};
 
 export const RolesPage: React.FC = () => {
   const [roles, setRoles] = useState<Role[]>([]);
@@ -126,9 +34,9 @@ export const RolesPage: React.FC = () => {
       setError(null);
     } catch (err: any) {
       if (err.response?.status === 403) {
-        setError("403 Forbidden: You do not have permission to view roles.");
+        setError('You do not have permission to view roles.');
       } else {
-        setError("Failed to load roles.");
+        setError('Failed to load roles. Please try again.');
       }
     } finally {
       setLoading(false);
@@ -144,11 +52,7 @@ export const RolesPage: React.FC = () => {
 
   const openEditModal = (role: Role) => {
     setEditingRole(role);
-    setFormData({ 
-      name: role.name, 
-      description: role.description, 
-      is_active: role.is_active 
-    });
+    setFormData({ name: role.name, description: role.description, is_active: role.is_active });
     setFormError(null);
     setIsModalOpen(true);
   };
@@ -157,24 +61,21 @@ export const RolesPage: React.FC = () => {
     e.preventDefault();
     setSaving(true);
     setFormError(null);
-
     try {
-      const payload = { ...formData };
-      
       if (editingRole) {
-        await authorizationManagementService.updateRole(editingRole.id, payload);
+        await authorizationManagementService.updateRole(editingRole.id, formData);
       } else {
-        await authorizationManagementService.createRole(payload);
+        await authorizationManagementService.createRole(formData);
       }
       setIsModalOpen(false);
       loadRoles();
     } catch (err: any) {
-      if (err.errorData && err.errorData.name) {
+      if (err.errorData?.name) {
         setFormError(err.errorData.name[0]);
       } else if (err.response?.status === 403) {
-        setFormError("Permission denied.");
+        setFormError('Permission denied.');
       } else {
-        setFormError("An error occurred while saving.");
+        setFormError('An error occurred while saving. Please try again.');
       }
     } finally {
       setSaving(false);
@@ -186,112 +87,177 @@ export const RolesPage: React.FC = () => {
       await authorizationManagementService.updateRole(role.id, { is_active: !role.is_active });
       loadRoles();
     } catch {
-      alert("Failed to toggle status.");
+      alert('Failed to toggle status.');
     }
   };
 
   const columns = [
-    { key: 'name', title: 'Name' },
-    { key: 'description', title: 'Description' },
-    { 
-      key: 'is_active', 
-      title: 'Status', 
+    {
+      key: 'name',
+      title: 'Role Name',
       render: (r: Role) => (
-        <StatusBadge status={r.is_active ? 'active' : 'inactive'} />
-      ) 
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <div
+            style={{
+              width: 32,
+              height: 32,
+              borderRadius: 'var(--radius-md)',
+              backgroundColor: 'var(--color-primary-light)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+          >
+            <ShieldAlert size={15} color="var(--color-primary)" />
+          </div>
+          <div>
+            <div style={{ fontWeight: 600, fontSize: 'var(--font-size-sm)' }}>{r.name}</div>
+          </div>
+        </div>
+      ),
     },
-    { 
-      key: 'actions', 
-      title: 'Actions', 
+    {
+      key: 'description',
+      title: 'Description',
       render: (r: Role) => (
-        <div>
-          <button style={styles.actionBtn} onClick={() => openEditModal(r)} title="Edit Role">
-            <Edit2 size={18} />
+        <span style={{ color: 'var(--color-text-muted)', fontSize: 'var(--font-size-sm)' }}>
+          {r.description || '—'}
+        </span>
+      ),
+    },
+    {
+      key: 'is_active',
+      title: 'Status',
+      render: (r: Role) => <StatusBadge status={r.is_active ? 'active' : 'inactive'} />,
+    },
+    {
+      key: 'actions',
+      title: 'Actions',
+      render: (r: Role) => (
+        <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+          <button
+            className="btn btn-sm btn-secondary btn-icon"
+            onClick={() => openEditModal(r)}
+            title="Edit role"
+            type="button"
+          >
+            <Edit2 size={14} />
           </button>
-          <button style={styles.actionBtn} onClick={() => navigate(`/admin/roles/${r.id}/permissions`)} title="Manage Permissions">
-            <Shield size={18} color="var(--color-primary)" />
+          <button
+            className="btn btn-sm btn-secondary btn-icon"
+            onClick={() => navigate(`/admin/roles/${r.id}/permissions`)}
+            title="Manage permissions"
+            type="button"
+            style={{ color: 'var(--color-primary)' }}
+          >
+            <Shield size={14} />
           </button>
-          <button style={styles.actionBtn} onClick={() => toggleActive(r)} title={r.is_active ? "Deactivate" : "Activate"}>
-            <Power size={18} color={r.is_active ? "var(--color-status-success)" : "var(--color-text-muted)"} />
+          <button
+            className="btn btn-sm btn-secondary btn-icon"
+            onClick={() => toggleActive(r)}
+            title={r.is_active ? 'Deactivate role' : 'Activate role'}
+            type="button"
+            style={{ color: r.is_active ? 'var(--color-status-success)' : 'var(--color-text-muted)' }}
+          >
+            <Power size={14} />
           </button>
         </div>
-      ) 
-    }
+      ),
+    },
   ];
 
   if (loading && roles.length === 0) {
     return (
-      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '400px' }}>
-        <Loader2 size={32} color="var(--color-primary)" style={{ animation: 'spin 1s linear infinite' }} />
+      <div className="loading-center">
+        <Loader2 size={28} className="animate-spin" style={{ color: 'var(--color-primary)' }} />
+        <span>Loading roles…</span>
       </div>
-    );
-  }
-
-  if (error && roles.length === 0) {
-    return (
-      <Card>
-        <div style={styles.errorBox}>
-          <AlertCircle size={20} />
-          <span>{error}</span>
-        </div>
-      </Card>
     );
   }
 
   return (
-    <div>
-      <div style={styles.header}>
-        <h1 style={styles.title}>Roles Management</h1>
-        <button style={styles.button} onClick={openCreateModal}>
-          <Plus size={18} /> Add Role
-        </button>
-      </div>
+    <div className="animate-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: 'var(--spacing-lg)' }}>
+      <PageHeader
+        title="Roles & Permissions"
+        subtitle="Manage access control roles for your organization."
+        actions={
+          <button className="btn btn-primary" onClick={openCreateModal} type="button">
+            <Plus size={16} /> Add Role
+          </button>
+        }
+      />
 
-      <Card>
-        <Table data={roles} columns={columns} keyExtractor={(r) => r.id} />
+      {error && <AlertBanner type="error" message={error} />}
+
+      <Card noPadding>
+        <Table
+          data={roles}
+          columns={columns}
+          keyExtractor={(r) => r.id}
+          emptyIcon={ShieldAlert}
+          emptyTitle="No roles configured"
+          emptyDescription="Create the first role to start managing access control."
+        />
       </Card>
 
       {isModalOpen && (
-        <div style={styles.modalOverlay}>
-          <div style={styles.modalContent}>
-            <h2 style={{ marginTop: 0 }}>{editingRole ? 'Edit Role' : 'Add Role'}</h2>
-            
-            {formError && (
-              <div style={styles.errorBox}>
-                <AlertCircle size={18} /> {formError}
-              </div>
-            )}
+        <Modal
+          title={editingRole ? 'Edit Role' : 'New Role'}
+          onClose={() => setIsModalOpen(false)}
+          size="sm"
+          footer={
+            <>
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={() => setIsModalOpen(false)}
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                form="role-form"
+                className="btn btn-primary"
+                disabled={saving}
+              >
+                {saving ? <Loader2 size={15} className="animate-spin" /> : null}
+                {editingRole ? 'Save Changes' : 'Create Role'}
+              </button>
+            </>
+          }
+        >
+          {formError && (
+            <AlertBanner type="error" message={formError} style={{ marginBottom: 'var(--spacing-md)' }} />
+          )}
 
-            <form onSubmit={handleSave}>
-              <div style={styles.formGroup}>
-                <label style={styles.label}>Name</label>
-                <input 
-                  style={styles.input} 
+          <form id="role-form" onSubmit={handleSave}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--spacing-md)' }}>
+              <div className="form-group">
+                <label className="form-label" htmlFor="role-name">Role Name <span aria-hidden>*</span></label>
+                <input
+                  id="role-name"
+                  className="input-field"
                   value={formData.name}
-                  onChange={(e) => setFormData({...formData, name: e.target.value})}
+                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                  placeholder="e.g. HR Manager"
                   required
+                  autoFocus
                 />
               </div>
-              <div style={styles.formGroup}>
-                <label style={styles.label}>Description</label>
-                <input 
-                  style={styles.input} 
+              <div className="form-group">
+                <label className="form-label" htmlFor="role-description">Description</label>
+                <textarea
+                  id="role-description"
+                  className="input-field"
+                  style={{ minHeight: 80 }}
                   value={formData.description}
-                  onChange={(e) => setFormData({...formData, description: e.target.value})}
+                  onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                  placeholder="Optional description…"
                 />
               </div>
-              
-              <div style={styles.modalActions}>
-                <button type="button" style={styles.cancelBtn} onClick={() => setIsModalOpen(false)}>
-                  Cancel
-                </button>
-                <button type="submit" style={styles.button} disabled={saving}>
-                  {saving ? <Loader2 size={18} style={{ animation: 'spin 1s linear infinite' }}/> : 'Save'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
+            </div>
+          </form>
+        </Modal>
       )}
     </div>
   );

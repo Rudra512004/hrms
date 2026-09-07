@@ -1,6 +1,6 @@
 import React from 'react';
-import { Menu, Search, Bell, User, LogOut } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { Menu, User, LogOut, ChevronRight } from 'lucide-react';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 
 interface HeaderProps {
@@ -8,8 +8,38 @@ interface HeaderProps {
   isSidebarOpen: boolean;
 }
 
+// Maps route prefixes to human-readable breadcrumb labels
+const routeLabels: Record<string, string> = {
+  '/dashboard': 'Dashboard',
+  '/attendance': 'My Attendance',
+  '/leaves': 'My Leave',
+  '/profile': 'My Profile',
+  '/admin/employees': 'Employees',
+  '/admin/attendance': 'Attendance Management',
+  '/admin/leaves': 'Leave Requests',
+  '/admin/leave-types': 'Leave Types',
+  '/admin/wfh': 'WFH Requests',
+  '/admin/roles': 'Roles & Permissions',
+  '/admin/audit-logs': 'Audit Logs',
+  '/admin/office-networks': 'Office Networks',
+  '/admin/organizations': 'Organizations',
+  '/admin/departments': 'Departments',
+  '/admin/designations': 'Designations',
+};
+
+function getBreadcrumb(pathname: string): string {
+  // Exact match first
+  if (routeLabels[pathname]) return routeLabels[pathname];
+  // Prefix match (handles /admin/employees/:id etc.)
+  const match = Object.keys(routeLabels)
+    .filter(k => pathname.startsWith(k))
+    .sort((a, b) => b.length - a.length)[0];
+  return match ? routeLabels[match] : 'BEYONDSURE HRMS';
+}
+
 export const Header: React.FC<HeaderProps> = ({ toggleSidebar }) => {
   const navigate = useNavigate();
+  const location = useLocation();
   const { user, logout } = useAuth();
 
   const handleLogout = async () => {
@@ -17,68 +47,84 @@ export const Header: React.FC<HeaderProps> = ({ toggleSidebar }) => {
     navigate('/login');
   };
 
-  const getInitials = (firstName: string, lastName: string) => {
-    return `${firstName?.charAt(0) || ''}${lastName?.charAt(0) || ''}`.toUpperCase();
-  };
+  const getInitials = (firstName: string, lastName: string) =>
+    `${firstName?.charAt(0) || ''}${lastName?.charAt(0) || ''}`.toUpperCase() || '?';
+
+  const breadcrumb = getBreadcrumb(location.pathname);
 
   return (
     <header className="app-header">
-      <div className="flex items-center gap-4">
-        <button className="header-toggle" onClick={toggleSidebar}>
+      {/* Left: toggle + breadcrumb */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '12px', minWidth: 0 }}>
+        <button
+          className="header-toggle"
+          onClick={toggleSidebar}
+          aria-label="Toggle sidebar"
+          type="button"
+        >
           <Menu size={20} />
         </button>
-        <div className="flex items-center gap-2 hide-on-mobile">
-          <Search size={18} className="text-muted" />
-          <input 
-            type="text" 
-            placeholder="Search..." 
-            style={{ 
-              border: 'none', 
-              background: 'transparent', 
-              outline: 'none', 
-              fontSize: '0.875rem' 
-            }}
-          />
+        <div
+          className="hide-on-mobile"
+          style={{ display: 'flex', alignItems: 'center', gap: '6px', minWidth: 0 }}
+        >
+          <span style={{ fontSize: 'var(--font-size-xs)', color: 'var(--color-text-muted)', fontWeight: 500 }}>
+            BEYONDSURE HRMS
+          </span>
+          <ChevronRight size={12} color="var(--color-text-muted)" />
+          <span style={{ fontSize: 'var(--font-size-sm)', fontWeight: 600, color: 'var(--color-text-main)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {breadcrumb}
+          </span>
         </div>
       </div>
-      
-      <div className="flex items-center gap-4">
-        <button className="btn-ghost" style={{ padding: '8px', borderRadius: '50%' }}>
-          <Bell size={20} />
-        </button>
-        
-        <div className="flex items-center gap-2">
-          <div className="hide-on-mobile" style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
-            <span style={{ fontSize: '0.875rem', fontWeight: 500 }}>
-              {user ? `${user.firstName} ${user.lastName}` : 'Loading...'}
-            </span>
-            <span style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>
-              {user ? user.email : ''}
-            </span>
-          </div>
-          <div style={{
-            width: '36px',
-            height: '36px',
+
+      {/* Right: user info */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+        <div
+          className="hide-on-mobile"
+          style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}
+        >
+          <span style={{ fontSize: 'var(--font-size-sm)', fontWeight: 600, color: 'var(--color-text-main)', lineHeight: 1.3 }}>
+            {user ? `${user.firstName} ${user.lastName}`.trim() || user.email : '…'}
+          </span>
+          <span style={{ fontSize: 'var(--font-size-xs)', color: 'var(--color-text-muted)', lineHeight: 1.3 }}>
+            {user?.email}
+          </span>
+        </div>
+
+        <button
+          onClick={() => navigate('/profile')}
+          title="My Profile"
+          type="button"
+          style={{
+            width: 36,
+            height: 36,
             borderRadius: '50%',
             backgroundColor: 'var(--color-primary-light)',
             color: 'var(--color-primary)',
+            border: '2px solid var(--color-primary-border)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            fontWeight: 600,
-            fontSize: '0.875rem'
-          }}>
-            {user ? getInitials(user.firstName, user.lastName) : <User size={18} />}
-          </div>
-          <button 
-            className="btn-ghost" 
-            style={{ padding: '8px', borderRadius: '50%' }} 
-            onClick={handleLogout} 
-            title="Logout"
-          >
-            <LogOut size={18} />
-          </button>
-        </div>
+            fontWeight: 700,
+            fontSize: 'var(--font-size-xs)',
+            cursor: 'pointer',
+            flexShrink: 0,
+            transition: 'border-color 0.15s',
+          }}
+        >
+          {user ? getInitials(user.firstName, user.lastName) : <User size={16} />}
+        </button>
+
+        <button
+          className="header-toggle"
+          onClick={handleLogout}
+          title="Logout"
+          type="button"
+          aria-label="Logout"
+        >
+          <LogOut size={18} />
+        </button>
       </div>
     </header>
   );
