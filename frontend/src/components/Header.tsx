@@ -8,110 +8,7 @@ interface HeaderProps {
   isSidebarOpen: boolean;
 }
 
-const styles = {
-  header: (isOpen: boolean) => ({
-    height: '62px',
-    backgroundColor: 'var(--color-bg-header)',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    padding: '0 var(--spacing-md)',
-    position: 'fixed' as const,
-    top: '1rem',
-    right: '1.5rem',
-    left: isOpen ? 'calc(var(--sidebar-width) + 1.5rem)' : 'calc(var(--sidebar-width-collapsed) + 1.5rem)',
-    zIndex: 90,
-    transition: 'left 0.3s ease',
-    borderRadius: 'var(--radius-md)',
-    boxShadow: 'var(--shadow-sm)',
-  }),
-  leftSide: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: 'var(--spacing-md)',
-  },
-  toggleBtn: {
-    background: 'none',
-    border: 'none',
-    color: 'var(--color-text-main)',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 'var(--spacing-xs)',
-    borderRadius: 'var(--radius-sm)',
-  },
-  searchBox: {
-    display: 'flex',
-    alignItems: 'center',
-    backgroundColor: 'transparent',
-    padding: '0.4rem',
-  },
-  searchInput: {
-    border: 'none',
-    background: 'none',
-    outline: 'none',
-    marginLeft: 'var(--spacing-sm)',
-    fontSize: '0.95rem',
-    width: '200px',
-    color: 'var(--color-text-main)',
-  },
-  rightSide: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: 'var(--spacing-md)',
-  },
-  iconBtn: {
-    background: 'none',
-    border: 'none',
-    color: 'var(--color-text-main)',
-    position: 'relative' as const,
-    cursor: 'pointer',
-    padding: '8px',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: '50%',
-  },
-  badge: {
-    position: 'absolute' as const,
-    top: '2px',
-    right: '2px',
-    backgroundColor: 'var(--color-status-danger)',
-    color: '#fff',
-    fontSize: '0.65rem',
-    fontWeight: 'bold',
-    width: '16px',
-    height: '16px',
-    borderRadius: '50%',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  userArea: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: 'var(--spacing-sm)',
-    cursor: 'pointer',
-    paddingLeft: 'var(--spacing-sm)',
-  },
-  avatar: {
-    width: '38px',
-    height: '38px',
-    borderRadius: '50%',
-    backgroundColor: 'var(--color-primary)',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    color: '#fff',
-  },
-  userName: {
-    fontSize: '0.9rem',
-    fontWeight: 500,
-    color: 'var(--color-text-main)',
-  }
-};
-
-export const Header: React.FC<HeaderProps> = ({ toggleSidebar, isSidebarOpen }) => {
+export const Header: React.FC<HeaderProps> = ({ toggleSidebar }) => {
   const navigate = useNavigate();
   const { user, logout } = useAuth();
 
@@ -121,47 +18,65 @@ export const Header: React.FC<HeaderProps> = ({ toggleSidebar, isSidebarOpen }) 
   };
 
   const getInitials = (firstName: string, lastName: string) => {
-    return `${firstName.charAt(0)}${lastName.charAt(0)}`.toUpperCase();
+    return `${firstName?.charAt(0) || ''}${lastName?.charAt(0) || ''}`.toUpperCase();
   };
 
   return (
-    <header style={styles.header(isSidebarOpen)}>
-      <div style={styles.leftSide}>
-        <button style={styles.toggleBtn} onClick={toggleSidebar}>
-          <Menu size={24} />
+    <header className="app-header">
+      <div className="flex items-center gap-4">
+        <button className="header-toggle" onClick={toggleSidebar}>
+          <Menu size={20} />
         </button>
-        <div style={styles.searchBox} className="desktop-only">
-          <Search size={20} color="var(--color-text-main)" />
+        <div className="flex items-center gap-2 hide-on-mobile">
+          <Search size={18} className="text-muted" />
           <input 
             type="text" 
-            placeholder="Search (Ctrl+/)" 
-            style={styles.searchInput}
+            placeholder="Search..." 
+            style={{ 
+              border: 'none', 
+              background: 'transparent', 
+              outline: 'none', 
+              fontSize: '0.875rem' 
+            }}
           />
         </div>
       </div>
       
-      <div style={styles.rightSide}>
-        <button style={styles.iconBtn}>
-          <Bell size={22} />
-          {/* <span style={styles.badge}>4</span> */}
+      <div className="flex items-center gap-4">
+        <button className="btn-ghost" style={{ padding: '8px', borderRadius: '50%' }}>
+          <Bell size={20} />
         </button>
         
-        <div style={styles.userArea}>
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', marginRight: '8px' }}>
-            <span style={styles.userName}>{user ? `${user.firstName} ${user.lastName}` : 'Loading...'}</span>
+        <div className="flex items-center gap-2">
+          <div className="hide-on-mobile" style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
+            <span style={{ fontSize: '0.875rem', fontWeight: 500 }}>
+              {user ? `${user.firstName} ${user.lastName}` : 'Loading...'}
+            </span>
             <span style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>
               {user ? user.email : ''}
             </span>
           </div>
-          <div style={styles.avatar}>
-            {user ? (
-              <span style={{ fontSize: '0.9rem', fontWeight: 600 }}>{getInitials(user.firstName, user.lastName)}</span>
-            ) : (
-              <User size={20} />
-            )}
+          <div style={{
+            width: '36px',
+            height: '36px',
+            borderRadius: '50%',
+            backgroundColor: 'var(--color-primary-light)',
+            color: 'var(--color-primary)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            fontWeight: 600,
+            fontSize: '0.875rem'
+          }}>
+            {user ? getInitials(user.firstName, user.lastName) : <User size={18} />}
           </div>
-          <button style={{...styles.iconBtn, marginLeft: '4px'}} onClick={handleLogout} title="Logout">
-            <LogOut size={20} />
+          <button 
+            className="btn-ghost" 
+            style={{ padding: '8px', borderRadius: '50%' }} 
+            onClick={handleLogout} 
+            title="Logout"
+          >
+            <LogOut size={18} />
           </button>
         </div>
       </div>
