@@ -6,7 +6,7 @@ import { organizationService, type Organization, type Department, type Designati
 import { Card } from '../../components/Card';
 import { Table } from '../../components/Table';
 import { StatusBadge } from '../../components/StatusBadge';
-import { Plus, Edit2, Shield, Power, AlertCircle, Loader2 } from 'lucide-react';
+import { Plus, Edit2, Shield, Power, AlertCircle, Loader2, Search, Eye } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 
 
@@ -144,6 +144,8 @@ export const EmployeesPage: React.FC = () => {
   const [managers, setManagers] = useState<EmployeeProfile[]>([]);
 
   const [statusFilter, setStatusFilter] = useState('all');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [departmentFilter, setDepartmentFilter] = useState('all');
 
   const [formData, setFormData] = useState({
     email: '',
@@ -350,9 +352,24 @@ export const EmployeesPage: React.FC = () => {
   };
 
   const filteredEmployees = useMemo(() => {
-    if (statusFilter === 'all') return employees;
-    return employees.filter(e => (e.employment_status || e.status) === statusFilter);
-  }, [employees, statusFilter]);
+    return employees.filter(e => {
+      const matchStatus = statusFilter === 'all' || (e.employment_status || e.status) === statusFilter;
+      const matchDept = departmentFilter === 'all' || e.department_name === departmentFilter;
+      const q = searchQuery.toLowerCase();
+      const matchSearch = q === '' || 
+        e.first_name.toLowerCase().includes(q) || 
+        e.last_name.toLowerCase().includes(q) || 
+        e.employee_code.toLowerCase().includes(q) ||
+        (e.email && e.email.toLowerCase().includes(q));
+      
+      return matchStatus && matchDept && matchSearch;
+    });
+  }, [employees, statusFilter, departmentFilter, searchQuery]);
+
+  const uniqueDepartments = useMemo(() => {
+    const depts = new Set(employees.map(e => e.department_name).filter(Boolean));
+    return Array.from(depts);
+  }, [employees]);
 
   const columns = [
     { key: 'employee_code', title: 'Code' },
@@ -372,6 +389,10 @@ export const EmployeesPage: React.FC = () => {
       title: 'Actions',
       render: (e: EmployeeProfile) => (
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
+          <button style={styles.actionBtn} onClick={() => navigate(`/admin/employees/${e.id}`)} title="View Profile">
+            <Eye size={18} color="var(--color-primary)" />
+          </button>
+
           {hasPermission('employee.update') && (
             <button style={styles.actionBtn} onClick={() => openEditModal(e)} title="Edit Employee">
               <Edit2 size={18} />
@@ -434,7 +455,28 @@ export const EmployeesPage: React.FC = () => {
       )}
 
       <Card>
-        <div style={styles.filterGroup}>
+        <div style={{ display: 'flex', gap: 'var(--spacing-md)', marginBottom: 'var(--spacing-lg)', flexWrap: 'wrap' }}>
+          <div style={{ flex: '1', minWidth: '250px', position: 'relative' }}>
+            <div style={{ position: 'absolute', top: '10px', left: '12px', color: 'var(--color-text-muted)' }}>
+              <Search size={18} />
+            </div>
+            <input 
+              style={{...styles.input, paddingLeft: '38px'}} 
+              placeholder="Search by name, code, or email..." 
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+            />
+          </div>
+          <select
+            style={{...styles.input, width: '200px'}}
+            value={departmentFilter}
+            onChange={(e) => setDepartmentFilter(e.target.value)}
+          >
+            <option value="all">All Departments</option>
+            {uniqueDepartments.map(dept => (
+              <option key={dept} value={dept}>{dept}</option>
+            ))}
+          </select>
           <select
             style={{...styles.input, width: '200px'}}
             value={statusFilter}

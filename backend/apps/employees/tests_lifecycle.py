@@ -15,18 +15,20 @@ class EmployeeLifecycleAPITests(TestCase):
     def setUp(self):
         self.client = APIClient()
         self.admin_user = User.objects.create_user(email='admin@example.com', password='password123', status='active')
+        self.org = Organization.objects.create(name='Test Org')
         self.employee_user = User.objects.create_user(email='emp@example.com', password='password123', status='active')
         
         self.employee = Employee.objects.create(
             user=self.employee_user, 
             employee_code='E001',
             personal_email='personal@example.com',
-            phone_number='1234567890'
+            phone_number='1234567890',
+            organization=self.org
         )
         
-        self.admin_emp = Employee.objects.create(user=self.admin_user, employee_code='E002')
+        self.admin_emp = Employee.objects.create(user=self.admin_user, employee_code='E002', organization=self.org)
 
-        self.org = Organization.objects.create(name='Test Org')
+
         self.role = Role.objects.create(name='HRRole', organization=self.org)
         UserRole.objects.create(user=self.admin_user, role=self.role)
         

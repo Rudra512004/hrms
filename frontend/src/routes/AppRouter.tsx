@@ -21,6 +21,7 @@ import { AdminLeavePage } from '../pages/admin/AdminLeavePage';
 import { OfficeNetworksPage } from '../pages/admin/OfficeNetworksPage';
 import { WfhRequestsPage } from '../pages/admin/WfhRequestsPage';
 import { EmployeesPage } from '../pages/admin/EmployeesPage';
+import { EmployeeProfilePage } from '../pages/admin/EmployeeProfilePage';
 import { EmployeeAccessPage } from '../pages/admin/EmployeeAccessPage';
 import { AuditLogsPage } from '../pages/admin/AuditLogsPage';
 import { AdminLeaveTypesPage } from '../pages/admin/AdminLeaveTypesPage';
@@ -57,6 +58,7 @@ export const AppRouter: React.FC = () => {
 
           <Route element={<ProtectedRoute requiredPermission="employee.view" />}>
             <Route path="/admin/employees" element={<EmployeesPage />} />
+            <Route path="/admin/employees/:id" element={<EmployeeProfilePage />} />
             <Route path="/admin/employees/:employeeId/access" element={<EmployeeAccessPage />} />
           </Route>
 

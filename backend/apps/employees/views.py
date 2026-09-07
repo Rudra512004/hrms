@@ -97,9 +97,12 @@ class EmployeeManagementViewSet(viewsets.ModelViewSet):
         return permissions
 
     def get_queryset(self):
-        # ARCHITECTURAL LIMITATION: Employee model does not have an organization relationship.
-        # Returning all employees instead of attempting to scope by organization.
-        return Employee.objects.all()
+        user = self.request.user
+        if user.is_superuser:
+            return Employee.objects.all()
+        if hasattr(user, 'employee') and user.employee.organization_id:
+            return Employee.objects.filter(organization_id=user.employee.organization_id)
+        return Employee.objects.none()
 
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
