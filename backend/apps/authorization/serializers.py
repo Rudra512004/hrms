@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Role, Permission, UserRole, UserPermissionGrant
+from .models import Role, Permission, UserRole, UserPermissionGrant, RolePermission
 from django.contrib.auth import get_user_model
 
 User = get_user_model()
@@ -15,6 +15,15 @@ class RoleSerializer(serializers.ModelSerializer):
         model = Role
         fields = ['id', 'organization', 'name', 'description', 'is_active']
         read_only_fields = ['organization']
+
+class RolePermissionSerializer(serializers.ModelSerializer):
+    permission_codename = serializers.CharField(source='permission.codename', read_only=True)
+
+    class Meta:
+        model = RolePermission
+        fields = ['id', 'role', 'permission', 'permission_codename', 'created_at']
+        read_only_fields = ['created_at']
+
 
 class UserRoleSerializer(serializers.ModelSerializer):
     role_name = serializers.CharField(source='role.name', read_only=True)

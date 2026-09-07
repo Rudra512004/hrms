@@ -1,6 +1,6 @@
 import React from 'react';
 import { Card } from '../../components/Card';
-import { Network, FileText, Loader2, Settings, Users, Building2, GitBranch, Briefcase, Calendar, ShieldAlert } from 'lucide-react';
+import { Network, FileText, Loader2, Settings, Users, Building2, GitBranch, Briefcase, Calendar, ShieldAlert, Shield } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
 
@@ -165,6 +165,13 @@ export const AdminDashboardPage: React.FC = () => {
           icon={<Calendar size={28} />} 
           color="var(--color-status-warning)" 
           onClick={() => navigate('/admin/leave-types')}
+        />
+        <NavCard 
+          title="Roles & Permissions" 
+          desc="Manage system roles and access permissions dynamically"
+          icon={<Shield size={28} />} 
+          color="var(--color-status-success)" 
+          onClick={() => navigate('/admin/roles')}
         />
         <NavCard 
           title="Audit Logs" 

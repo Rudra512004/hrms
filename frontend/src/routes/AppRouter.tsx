@@ -25,6 +25,8 @@ import { EmployeesPage } from '../pages/admin/EmployeesPage';
 import { EmployeeAccessPage } from '../pages/admin/EmployeeAccessPage';
 import { AuditLogsPage } from '../pages/admin/AuditLogsPage';
 import { AdminLeaveTypesPage } from '../pages/admin/AdminLeaveTypesPage';
+import { RolesPage } from '../pages/admin/RolesPage';
+import { RolePermissionsPage } from '../pages/admin/RolePermissionsPage';
 import { OrganizationsPage } from '../pages/admin/organization/OrganizationsPage';
 import { DepartmentsPage } from '../pages/admin/organization/DepartmentsPage';
 import { DesignationsPage } from '../pages/admin/organization/DesignationsPage';
@@ -85,6 +87,11 @@ export const AppRouter: React.FC = () => {
 
           <Route element={<ProtectedRoute requiredPermission="leave_type.manage" />}>
             <Route path="/admin/leave-types" element={<AdminLeaveTypesPage />} />
+          </Route>
+
+          <Route element={<ProtectedRoute requiredPermission="role.view" />}>
+            <Route path="/admin/roles" element={<RolesPage />} />
+            <Route path="/admin/roles/:roleId/permissions" element={<RolePermissionsPage />} />
           </Route>
 
           <Route element={<ProtectedRoute requiredPermission="audit.view" />}>
