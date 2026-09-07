@@ -16,12 +16,21 @@ class LeaveTypeViewSet(viewsets.ReadOnlyModelViewSet):
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
-        # ARCHITECTURAL LIMITATION: Employee model does not have an organization relationship.
-        return LeaveType.objects.filter(is_active=True)
+        user = self.request.user
+        if hasattr(user, 'employee') and user.employee.organization_id:
+            return LeaveType.objects.filter(is_active=True, organization_id=user.employee.organization_id)
+        return LeaveType.objects.none()
 
 class AdminLeaveTypeViewSet(viewsets.ModelViewSet):
-    queryset = LeaveType.objects.all()
     serializer_class = LeaveTypeSerializer
+
+    def get_queryset(self):
+        user = self.request.user
+        if user.is_superuser:
+            return LeaveType.objects.all()
+        if hasattr(user, 'employee') and user.employee.organization_id:
+            return LeaveType.objects.filter(organization_id=user.employee.organization_id)
+        return LeaveType.objects.none()
 
     def get_permissions(self):
         permission_class = require_permission('leave_type.manage')
@@ -31,8 +40,16 @@ class AdminLeaveTypeViewSet(viewsets.ModelViewSet):
         from django.db import IntegrityError
         from rest_framework.exceptions import ValidationError
         
-        # ARCHITECTURAL LIMITATION: Assign to default organization for single-tenant setup
-        org = Organization.objects.first()
+        # Enforce organization isolation
+        if self.request.user.is_superuser and not hasattr(self.request.user, 'employee'):
+            # Fallback for superadmin without an employee profile
+            org = Organization.objects.first()
+        else:
+            org = self.request.user.employee.organization
+
+        if not org:
+            raise ValidationError({"organization": "User does not belong to an organization."})
+
         try:
             leave_type = serializer.save(organization=org)
             AuditService.log(
@@ -64,10 +81,10 @@ class AdminLeaveTypeViewSet(viewsets.ModelViewSet):
     def destroy(self, request, *args, **kwargs):
         leave_type = self.get_object()
         
-        # Safe deletion: check for references
-        if leave_type.balances.exists() or leave_type.requests.exists():
+        # Safe deletion: check for requests or USED balances
+        if leave_type.requests.exists() or leave_type.balances.filter(used__gt=0).exists():
             return Response(
-                {"detail": "Cannot delete leave type that is in use by balances or requests."},
+                {"detail": "Cannot delete leave type that is in use by requests or has consumed balances."},
                 status=status.HTTP_409_CONFLICT
             )
             
@@ -101,7 +118,11 @@ class LeaveRequestViewSet(viewsets.ModelViewSet):
         if not user.is_authenticated:
             return LeaveRequest.objects.none()
         if AuthorizationService.has_permission(user, 'leave.view'):
-            return LeaveRequest.objects.all()
+            if user.is_superuser:
+                return LeaveRequest.objects.all()
+            if hasattr(user, 'employee') and user.employee.organization_id:
+                return LeaveRequest.objects.filter(employee__organization_id=user.employee.organization_id)
+            return LeaveRequest.objects.none()
         if hasattr(user, 'employee'):
             return LeaveRequest.objects.filter(employee=user.employee)
         return LeaveRequest.objects.none()

@@ -17,13 +17,13 @@ class LeaveAPITests(TestCase):
         self.org = Organization.objects.create(name='Test Org')
 
         self.user = User.objects.create_user(email='emp@example.com', password='Password123!', status='active')
-        self.employee = Employee.objects.create(user=self.user, employee_code='EMP01')
+        self.employee = Employee.objects.create(user=self.user, employee_code='EMP01', organization=self.org)
 
         self.manager_user = User.objects.create_user(email='manager@example.com', password='Password123!', status='active')
-        self.manager_employee = Employee.objects.create(user=self.manager_user, employee_code='MGR01')
+        self.manager_employee = Employee.objects.create(user=self.manager_user, employee_code='MGR01', organization=self.org)
 
         self.leave_type = LeaveType.objects.create(organization=self.org, name='Sick Leave', annual_allocation=10)
-        self.balance = LeaveBalance.objects.create(employee=self.employee, leave_type=self.leave_type, allocated=10, used=0)
+        self.balance = LeaveBalance.objects.get(employee=self.employee, leave_type=self.leave_type)
 
         self.external_ip = '198.51.100.5'
 
@@ -122,7 +122,10 @@ class AdminLeaveTypeAPITests(TestCase):
         
         self.superadmin = User.objects.create_user(email='super@example.com', password='Password123!', status='active', is_superuser=True)
         self.admin = User.objects.create_user(email='admin@example.com', password='Password123!', status='active')
+        self.admin_employee = Employee.objects.create(user=self.admin, employee_code='ADM01', organization=self.org)
+        
         self.employee = User.objects.create_user(email='emp2@example.com', password='Password123!', status='active')
+        self.emp_profile = Employee.objects.create(user=self.employee, employee_code='EMP02', organization=self.org)
         
         self.leave_type = LeaveType.objects.create(organization=self.org, name='Initial Leave', annual_allocation=5)
 
@@ -199,8 +202,13 @@ class AdminLeaveTypeAPITests(TestCase):
 
     def test_referenced_leave_type_cannot_be_deleted(self):
         self.client.force_authenticate(user=self.superadmin)
-        emp_profile = Employee.objects.create(user=self.employee, employee_code='E99')
-        LeaveBalance.objects.create(employee=emp_profile, leave_type=self.leave_type, allocated=5)
+        # Create a request to make it undeletable
+        LeaveRequest.objects.create(
+            employee=self.emp_profile, leave_type=self.leave_type,
+            start_date=timezone.now().date() + timedelta(days=1),
+            end_date=timezone.now().date() + timedelta(days=2),
+            reason='Testing'
+        )
         
         from unittest.mock import patch
         with patch('apps.authorization.services.AuthorizationService.has_permission', return_value=True):
