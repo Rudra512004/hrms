@@ -118,13 +118,23 @@ export const LoginPage: React.FC = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    await authService.login(email.toLowerCase().trim(), password);
-    await refreshAuth();
-    // Temporary redirect for development shell
-    navigate('/dashboard');
+    setError(null);
+    setIsLoading(true);
+    try {
+      await authService.login(email.toLowerCase().trim(), password);
+      await refreshAuth();
+      // Temporary redirect for development shell
+      navigate('/dashboard');
+    } catch (err: any) {
+      setError(err.message || 'Login failed. Please check your credentials.');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -132,6 +142,12 @@ export const LoginPage: React.FC = () => {
       <div style={styles.logo}>BEYONDSURE HRMS</div>
       <div style={styles.card}>
         <h2 style={styles.title}>Welcome Back</h2>
+
+        {error && (
+          <div style={{ backgroundColor: '#fee2e2', color: '#dc2626', padding: '0.75rem', borderRadius: '4px', marginBottom: '1rem', fontSize: '0.9rem', textAlign: 'center' }}>
+            {error}
+          </div>
+        )}
 
         <form onSubmit={handleLogin}>
           <div style={styles.formGroup}>
@@ -174,7 +190,9 @@ export const LoginPage: React.FC = () => {
             <Link to="/forgot-password" style={styles.link}>Forgot password?</Link>
           </div>
 
-          <button type="submit" style={styles.button}>Login</button>
+          <button type="submit" style={{...styles.button, opacity: isLoading ? 0.7 : 1}} disabled={isLoading}>
+            {isLoading ? 'Logging in...' : 'Login'}
+          </button>
         </form>
 
 

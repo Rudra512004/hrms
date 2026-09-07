@@ -18,7 +18,12 @@ class CurrentUserPermissionsView(APIView):
 
     def get(self, request):
         user = request.user
-        perms = AuthorizationService.get_effective_permissions(user)
+        
+        if user.is_superuser:
+            perms = set(Permission.objects.filter(is_active=True).values_list('codename', flat=True))
+        else:
+            perms = AuthorizationService.get_effective_permissions(user)
+            
         roles = Role.objects.filter(
             user_roles__user=user,
             user_roles__is_revoked=False,

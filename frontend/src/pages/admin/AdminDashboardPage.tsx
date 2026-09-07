@@ -1,6 +1,6 @@
 import React from 'react';
 import { Card } from '../../components/Card';
-import { Network, FileText, Loader2, Settings } from 'lucide-react';
+import { Network, FileText, Loader2, Settings, Users, Building2, GitBranch, Briefcase, Calendar, ShieldAlert } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
 
@@ -118,6 +118,34 @@ export const AdminDashboardPage: React.FC = () => {
 
       <div style={styles.grid}>
         <NavCard 
+          title="Employees" 
+          desc="Manage employee profiles, statuses, and sensitive info"
+          icon={<Users size={28} />} 
+          color="var(--color-primary)" 
+          onClick={() => navigate('/admin/employees')}
+        />
+        <NavCard 
+          title="Organizations" 
+          desc="Manage company structure and details"
+          icon={<Building2 size={28} />} 
+          color="var(--color-status-success)" 
+          onClick={() => navigate('/admin/organizations')}
+        />
+        <NavCard 
+          title="Departments" 
+          desc="Manage departments and organizational units"
+          icon={<GitBranch size={28} />} 
+          color="var(--color-status-warning)" 
+          onClick={() => navigate('/admin/departments')}
+        />
+        <NavCard 
+          title="Designations" 
+          desc="Manage job titles and roles"
+          icon={<Briefcase size={28} />} 
+          color="var(--color-status-info)" 
+          onClick={() => navigate('/admin/designations')}
+        />
+        <NavCard 
           title="Office Networks" 
           desc="Manage trusted IP ranges for network access policies"
           icon={<Network size={28} />} 
@@ -130,6 +158,20 @@ export const AdminDashboardPage: React.FC = () => {
           icon={<FileText size={28} />} 
           color="var(--color-status-info)" 
           onClick={() => navigate('/admin/wfh')}
+        />
+        <NavCard 
+          title="Leave Types" 
+          desc="Manage time off policies and leave types"
+          icon={<Calendar size={28} />} 
+          color="var(--color-status-warning)" 
+          onClick={() => navigate('/admin/leave-types')}
+        />
+        <NavCard 
+          title="Audit Logs" 
+          desc="Review system activity and security logs"
+          icon={<ShieldAlert size={28} />} 
+          color="var(--color-status-error)" 
+          onClick={() => navigate('/admin/audit-logs')}
         />
         <NavCard 
           title="System Settings" 
