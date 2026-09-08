@@ -256,3 +256,9 @@ class PayrollReportingTests(TestCase):
                 resp = self.client.get(f'/api/v1/payroll/reports/reconciliation/?period={self.period1.id}')
         self.assertEqual(resp.status_code, status.HTTP_200_OK)
 
+    def test_user_with_only_payroll_view_cannot_access_reports(self):
+        # Operational user with only payroll.view must NOT access executive reporting
+        with self._auth_user1(permissions=['payroll.view']):
+            resp = self.client.get(f'/api/v1/payroll/reports/period-summary/?period={self.period1.id}')
+        self.assertEqual(resp.status_code, status.HTTP_403_FORBIDDEN)
+

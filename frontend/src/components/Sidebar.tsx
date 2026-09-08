@@ -74,7 +74,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen }) => {
       items: [
         { path: '/payslips', label: 'My Payslips', icon: FileText },
         { path: '/payroll', label: 'Payroll', icon: DollarSign, permission: 'payroll.view' },
-        { path: '/payroll/reports', label: 'Reports', icon: BarChart2, permission: ['payroll.view_reports', 'payroll.view'] },
+        { path: '/payroll/reports', label: 'Reports', icon: BarChart2, permission: 'payroll.view_reports' },
       ],
     },
 

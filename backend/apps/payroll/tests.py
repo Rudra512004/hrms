@@ -128,6 +128,18 @@ class PayrollGenerationTest(TestCase):
         generate_payroll_for_period(self.period)
         self.assertFalse(PayrollRecord.objects.filter(period=self.period, employee=emp2).exists())
 
+    def test_effective_days_capped_at_working_days(self):
+        # Even if present + leave exceeds working days, effective_days is capped at working_days
+        working_days = _working_days_in_period(self.org.id, date(2024, 9, 1), date(2024, 9, 30))
+        # Mark 25 attendance days (e.g. including weekends)
+        for d in range(1, 26):
+            Attendance.objects.create(employee=self.emp, date=date(2024, 9, d), status='present')
+        generate_payroll_for_period(self.period)
+        record = PayrollRecord.objects.get(period=self.period, employee=self.emp)
+        self.assertEqual(record.effective_days, Decimal(working_days))
+        self.assertEqual(record.gross_salary, Decimal('30000.00'))
+        self.assertEqual(record.absent_days, 0)
+
 
 class ApprovedLeaveInPayrollTest(TestCase):
     def setUp(self):
@@ -164,6 +176,21 @@ class ApprovedLeaveInPayrollTest(TestCase):
         )
         leave_days = _approved_leave_days(self.emp, date(2024, 9, 1), date(2024, 9, 30))
         self.assertEqual(leave_days, 0)
+
+    def test_overlapping_approved_leaves_not_double_counted(self):
+        # Request 1: Mon Sep 2 to Wed Sep 4 (3 weekdays: 2, 3, 4)
+        LeaveRequest.objects.create(
+            employee=self.emp, leave_type=self.leave_type,
+            start_date=date(2024, 9, 2), end_date=date(2024, 9, 4), status='approved',
+        )
+        # Request 2: Wed Sep 4 to Fri Sep 6 (3 weekdays: 4, 5, 6 — Sep 4 overlaps)
+        LeaveRequest.objects.create(
+            employee=self.emp, leave_type=self.leave_type,
+            start_date=date(2024, 9, 4), end_date=date(2024, 9, 6), status='approved',
+        )
+        # Distinct days: Sep 2, 3, 4, 5, 6 -> 5 days (not 6)
+        leave_days = _approved_leave_days(self.emp, date(2024, 9, 1), date(2024, 9, 30))
+        self.assertEqual(leave_days, 5)
 
 
 class PayrollAPIPermissionTest(TestCase):

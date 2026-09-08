@@ -83,8 +83,8 @@ def _attendance_summary(employee, start: date, end: date) -> dict:
 
 def _approved_leave_days(employee, start: date, end: date) -> int:
     """
-    Sum duration_days of approved LeaveRequests overlapping the pay period.
-    duration_days already excludes weekends and holidays.
+    Count distinct working days of approved LeaveRequests overlapping the pay period.
+    Excludes weekends and holidays, and deduplicates overlapping requests.
     """
     requests = LeaveRequest.objects.filter(
         employee=employee,
@@ -92,26 +92,24 @@ def _approved_leave_days(employee, start: date, end: date) -> int:
         start_date__lte=end,
         end_date__gte=start,
     )
-    total = 0
+    leave_dates = set()
+    holiday_dates = set(
+        Holiday.objects.filter(
+            organization=employee.organization,
+            date__range=[start, end],
+            is_active=True,
+        ).values_list('date', flat=True)
+    )
     for lr in requests:
-        # Clip the leave to the period boundary before counting
         clipped_start = max(lr.start_date, start)
         clipped_end = min(lr.end_date, end)
 
-        # Count working days in the clipped range (excludes weekends/holidays)
-        holiday_dates = set(
-            Holiday.objects.filter(
-                organization=employee.organization,
-                date__range=[clipped_start, clipped_end],
-                is_active=True,
-            ).values_list('date', flat=True)
-        )
         current = clipped_start
         while current <= clipped_end:
             if current.weekday() < 5 and current not in holiday_dates:
-                total += 1
+                leave_dates.add(current)
             current += timedelta(days=1)
-    return total
+    return len(leave_dates)
 
 
 def generate_payroll_for_period(period: PayrollPeriod, requesting_user=None) -> list:
@@ -149,7 +147,9 @@ def generate_payroll_for_period(period: PayrollPeriod, requesting_user=None) -> 
         present = att['present']
         half = att['half']
         # Effective paid days: full present + half_days * 0.5 + approved leave
-        effective_days = Decimal(present) + Decimal(half) * Decimal('0.5') + Decimal(leave_days)
+        calculated_effective = Decimal(present) + Decimal(half) * Decimal('0.5') + Decimal(leave_days)
+        # Cap effective days at working days to avoid unbudgeted overpayment
+        effective_days = min(Decimal(working_days), calculated_effective) if working_days > 0 else Decimal('0.00')
 
         if working_days > 0:
             gross = (basic_salary * effective_days / Decimal(working_days)).quantize(
@@ -158,7 +158,7 @@ def generate_payroll_for_period(period: PayrollPeriod, requesting_user=None) -> 
         else:
             gross = Decimal('0.00')
 
-        absent_days = max(0, working_days - present - half - leave_days)
+        absent_days = max(0, working_days - int(effective_days))
 
         record = PayrollRecord(
             period=period,

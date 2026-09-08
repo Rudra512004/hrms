@@ -282,3 +282,29 @@ class AdminLeaveTypeAPITests(TestCase):
         
         balance.refresh_from_db()
         self.assertEqual(balance.used, 5 - duration)
+
+    def test_cannot_delete_approved_request_via_api(self):
+        self.client.force_authenticate(user=self.employee)
+        req = LeaveRequest.objects.create(
+            employee=self.emp_profile, leave_type=self.leave_type,
+            start_date=timezone.now().date() + timedelta(days=5),
+            end_date=timezone.now().date() + timedelta(days=6),
+            reason='Testing API delete',
+            status='approved'
+        )
+        response = self.client.delete(reverse('leave-requests-detail', kwargs={'pk': req.id}))
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertTrue(LeaveRequest.objects.filter(id=req.id).exists())
+
+    def test_can_delete_pending_request_via_api(self):
+        self.client.force_authenticate(user=self.employee)
+        req = LeaveRequest.objects.create(
+            employee=self.emp_profile, leave_type=self.leave_type,
+            start_date=timezone.now().date() + timedelta(days=5),
+            end_date=timezone.now().date() + timedelta(days=6),
+            reason='Testing pending delete',
+            status='pending'
+        )
+        response = self.client.delete(reverse('leave-requests-detail', kwargs={'pk': req.id}))
+        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+        self.assertFalse(LeaveRequest.objects.filter(id=req.id).exists())

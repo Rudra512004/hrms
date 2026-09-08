@@ -37,11 +37,8 @@ def _employee_org(request):
 
 
 def _check_reports_permission(user):
-    """Returns True if user has report viewing capability."""
-    return (
-        AuthorizationService.has_permission(user, 'payroll.view_reports')
-        or AuthorizationService.has_permission(user, 'payroll.view')
-    )
+    """Returns True if user has dedicated report viewing capability."""
+    return AuthorizationService.has_permission(user, 'payroll.view_reports')
 
 
 class PayrollReportingViewSet(viewsets.ViewSet):

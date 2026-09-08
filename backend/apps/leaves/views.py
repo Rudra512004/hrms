@@ -151,6 +151,12 @@ class LeaveRequestViewSet(viewsets.ModelViewSet):
             raise ValidationError({"detail": "Only pending requests can be modified."})
         super().perform_update(serializer)
 
+    def perform_destroy(self, instance):
+        from rest_framework.exceptions import ValidationError
+        if instance.status != 'pending':
+            raise ValidationError({"detail": f"Cannot delete a leave request with status '{instance.status}'. Only pending requests can be deleted."})
+        super().perform_destroy(instance)
+
     @action(detail=True, methods=['post'])
     def approve(self, request, pk=None):
         if not AuthorizationService.has_permission(request.user, 'leave.approve'):

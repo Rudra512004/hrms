@@ -66,7 +66,7 @@ export const AppRouter: React.FC = () => {
             <Route path="/payroll" element={<PayrollPage />} />
           </Route>
 
-          <Route element={<ProtectedRoute requiredPermission={['payroll.view_reports', 'payroll.view']} />}>
+          <Route element={<ProtectedRoute requiredPermission="payroll.view_reports" />}>
             <Route path="/payroll/reports" element={<PayrollReportsPage />} />
           </Route>
 
