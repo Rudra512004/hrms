@@ -12,6 +12,7 @@ import {
   ShieldAlert,
   Network,
   CalendarDays,
+  DollarSign,
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -63,6 +64,12 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen }) => {
         { path: '/admin/wfh',          label: 'WFH Requests',          icon: Network,   permission: 'wfh.view' },
         { path: '/admin/holidays',     label: 'Holidays',              icon: CalendarDays, permission: 'holiday.view' },
         { path: '/admin/shifts',       label: 'Shifts',                icon: Clock,     permission: 'shift.view' },
+      ],
+    },
+    {
+      title: 'Finance',
+      items: [
+        { path: '/payroll', label: 'Payroll', icon: DollarSign, permission: 'payroll.view' },
       ],
     },
     {
