@@ -13,14 +13,15 @@ const styles = {
   },
   logo: {
     display: 'flex',
+    flexDirection: 'column' as const,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: '12px',
+    gap: '16px',
     marginBottom: 'var(--spacing-xl)',
   },
   logoImage: {
-    width: '40px',
-    height: '40px',
+    height: '60px',
+    objectFit: 'contain',
   },
   logoText: {
     fontSize: '1.75rem',
@@ -149,7 +150,7 @@ export const LoginPage: React.FC = () => {
   return (
     <div style={styles.container}>
       <div style={styles.logo}>
-        <img src="/favicon.svg" alt="BeyondSure Logo" style={styles.logoImage} />
+        <img src="/beyondsure-logo.webp" alt="BeyondSure Logo" style={styles.logoImage as React.CSSProperties} />
         <div style={styles.logoText}>BEYONDSURE HRMS</div>
       </div>
       <div style={styles.card}>
