@@ -7,8 +7,8 @@ import { Eye, EyeOff } from 'lucide-react';
 const styles = {
   container: {
     width: '100%',
-    maxWidth: '400px',
-    padding: 'var(--spacing-lg)',
+    maxWidth: '420px',
+    padding: 'var(--spacing-md)',
     margin: '0 auto',
   },
   logo: {
@@ -27,13 +27,22 @@ const styles = {
   },
   card: {
     backgroundColor: 'var(--color-bg-card)',
-    padding: 'var(--spacing-xl)',
-    borderRadius: 'var(--radius-lg)',
-    boxShadow: 'var(--shadow-md)',
+    padding: '32px 28px',
+    borderRadius: 'var(--radius-xl)',
+    border: '1px solid var(--color-border)',
+    boxShadow: 'var(--shadow-lg)',
   },
   title: {
-    fontSize: '1.25rem',
-    fontWeight: 600,
+    fontSize: '1.35rem',
+    fontWeight: 700,
+    textAlign: 'center' as const,
+    color: 'var(--color-text-main)',
+    marginBottom: '4px',
+    letterSpacing: '-0.02em',
+  },
+  subtitle: {
+    fontSize: 'var(--font-size-sm)',
+    color: 'var(--color-text-muted)',
     textAlign: 'center' as const,
     marginBottom: 'var(--spacing-lg)',
   },
@@ -42,18 +51,22 @@ const styles = {
   },
   label: {
     display: 'block',
-    marginBottom: 'var(--spacing-xs)',
-    fontSize: '0.9rem',
+    marginBottom: '6px',
+    fontSize: 'var(--font-size-sm)',
     fontWeight: 500,
+    color: 'var(--color-text-sub)',
   },
   input: {
     width: '100%',
-    padding: '0.75rem',
+    padding: '10px 14px',
     paddingRight: '2.5rem',
-    borderRadius: 'var(--radius-sm)',
+    borderRadius: 'var(--radius-md)',
     border: '1px solid var(--color-border)',
-    fontSize: '1rem',
+    fontSize: 'var(--font-size-sm)',
+    color: 'var(--color-text-main)',
+    backgroundColor: 'var(--color-bg-surface)',
     outline: 'none',
+    transition: 'border-color 0.15s ease, box-shadow 0.15s ease',
   },
   passwordWrapper: {
     position: 'relative' as const,
@@ -77,45 +90,31 @@ const styles = {
     justifyContent: 'flex-end',
     alignItems: 'center',
     marginBottom: 'var(--spacing-lg)',
-    fontSize: '0.85rem',
+    fontSize: 'var(--font-size-xs)',
   },
   button: {
     width: '100%',
-    padding: '0.75rem',
-    backgroundColor: 'var(--color-primary)',
+    padding: '11px 16px',
+    background: 'linear-gradient(135deg, var(--color-primary) 0%, #8b5cf6 100%)',
     color: 'white',
-    border: 'none',
-    borderRadius: 'var(--radius-sm)',
-    fontSize: '1rem',
+    border: '1px solid var(--color-primary)',
+    borderRadius: 'var(--radius-md)',
+    fontSize: 'var(--font-size-sm)',
     fontWeight: 600,
     cursor: 'pointer',
-    transition: 'background-color 0.2s',
+    boxShadow: '0 4px 14px rgba(112, 38, 227, 0.28)',
+    transition: 'all 0.18s cubic-bezier(0.4, 0, 0.2, 1)',
   },
-  dividerContainer: {
-    display: 'flex',
-    alignItems: 'center',
-    margin: 'var(--spacing-lg) 0',
-  },
-  dividerLine: {
-    flex: 1,
-    height: '1px',
-    backgroundColor: 'var(--color-border)',
-  },
-  dividerText: {
-    margin: '0 var(--spacing-md)',
-    color: 'var(--color-text-muted)',
-    fontSize: '0.85rem',
-    textTransform: 'uppercase' as const,
-  },
-
   link: {
     color: 'var(--color-primary)',
     textDecoration: 'none',
+    fontWeight: 500,
   },
   footer: {
     textAlign: 'center' as const,
     marginTop: 'var(--spacing-lg)',
-    fontSize: '0.9rem',
+    fontSize: '0.85rem',
+    color: 'var(--color-text-muted)',
   }
 };
 
@@ -151,9 +150,20 @@ export const LoginPage: React.FC = () => {
       </div>
       <div style={styles.card}>
         <h2 style={styles.title}>Welcome Back</h2>
+        <p style={styles.subtitle}>Sign in to your organization workspace</p>
 
         {error && (
-          <div style={{ backgroundColor: '#fee2e2', color: '#dc2626', padding: '0.75rem', borderRadius: '4px', marginBottom: '1rem', fontSize: '0.9rem', textAlign: 'center' }}>
+          <div style={{
+            backgroundColor: 'var(--color-status-danger-bg)',
+            color: 'var(--color-status-danger)',
+            border: '1px solid var(--color-status-danger-border)',
+            padding: '10px 14px',
+            borderRadius: 'var(--radius-md)',
+            marginBottom: 'var(--spacing-md)',
+            fontSize: 'var(--font-size-xs)',
+            textAlign: 'center',
+            fontWeight: 500,
+          }}>
             {error}
           </div>
         )}
@@ -179,7 +189,7 @@ export const LoginPage: React.FC = () => {
               <input
                 type={showPassword ? 'text' : 'password'}
                 style={styles.input}
-                placeholder="********"
+                placeholder="••••••••"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
@@ -199,12 +209,21 @@ export const LoginPage: React.FC = () => {
             <Link to="/forgot-password" style={styles.link}>Forgot password?</Link>
           </div>
 
-          <button type="submit" style={{...styles.button, opacity: isLoading ? 0.7 : 1}} disabled={isLoading}>
-            {isLoading ? 'Logging in...' : 'Login'}
+          <button
+            type="submit"
+            style={{
+              ...styles.button,
+              opacity: isLoading ? 0.75 : 1,
+              cursor: isLoading ? 'not-allowed' : 'pointer'
+            }}
+            disabled={isLoading}
+          >
+            {isLoading ? 'Signing in...' : 'Sign In'}
           </button>
         </form>
-
-
+      </div>
+      <div style={styles.footer}>
+        Enterprise Grade HR Management System
       </div>
     </div>
   );

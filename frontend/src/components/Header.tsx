@@ -13,6 +13,9 @@ const routeLabels: Record<string, string> = {
   '/dashboard': 'Dashboard',
   '/attendance': 'My Attendance',
   '/leaves': 'My Leave',
+  '/payslips': 'My Payslips',
+  '/payroll/reports': 'Payroll Reports',
+  '/payroll': 'Payroll',
   '/profile': 'My Profile',
   '/admin/employees': 'Employees',
   '/admin/attendance': 'Attendance Management',
@@ -71,7 +74,7 @@ export const Header: React.FC<HeaderProps> = ({ toggleSidebar }) => {
           className="hide-on-mobile"
           style={{ display: 'flex', alignItems: 'center', gap: '6px', minWidth: 0 }}
         >
-          <span style={{ fontSize: 'var(--font-size-xs)', color: 'var(--color-text-muted)', fontWeight: 500 }}>
+          <span style={{ fontSize: 'var(--font-size-xs)', color: 'var(--color-primary)', fontWeight: 600, letterSpacing: '0.04em' }}>
             BEYONDSURE HRMS
           </span>
           <ChevronRight size={12} color="var(--color-text-muted)" />
@@ -103,9 +106,10 @@ export const Header: React.FC<HeaderProps> = ({ toggleSidebar }) => {
             width: 36,
             height: 36,
             borderRadius: '50%',
-            backgroundColor: 'var(--color-primary-light)',
-            color: 'var(--color-primary)',
-            border: '2px solid var(--color-primary-border)',
+            background: 'linear-gradient(135deg, var(--color-primary) 0%, #8b5cf6 100%)',
+            color: '#ffffff',
+            border: 'none',
+            boxShadow: '0 2px 8px rgba(112, 38, 227, 0.28)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
@@ -113,7 +117,7 @@ export const Header: React.FC<HeaderProps> = ({ toggleSidebar }) => {
             fontSize: 'var(--font-size-xs)',
             cursor: 'pointer',
             flexShrink: 0,
-            transition: 'border-color 0.15s',
+            transition: 'transform 0.15s ease, box-shadow 0.15s ease',
           }}
         >
           {user ? getInitials(user.firstName, user.lastName) : <User size={16} />}
