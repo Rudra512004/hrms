@@ -12,11 +12,20 @@ const styles = {
     margin: '0 auto',
   },
   logo: {
-    textAlign: 'center' as const,
-    fontSize: '2rem',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: '12px',
+    marginBottom: 'var(--spacing-xl)',
+  },
+  logoImage: {
+    width: '40px',
+    height: '40px',
+  },
+  logoText: {
+    fontSize: '1.75rem',
     fontWeight: 700,
     color: 'var(--color-primary)',
-    marginBottom: 'var(--spacing-xl)',
   },
   card: {
     backgroundColor: 'var(--color-bg-card)',
@@ -139,7 +148,10 @@ export const LoginPage: React.FC = () => {
 
   return (
     <div style={styles.container}>
-      <div style={styles.logo}>BEYONDSURE HRMS</div>
+      <div style={styles.logo}>
+        <img src="/favicon.svg" alt="BeyondSure Logo" style={styles.logoImage} />
+        <div style={styles.logoText}>BEYONDSURE HRMS</div>
+      </div>
       <div style={styles.card}>
         <h2 style={styles.title}>Welcome Back</h2>
 

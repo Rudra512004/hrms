@@ -79,8 +79,8 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen }) => {
     <aside className={`sidebar ${isOpen ? 'open' : 'closed'}`}>
       {/* Logo */}
       <div className="sidebar-logo">
-        <div className="sidebar-logo-icon">BS</div>
-        {isOpen && <span style={{ overflow: 'hidden', whiteSpace: 'nowrap' }}>BEYONDSURE HRMS</span>}
+        <img src="/favicon.svg" alt="BeyondSure Logo" className="sidebar-logo-icon" style={{ width: 28, height: 28, borderRadius: 0, background: 'transparent', flexShrink: 0 }} />
+        {isOpen && <span style={{ overflow: 'hidden', whiteSpace: 'nowrap', fontWeight: 700, fontSize: '1rem', marginLeft: '8px' }}>BEYONDSURE HRMS</span>}
       </div>
 
       {/* Nav */}
