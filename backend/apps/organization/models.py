@@ -64,3 +64,20 @@ class Designation(models.Model):
 
     def __str__(self):
         return f"{self.name} ({self.organization.name})"
+
+class Branch(models.Model):
+    organization = models.ForeignKey(Organization, on_delete=models.CASCADE, related_name='branches')
+    name = models.CharField(max_length=255)
+    address = models.TextField(blank=True)
+    latitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
+    longitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
+    radius = models.FloatField(default=100.0, help_text="Radius in meters")
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = ('organization', 'name')
+
+    def __str__(self):
+        return f"{self.name} ({self.organization.name})"

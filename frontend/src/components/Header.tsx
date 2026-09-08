@@ -25,6 +25,9 @@ const routeLabels: Record<string, string> = {
   '/admin/organizations': 'Organizations',
   '/admin/departments': 'Departments',
   '/admin/designations': 'Designations',
+  '/admin/branches': 'Branches',
+  '/admin/holidays': 'Holidays',
+  '/admin/shifts': 'Shifts',
 };
 
 function getBreadcrumb(pathname: string): string {

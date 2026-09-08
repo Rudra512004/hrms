@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Attendance, AttendanceBreak
+from .models import Attendance, AttendanceBreak, Holiday, Shift
 
 class AttendanceBreakSerializer(serializers.ModelSerializer):
     class Meta:
@@ -23,3 +23,15 @@ class AttendanceSerializer(serializers.ModelSerializer):
 
     def get_employee_name(self, obj):
         return f"{obj.employee.user.first_name} {obj.employee.user.last_name}".strip() or obj.employee.user.email
+
+class HolidaySerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Holiday
+        fields = ['id', 'organization', 'name', 'date', 'is_active', 'created_at', 'updated_at']
+        read_only_fields = ['id', 'organization', 'created_at', 'updated_at']
+
+class ShiftSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Shift
+        fields = ['id', 'organization', 'name', 'start_time', 'end_time', 'grace_period', 'is_active', 'created_at', 'updated_at']
+        read_only_fields = ['id', 'organization', 'created_at', 'updated_at']

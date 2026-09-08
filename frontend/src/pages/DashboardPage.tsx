@@ -78,14 +78,48 @@ export const DashboardPage: React.FC = () => {
     loadAdminData();
   }, [hasPermission]);
 
+  const getGeolocation = (): Promise<{ latitude: number; longitude: number; accuracy: number }> => {
+    return new Promise((resolve, reject) => {
+      if (!navigator.geolocation) {
+        reject(new Error("Geolocation is not supported by your browser."));
+        return;
+      }
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          resolve({
+            latitude: position.coords.latitude,
+            longitude: position.coords.longitude,
+            accuracy: position.coords.accuracy,
+          });
+        },
+        (error) => {
+          reject(error);
+        },
+        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+      );
+    });
+  };
+
   const handleCheckIn = async () => {
     setActionLoading(true);
     setActionError(null);
     try {
-      const rec = await attendanceService.checkIn();
+      let loc;
+      try {
+        loc = await getGeolocation();
+      } catch (e) {
+        console.warn('Geolocation failed', e);
+      }
+      const rec = await attendanceService.checkIn(loc);
       setAttendanceToday(rec);
     } catch (e: any) {
-      setActionError(e?.errorData?.detail || e?.response?.data?.detail || 'Check-in failed. Are you on an authorized network?');
+      if (e?.errorData?.detail === 'ATTENDANCE_OUTSIDE_GEOFENCE') {
+        setActionError('You are outside the authorized office geofence or not on the office network.');
+      } else if (e?.errorData?.detail === 'POOR_GPS_ACCURACY') {
+        setActionError('Poor GPS accuracy. Please step outside or connect to Wi-Fi to improve location accuracy.');
+      } else {
+        setActionError(e?.errorData?.detail || e?.response?.data?.detail || 'Check-in failed. Please ensure location services are enabled.');
+      }
     } finally {
       setActionLoading(false);
     }
@@ -95,7 +129,13 @@ export const DashboardPage: React.FC = () => {
     setActionLoading(true);
     setActionError(null);
     try {
-      const rec = await attendanceService.checkOut();
+      let loc;
+      try {
+        loc = await getGeolocation();
+      } catch (e) {
+        console.warn('Geolocation failed', e);
+      }
+      const rec = await attendanceService.checkOut(loc);
       setAttendanceToday(rec);
     } catch (e: any) {
       setActionError(e?.errorData?.detail || 'Check-out failed. Please try again.');

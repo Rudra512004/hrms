@@ -13,6 +13,7 @@ class EmploymentStatus(models.TextChoices):
 class Employee(models.Model):
     user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='employee')
     organization = models.ForeignKey(Organization, on_delete=models.CASCADE, related_name='employees', null=True, blank=True)
+    branch = models.ForeignKey('organization.Branch', on_delete=models.SET_NULL, related_name='employees', null=True, blank=True)
     department = models.ForeignKey(Department, on_delete=models.SET_NULL, related_name='employees', null=True, blank=True)
     designation = models.ForeignKey(Designation, on_delete=models.SET_NULL, related_name='employees', null=True, blank=True)
     reporting_manager = models.ForeignKey('self', on_delete=models.SET_NULL, related_name='direct_reports', null=True, blank=True)
@@ -36,13 +37,15 @@ class Employee(models.Model):
     def clean(self):
         super().clean()
         if self.organization_id:
+            if self.branch_id and self.branch.organization_id != self.organization_id:
+                raise ValidationError({'branch': 'Branch must belong to the same organization.'})
             if self.department_id and self.department.organization_id != self.organization_id:
                 raise ValidationError({'department': 'Department must belong to the same organization.'})
             if self.designation_id and self.designation.organization_id != self.organization_id:
                 raise ValidationError({'designation': 'Designation must belong to the same organization.'})
         else:
-            if self.department_id or self.designation_id:
-                raise ValidationError('Cannot assign department or designation without an organization.')
+            if self.branch_id or self.department_id or self.designation_id:
+                raise ValidationError('Cannot assign branch, department, or designation without an organization.')
 
         if self.reporting_manager_id:
             if self.reporting_manager_id == self.id:

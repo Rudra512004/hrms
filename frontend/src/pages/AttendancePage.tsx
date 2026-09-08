@@ -69,7 +69,9 @@ export const AttendancePage: React.FC = () => {
   };
 
   const handleError = (err: any) => {
-    if (err?.response?.status === 403) {
+    if (err?.response?.status === 403 && err?.errorData?.detail === 'ATTENDANCE_OUTSIDE_GEOFENCE') {
+      setError('You are outside the allowed branch radius for attendance.');
+    } else if (err?.response?.status === 403) {
       setError('Attendance actions are unavailable from your current network or location.');
     } else if (err?.errorData?.detail) {
       setError(err.errorData.detail);
@@ -78,11 +80,49 @@ export const AttendancePage: React.FC = () => {
     }
   };
 
-  const handleAction = async (actionFn: () => Promise<any>) => {
+  const getLocation = (): Promise<{ latitude: number; longitude: number; accuracy: number }> => {
+    return new Promise((resolve, reject) => {
+      if (!navigator.geolocation) {
+        reject(new Error("Geolocation is not supported by your browser."));
+      } else {
+        navigator.geolocation.getCurrentPosition(
+          (pos) => {
+            resolve({
+              latitude: pos.coords.latitude,
+              longitude: pos.coords.longitude,
+              accuracy: pos.coords.accuracy,
+            });
+          },
+          (err) => {
+            if (err.code === err.PERMISSION_DENIED) {
+              reject(new Error("Location permission denied. Please allow location access to mark attendance."));
+            } else if (err.code === err.TIMEOUT) {
+              reject(new Error("Location request timed out. Please try again."));
+            } else {
+              reject(new Error("Unable to retrieve location. Please ensure location services are enabled."));
+            }
+          },
+          { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
+        );
+      }
+    });
+  };
+
+  const handleAction = async (actionFn: (loc?: { latitude: number; longitude: number; accuracy: number }) => Promise<any>, requireLocation: boolean = true) => {
     try {
       setActionLoading(true);
       setError(null);
-      await actionFn();
+      let loc = undefined;
+      if (requireLocation) {
+        try {
+          loc = await getLocation();
+        } catch (err: any) {
+          setError(err.message || 'Unable to get location');
+          setActionLoading(false);
+          return;
+        }
+      }
+      await actionFn(loc);
       await loadAttendance();
     } catch (err: any) {
       handleError(err);

@@ -10,31 +10,35 @@ class EmployeeSerializer(serializers.ModelSerializer):
     first_name = serializers.CharField(source='user.first_name', read_only=True)
     last_name = serializers.CharField(source='user.last_name', read_only=True)
     status = serializers.CharField(source='user.status', read_only=True)
+    branch_name = serializers.CharField(source='branch.name', read_only=True)
 
     class Meta:
         model = Employee
         fields = (
             'id', 'email', 'first_name', 'last_name', 'status', 'employee_code', 'personal_email',
             'phone_number', 'address', 'emergency_contact_name', 'emergency_contact_phone',
-            'organization', 'department', 'designation', 'reporting_manager',
+            'organization', 'branch', 'branch_name', 'department', 'designation', 'reporting_manager',
             'employment_status', 'joining_date', 'exit_date'
         )
         read_only_fields = ('id', 'email', 'first_name', 'last_name', 'status', 'employee_code', 'personal_email', 'employment_status')
 
     def validate(self, attrs):
         org = attrs.get('organization', getattr(self.instance, 'organization', None))
+        branch = attrs.get('branch', getattr(self.instance, 'branch', None))
         dept = attrs.get('department', getattr(self.instance, 'department', None))
         desig = attrs.get('designation', getattr(self.instance, 'designation', None))
         manager = attrs.get('reporting_manager', getattr(self.instance, 'reporting_manager', None))
 
         if org:
+            if branch and branch.organization_id != org.id:
+                raise serializers.ValidationError({'branch': 'Branch must belong to the same organization.'})
             if dept and dept.organization_id != org.id:
                 raise serializers.ValidationError({'department': 'Department must belong to the same organization.'})
             if desig and desig.organization_id != org.id:
                 raise serializers.ValidationError({'designation': 'Designation must belong to the same organization.'})
         else:
-            if dept or desig:
-                raise serializers.ValidationError('Cannot assign department or designation without an organization.')
+            if branch or dept or desig:
+                raise serializers.ValidationError('Cannot assign branch, department, or designation without an organization.')
 
         if manager:
             if self.instance and manager.id == self.instance.id:
