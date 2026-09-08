@@ -16,17 +16,14 @@ const styles = {
     flexDirection: 'column' as const,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: '16px',
     marginBottom: 'var(--spacing-xl)',
   },
   logoImage: {
-    height: '60px',
-    objectFit: 'contain',
-  },
-  logoText: {
-    fontSize: '1.75rem',
-    fontWeight: 700,
-    color: 'var(--color-primary)',
+    width: '100%',
+    maxWidth: '220px',
+    height: 'auto',
+    objectFit: 'contain' as const,
+    display: 'block',
   },
   card: {
     backgroundColor: 'var(--color-bg-card)',
@@ -150,8 +147,7 @@ export const LoginPage: React.FC = () => {
   return (
     <div style={styles.container}>
       <div style={styles.logo}>
-        <img src="/beyondsure-logo.webp" alt="BeyondSure Logo" style={styles.logoImage as React.CSSProperties} />
-        <div style={styles.logoText}>BEYONDSURE HRMS</div>
+        <img src="/beyondsure-logo.webp" alt="BeyondSure HRMS" style={styles.logoImage} />
       </div>
       <div style={styles.card}>
         <h2 style={styles.title}>Welcome Back</h2>

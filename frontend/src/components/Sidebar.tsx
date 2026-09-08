@@ -78,21 +78,31 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen }) => {
   return (
     <aside className={`sidebar ${isOpen ? 'open' : 'closed'}`}>
       {/* Logo */}
-      <div className="sidebar-logo">
-        <img 
-          src={isOpen ? "/beyondsure-logo.webp" : "/favicon.svg"} 
-          alt="BeyondSure Logo" 
-          className="sidebar-logo-icon" 
-          style={{ 
-            width: isOpen ? 40 : 28, 
-            height: isOpen ? 40 : 28, 
-            objectFit: 'contain', 
-            borderRadius: 0, 
-            background: 'transparent', 
-            flexShrink: 0 
-          }} 
-        />
-        {isOpen && <span style={{ overflow: 'hidden', whiteSpace: 'nowrap', fontWeight: 700, fontSize: '1rem', marginLeft: '8px' }}>BEYONDSURE HRMS</span>}
+      <div className="sidebar-logo" style={{ justifyContent: isOpen ? 'flex-start' : 'center', padding: isOpen ? '0 12px' : '0' }}>
+        {isOpen ? (
+          <img
+            src="/beyondsure-logo.webp"
+            alt="BeyondSure HRMS"
+            style={{
+              width: '100%',
+              maxWidth: '190px',
+              height: 'auto',
+              objectFit: 'contain',
+              display: 'block',
+            }}
+          />
+        ) : (
+          <img
+            src="/favicon.svg"
+            alt="BeyondSure"
+            style={{
+              width: 28,
+              height: 28,
+              objectFit: 'contain',
+              flexShrink: 0,
+            }}
+          />
+        )}
       </div>
 
       {/* Nav */}
