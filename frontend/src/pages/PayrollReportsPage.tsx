@@ -236,7 +236,7 @@ export const PayrollReportsPage: React.FC = () => {
       key: 'loss_of_pay_amount',
       title: 'LOP Amount',
       render: (r: ReconciliationRecord) => (
-        <span style={{ color: Number(r.loss_of_pay_amount || 0) > 0 ? 'var(--color-danger)' : undefined }}>
+        <span style={{ color: Number(r.loss_of_pay_amount || 0) > 0 ? 'var(--color-status-danger)' : undefined }}>
           {r.loss_of_pay_amount !== null ? formatCurrency(r.loss_of_pay_amount) : '—'}
         </span>
       ),
@@ -352,7 +352,7 @@ export const PayrollReportsPage: React.FC = () => {
             title="Reconciled Headcount"
             value={summaryData.summary.total_employees}
             icon={Users}
-            color="var(--color-info)"
+            color="var(--color-status-info)"
           />
           <StatCard
             title="Loss of Pay"
@@ -362,13 +362,13 @@ export const PayrollReportsPage: React.FC = () => {
                 : `${summaryData.summary.total_absent_days} Absent Days`
             }
             icon={TrendingDown}
-            color="var(--color-danger)"
+            color="var(--color-status-danger)"
           />
           <StatCard
             title="Total Paid Effective Days"
             value={summaryData.summary.total_effective_paid_days}
             icon={Calendar}
-            color="var(--color-success)"
+            color="var(--color-status-success)"
           />
         </div>
       )}

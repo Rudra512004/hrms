@@ -372,47 +372,112 @@ export const EmployeesPage: React.FC = () => {
   }, [employees]);
 
   const columns = [
-    { key: 'employee_code', title: 'Code' },
-    { key: 'name', title: 'Name', render: (e: EmployeeProfile) => `${e.first_name} ${e.last_name}` },
-    { key: 'department', title: 'Department', render: (e: EmployeeProfile) => e.department_name || '-' },
-    { key: 'designation', title: 'Designation', render: (e: EmployeeProfile) => e.designation_name || '-' },
-    { key: 'joining_date', title: 'Joining Date', render: (e: EmployeeProfile) => e.joining_date || '-' },
+    {
+      key: 'name',
+      title: 'Employee',
+      render: (e: EmployeeProfile) => (
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <div
+            style={{
+              width: 38,
+              height: 38,
+              borderRadius: '50%',
+              background: 'linear-gradient(135deg, #ede9fe 0%, #ddd6fe 100%)',
+              color: 'var(--color-primary)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              fontWeight: 700,
+              fontSize: '0.85rem',
+              flexShrink: 0,
+              boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
+            }}
+          >
+            {e.first_name?.[0] || ''}{e.last_name?.[0] || ''}
+          </div>
+          <div style={{ minWidth: 0 }}>
+            <div style={{ fontWeight: 600, color: 'var(--color-text-main)', fontSize: 'var(--font-size-sm)' }}>
+              {e.first_name} {e.last_name}
+            </div>
+            <div style={{ fontSize: 'var(--font-size-xs)', color: 'var(--color-text-muted)' }}>
+              {e.email || e.employee_code}
+            </div>
+          </div>
+        </div>
+      ),
+    },
+    {
+      key: 'employee_code',
+      title: 'Employee ID',
+      render: (e: EmployeeProfile) => (
+        <span style={{ fontWeight: 600, fontVariantNumeric: 'tabular-nums', color: 'var(--color-text-sub)' }}>
+          {e.employee_code}
+        </span>
+      ),
+    },
+    {
+      key: 'department',
+      title: 'Department',
+      render: (e: EmployeeProfile) => (
+        <span style={{ display: 'inline-flex', padding: '2px 8px', borderRadius: '4px', backgroundColor: 'var(--color-bg-page)', fontSize: 'var(--font-size-xs)', fontWeight: 500 }}>
+          {e.department_name || '—'}
+        </span>
+      ),
+    },
+    { key: 'designation', title: 'Designation', render: (e: EmployeeProfile) => e.designation_name || '—' },
+    { key: 'joining_date', title: 'Joining Date', render: (e: EmployeeProfile) => e.joining_date || '—' },
     {
       key: 'status',
       title: 'Status',
       render: (e: EmployeeProfile) => (
         <StatusBadge status={(e.employment_status || e.status) as any} />
-      )
+      ),
     },
     {
       key: 'actions',
       title: 'Actions',
       render: (e: EmployeeProfile) => (
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
-          <button style={styles.actionBtn} onClick={() => navigate(`/admin/employees/${e.id}`)} title="View Profile">
-            <Eye size={18} color="var(--color-primary)" />
+        <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+          <button
+            style={{ ...styles.actionBtn, padding: '5px', borderRadius: '6px', backgroundColor: 'rgba(112, 38, 227, 0.08)' }}
+            onClick={() => navigate(`/admin/employees/${e.id}`)}
+            title="View Profile"
+          >
+            <Eye size={16} color="var(--color-primary)" />
           </button>
 
           {hasPermission('employee.update') && (
-            <button style={styles.actionBtn} onClick={() => openEditModal(e)} title="Edit Employee">
-              <Edit2 size={18} />
+            <button
+              style={{ ...styles.actionBtn, padding: '5px', borderRadius: '6px', backgroundColor: 'var(--color-bg-secondary)' }}
+              onClick={() => openEditModal(e)}
+              title="Edit Employee"
+            >
+              <Edit2 size={16} color="var(--color-text-sub)" />
             </button>
           )}
 
           {hasPermission('employee.manage_status') && (
-            <button style={styles.actionBtn} onClick={() => openStatusModal(e)} title="Change Lifecycle Status">
-              <Power size={18} color="var(--color-primary)" />
+            <button
+              style={{ ...styles.actionBtn, padding: '5px', borderRadius: '6px', backgroundColor: 'rgba(217, 119, 6, 0.08)' }}
+              onClick={() => openStatusModal(e)}
+              title="Change Lifecycle Status"
+            >
+              <Power size={16} color="#d97706" />
             </button>
           )}
 
           {(hasPermission('role.assign') || hasPermission('permission.assign')) && (
-            <button style={styles.actionBtn} onClick={() => navigate(`/admin/employees/${e.id}/access`)} title="RBAC Access">
-              <Shield size={18} color="var(--color-primary)" />
+            <button
+              style={{ ...styles.actionBtn, padding: '5px', borderRadius: '6px', backgroundColor: 'rgba(14, 165, 233, 0.08)' }}
+              onClick={() => navigate(`/admin/employees/${e.id}/access`)}
+              title="RBAC Access"
+            >
+              <Shield size={16} color="#0284c7" />
             </button>
           )}
         </div>
-      )
-    }
+      ),
+    },
   ];
 
   if (loading && employees.length === 0) {

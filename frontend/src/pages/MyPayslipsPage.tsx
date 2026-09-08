@@ -137,7 +137,24 @@ export const MyPayslipsPage: React.FC = () => {
 
       {error && <AlertBanner type="error" message={error} />}
 
-      <Card>
+      {payslips.length > 0 && (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 'var(--spacing-md)' }}>
+          <div className="card" style={{ padding: '16px 20px', borderTop: '3px solid var(--color-primary)', boxShadow: 'var(--shadow-sm)' }}>
+            <div style={{ fontSize: 'var(--font-size-xs)', color: 'var(--color-text-muted)', fontWeight: 600, textTransform: 'uppercase' }}>Latest Issued Period</div>
+            <div style={{ fontSize: '1.4rem', fontWeight: 700, color: 'var(--color-text-main)', marginTop: 4 }}>{payslips[0]?.period_label}</div>
+          </div>
+          <div className="card" style={{ padding: '16px 20px', borderTop: '3px solid var(--color-status-success)', boxShadow: 'var(--shadow-sm)' }}>
+            <div style={{ fontSize: 'var(--font-size-xs)', color: 'var(--color-text-muted)', fontWeight: 600, textTransform: 'uppercase' }}>Latest Net Take-Home</div>
+            <div style={{ fontSize: '1.4rem', fontWeight: 800, color: 'var(--color-status-success)', marginTop: 4 }}>{formatCurrency(payslips[0]?.net_salary)}</div>
+          </div>
+          <div className="card" style={{ padding: '16px 20px', borderTop: '3px solid var(--color-secondary)', boxShadow: 'var(--shadow-sm)' }}>
+            <div style={{ fontSize: 'var(--font-size-xs)', color: 'var(--color-text-muted)', fontWeight: 600, textTransform: 'uppercase' }}>Total Payslips Available</div>
+            <div style={{ fontSize: '1.4rem', fontWeight: 700, color: 'var(--color-text-main)', marginTop: 4 }}>{payslips.length} document{payslips.length !== 1 ? 's' : ''}</div>
+          </div>
+        </div>
+      )}
+
+      <Card title="Finalized Payslips History" noPadding>
         {loading ? (
           <div style={{ display: 'flex', justifyContent: 'center', padding: 'var(--spacing-2xl)' }}>
             <Loader2 className="animate-spin" size={32} color="var(--color-primary)" />

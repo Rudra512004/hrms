@@ -545,24 +545,43 @@ export function PayrollPage() {
 // ─── Tiny stat card ────────────────────────────────────────────────────────────
 
 function StatMini({ label, value, icon, color }: { label: string; value: number; icon: React.ReactNode; color?: string }) {
+  const accentColor = color ?? 'var(--color-primary)';
+  const iconBg = `color-mix(in srgb, ${accentColor} 14%, transparent)`;
+
   return (
     <div
       className="card"
-      style={{ padding: '16px 20px', display: 'flex', alignItems: 'center', gap: 14 }}
+      style={{
+        padding: '18px 20px',
+        display: 'flex',
+        alignItems: 'center',
+        gap: 14,
+        borderTop: `3px solid ${accentColor}`,
+        boxShadow: 'var(--shadow-sm)',
+      }}
     >
       <div
         style={{
-          width: 40, height: 40, borderRadius: 10,
-          background: color ? `${color}18` : 'var(--color-primary-muted, rgba(79,70,229,0.1))',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          color: color ?? 'var(--color-primary)', flexShrink: 0,
+          width: 44,
+          height: 44,
+          borderRadius: 'var(--radius-md)',
+          background: iconBg,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          color: accentColor,
+          flexShrink: 0,
         }}
       >
         {icon}
       </div>
       <div style={{ minWidth: 0 }}>
-        <div style={{ fontSize: '1.5rem', fontWeight: 700, color: 'var(--color-text-main)', lineHeight: 1.1 }}>{value}</div>
-        <div style={{ fontSize: 'var(--font-size-sm)', color: 'var(--color-text-muted)', marginTop: 2 }}>{label}</div>
+        <div style={{ fontSize: '1.6rem', fontWeight: 800, color: 'var(--color-text-main)', lineHeight: 1.1, fontVariantNumeric: 'tabular-nums', letterSpacing: '-0.02em' }}>
+          {value}
+        </div>
+        <div style={{ fontSize: 'var(--font-size-xs)', color: 'var(--color-text-muted)', marginTop: 4, fontWeight: 500 }}>
+          {label}
+        </div>
       </div>
     </div>
   );

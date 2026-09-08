@@ -91,30 +91,56 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen }) => {
   return (
     <aside className={`sidebar ${isOpen ? 'open' : 'closed'}`}>
       {/* Logo */}
-      <div className="sidebar-logo" style={{ justifyContent: isOpen ? 'flex-start' : 'center', padding: isOpen ? '0 12px' : '0' }}>
+      <div className="sidebar-logo" style={{ justifyContent: 'center', padding: isOpen ? '0 14px' : '0 8px' }}>
         {isOpen ? (
-          <img
-            src="/beyondsure-logo.webp"
-            alt="BeyondSure HRMS"
+          <div
             style={{
+              backgroundColor: '#ffffff',
+              borderRadius: '8px',
+              padding: '6px 14px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
               width: '100%',
-              maxWidth: '190px',
-              height: 'auto',
-              objectFit: 'contain',
-              display: 'block',
+              boxShadow: '0 2px 6px rgba(0, 0, 0, 0.15)',
             }}
-          />
+          >
+            <img
+              src="/beyondsure-logo.webp"
+              alt="BeyondSure HRMS"
+              style={{
+                width: '100%',
+                maxWidth: '170px',
+                height: 'auto',
+                maxHeight: '28px',
+                objectFit: 'contain',
+                display: 'block',
+              }}
+            />
+          </div>
         ) : (
-          <img
-            src="/favicon.svg"
-            alt="BeyondSure"
+          <div
             style={{
-              width: 28,
-              height: 28,
-              objectFit: 'contain',
-              flexShrink: 0,
+              backgroundColor: '#ffffff',
+              borderRadius: '8px',
+              padding: '6px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              boxShadow: '0 2px 6px rgba(0, 0, 0, 0.15)',
             }}
-          />
+          >
+            <img
+              src="/favicon.svg"
+              alt="BeyondSure"
+              style={{
+                width: 24,
+                height: 24,
+                objectFit: 'contain',
+                flexShrink: 0,
+              }}
+            />
+          </div>
         )}
       </div>
 
@@ -152,6 +178,24 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen }) => {
           );
         })}
       </nav>
+
+      {/* Sidebar Footer */}
+      {isOpen && (
+        <div
+          style={{
+            padding: '12px 16px',
+            borderTop: '1px solid var(--color-border-sidebar)',
+            fontSize: '0.7rem',
+            color: '#64748b',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+          }}
+        >
+          <span style={{ fontWeight: 600, color: '#94a3b8' }}>BEYONDSURE</span>
+          <span style={{ backgroundColor: 'rgba(112, 38, 227, 0.25)', color: '#c4b5fd', padding: '2px 6px', borderRadius: '4px', fontSize: '0.65rem', fontWeight: 600 }}>ENTERPRISE</span>
+        </div>
+      )}
     </aside>
   );
 };

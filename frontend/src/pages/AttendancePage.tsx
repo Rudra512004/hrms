@@ -244,7 +244,7 @@ export const AttendancePage: React.FC = () => {
       {error && <AlertBanner type="error" message={error} style={{ marginBottom: 0 }} />}
 
       {/* Timer Card */}
-      <Card>
+      <Card style={{ borderTop: '3px solid var(--color-primary)', boxShadow: 'var(--shadow-md)' }}>
         <div
           style={{
             display: 'flex',
@@ -265,6 +265,9 @@ export const AttendancePage: React.FC = () => {
               letterSpacing: '0.1em',
               textTransform: 'uppercase',
               color: timerStateColor,
+              backgroundColor: `${timerStateColor}14`,
+              padding: '4px 12px',
+              borderRadius: 'var(--radius-full)',
             }}
           >
             <span
@@ -283,11 +286,11 @@ export const AttendancePage: React.FC = () => {
           <div
             style={{
               fontSize: '3.5rem',
-              fontWeight: 700,
+              fontWeight: 800,
               fontVariantNumeric: 'tabular-nums',
-              color: 'var(--color-text-main)',
+              color: isCheckedIn && !isCheckedOut ? 'var(--color-primary)' : 'var(--color-text-main)',
               lineHeight: 1,
-              letterSpacing: '-0.02em',
+              letterSpacing: '-0.03em',
             }}
           >
             {mainTimerDisplay}

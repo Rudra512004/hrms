@@ -17,16 +17,17 @@
   --color-accent-soft: #f0f9ff;
 
   /* ── Surfaces & Backgrounds ── */
-  --color-bg-page: #f8fafc;
-  --color-bg-body: #f8fafc;
+  --color-bg-page: #f4f6fa;
+  --color-bg-body: #f4f6fa;
   --color-bg-card: #ffffff;
   --color-bg-surface: #ffffff;
   --color-bg-surface-elevated: #ffffff;
-  --color-bg-main: #f8fafc;
-  --color-bg-sidebar: #ffffff;
-  --color-bg-sidebar-hover: #f5f3ff;
+  --color-bg-main: #f4f6fa;
+  --color-bg-sidebar: #0d0a21;
+  --color-bg-sidebar-hover: rgba(255, 255, 255, 0.07);
   --color-bg-sidebar-active: #7026e3;
-  --color-bg-header: rgba(255, 255, 255, 0.94);
+  --color-border-sidebar: rgba(255, 255, 255, 0.08);
+  --color-bg-header: rgba(255, 255, 255, 0.92);
   --color-bg-secondary: #f1f5f9;
   --color-bg-subtle: #f8fafc;
 
@@ -35,7 +36,8 @@
   --color-text-sub: #334155;
   --color-text-muted: #64748b;
   --color-text-inverse: #ffffff;
-  --color-text-sidebar: #475569;
+  --color-text-sidebar: #94a3b8;
+  --color-text-sidebar-active: #ffffff;
 
   /* ── Borders & Dividers ── */
   --color-border: #e2e8f0;
@@ -577,10 +579,10 @@ textarea.input-field {
   overflow-x: hidden;
   display: flex;
   flex-direction: column;
-  border-right: 1px solid var(--color-border);
-  box-shadow: 1px 0 3px rgba(0, 0, 0, 0.02);
+  border-right: 1px solid var(--color-border-sidebar);
+  box-shadow: 2px 0 16px rgba(0, 0, 0, 0.16);
   scrollbar-width: thin;
-  scrollbar-color: var(--color-border) transparent;
+  scrollbar-color: rgba(255, 255, 255, 0.12) transparent;
 }
 
 .sidebar.open   { width: var(--sidebar-width); }
@@ -593,8 +595,8 @@ textarea.input-field {
   padding: 0 var(--spacing-md);
   font-size: 0.9375rem;
   font-weight: 700;
-  color: var(--color-primary);
-  border-bottom: 1px solid var(--color-border);
+  color: #ffffff;
+  border-bottom: 1px solid var(--color-border-sidebar);
   white-space: nowrap;
   gap: 10px;
   flex-shrink: 0;
@@ -626,17 +628,18 @@ textarea.input-field {
   font-size: 0.6875rem;
   font-weight: 700;
   text-transform: uppercase;
-  color: var(--color-text-muted);
-  letter-spacing: 0.08em;
+  color: #a78bfa;
+  letter-spacing: 0.09em;
   white-space: nowrap;
   overflow: hidden;
+  opacity: 0.9;
 }
 
 .sidebar-link {
   display: flex;
   align-items: center;
   padding: 9px var(--spacing-md);
-  margin: 2px var(--spacing-sm);
+  margin: 3px var(--spacing-sm);
   color: var(--color-text-sidebar);
   text-decoration: none;
   transition: all 0.18s cubic-bezier(0.4, 0, 0.2, 1);
@@ -645,23 +648,29 @@ textarea.input-field {
   font-size: var(--font-size-sm);
   font-weight: 500;
   gap: 10px;
+  border-left: 3px solid transparent;
 }
 
 .sidebar-link:hover:not(.active) {
   background-color: var(--color-bg-sidebar-hover);
-  color: var(--color-primary);
-  transform: translateX(2px);
+  color: #ffffff;
+  transform: translateX(3px);
+}
+
+.sidebar-link:hover:not(.active) .sidebar-icon {
+  color: var(--color-accent);
 }
 
 .sidebar-link.active {
   background: linear-gradient(135deg, var(--color-primary) 0%, #8b5cf6 100%);
-  color: var(--color-text-inverse);
+  color: #ffffff;
   font-weight: 600;
-  box-shadow: 0 3px 10px rgba(112, 38, 227, 0.28);
+  box-shadow: 0 4px 14px rgba(112, 38, 227, 0.45);
+  border-left: 3px solid var(--color-accent);
 }
 
 .sidebar-link.active .sidebar-icon {
-  color: var(--color-text-inverse);
+  color: #ffffff;
 }
 
 .sidebar-icon {
@@ -671,16 +680,16 @@ textarea.input-field {
   flex-shrink: 0;
   width: 20px;
   height: 20px;
-  color: var(--color-text-muted);
+  color: var(--color-text-sidebar);
   transition: color 0.15s ease;
 }
 
 .sidebar-link:hover .sidebar-icon {
-  color: var(--color-primary);
+  color: var(--color-accent);
 }
 
 .sidebar-link.active .sidebar-icon {
-  color: var(--color-text-inverse);
+  color: #ffffff;
 }
 
 .sidebar.closed .sidebar-link {

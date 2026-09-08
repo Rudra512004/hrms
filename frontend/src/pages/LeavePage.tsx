@@ -214,12 +214,20 @@ export function LeavePage() {
             {balances.map((b) => {
               const pct = b.allocated > 0 ? Math.round(((b.allocated - b.remaining) / b.allocated) * 100) : 0;
               return (
-                <div key={b.id} className="card" style={{ padding: 'var(--spacing-md)' }}>
+                <div
+                  key={b.id}
+                  className="card"
+                  style={{
+                    padding: 'var(--spacing-md)',
+                    borderTop: '3px solid var(--color-primary)',
+                    boxShadow: 'var(--shadow-sm)',
+                  }}
+                >
                   <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: 'var(--spacing-md)' }}>
                     <div
                       style={{
-                        width: 36,
-                        height: 36,
+                        width: 38,
+                        height: 38,
                         borderRadius: 'var(--radius-md)',
                         backgroundColor: 'var(--color-primary-light)',
                         display: 'flex',
@@ -227,17 +235,22 @@ export function LeavePage() {
                         justifyContent: 'center',
                       }}
                     >
-                      <Calendar size={16} color="var(--color-primary)" />
+                      <Calendar size={18} color="var(--color-primary)" />
                     </div>
-                    <span style={{ fontWeight: 600, fontSize: 'var(--font-size-sm)', color: 'var(--color-text-main)' }}>
-                      {b.leave_type_name}
-                    </span>
+                    <div>
+                      <span style={{ fontWeight: 600, fontSize: 'var(--font-size-sm)', color: 'var(--color-text-main)', display: 'block' }}>
+                        {b.leave_type_name}
+                      </span>
+                      <span style={{ fontSize: 'var(--font-size-xs)', color: 'var(--color-text-muted)' }}>
+                        Annual Allowance
+                      </span>
+                    </div>
                   </div>
 
                   {/* Progress bar */}
                   <div
                     style={{
-                      height: 6,
+                      height: 7,
                       backgroundColor: 'var(--color-border)',
                       borderRadius: 'var(--radius-full)',
                       marginBottom: '10px',
@@ -248,7 +261,7 @@ export function LeavePage() {
                       style={{
                         height: '100%',
                         width: `${pct}%`,
-                        backgroundColor: pct > 80 ? 'var(--color-status-danger)' : 'var(--color-primary)',
+                        background: pct > 80 ? 'var(--color-status-danger)' : 'linear-gradient(90deg, var(--color-primary) 0%, var(--color-secondary) 100%)',
                         borderRadius: 'var(--radius-full)',
                         transition: 'width 0.4s ease',
                       }}
@@ -259,7 +272,7 @@ export function LeavePage() {
                     <span>Used: <b style={{ color: 'var(--color-text-main)' }}>{b.used}</b></span>
                     <span>
                       Remaining:{' '}
-                      <b style={{ color: 'var(--color-primary)' }}>{b.remaining}</b> / {b.allocated}
+                      <b style={{ color: 'var(--color-primary)', fontWeight: 700 }}>{b.remaining}</b> / {b.allocated} days
                     </span>
                   </div>
                 </div>
