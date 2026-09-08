@@ -131,7 +131,8 @@ export const getReconciliationRecords = async (
   const res = await fetch(`${BASE}/reconciliation/?${params.toString()}`, {
     headers: getHeaders(),
   });
-  return handleResponse<ReconciliationRecord[]>(res);
+  const data = await handleResponse<{ period_id: number; count: number; records: ReconciliationRecord[] }>(res);
+  return data.records || [];
 };
 
 export const getOrganizationBreakdown = async (
@@ -149,5 +150,6 @@ export const getPayrollExceptions = async (
   const res = await fetch(`${BASE}/exceptions/?period=${periodId}`, {
     headers: getHeaders(),
   });
-  return handleResponse<PayrollExceptionItem[]>(res);
+  const data = await handleResponse<{ period_id: number; count: number; exceptions: PayrollExceptionItem[] }>(res);
+  return data.exceptions || [];
 };
