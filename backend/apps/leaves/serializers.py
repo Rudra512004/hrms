@@ -30,7 +30,9 @@ class LeaveRequestSerializer(serializers.ModelSerializer):
         read_only_fields = ['employee', 'status', 'reviewed_by', 'reviewed_at', 'reviewer_comment']
 
     def validate(self, data):
-        if data['end_date'] < data['start_date']:
+        start_date = data.get('start_date', self.instance.start_date if self.instance else None)
+        end_date = data.get('end_date', self.instance.end_date if self.instance else None)
+        if start_date and end_date and end_date < start_date:
             raise serializers.ValidationError({"end_date": "End date must be after start date."})
         return data
 

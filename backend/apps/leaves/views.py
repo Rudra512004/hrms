@@ -144,6 +144,13 @@ class LeaveRequestViewSet(viewsets.ModelViewSet):
             request=self.request
         )
 
+    def perform_update(self, serializer):
+        from rest_framework.exceptions import ValidationError
+        instance = self.get_object()
+        if instance.status != 'pending':
+            raise ValidationError({"detail": "Only pending requests can be modified."})
+        super().perform_update(serializer)
+
     @action(detail=True, methods=['post'])
     def approve(self, request, pk=None):
         if not AuthorizationService.has_permission(request.user, 'leave.approve'):
@@ -161,7 +168,7 @@ class LeaveRequestViewSet(viewsets.ModelViewSet):
 
             # Check balance
             try:
-                balance = LeaveBalance.objects.get(employee=leave.employee, leave_type=leave.leave_type)
+                balance = LeaveBalance.objects.select_for_update().get(employee=leave.employee, leave_type=leave.leave_type)
             except LeaveBalance.DoesNotExist:
                 return Response({"detail": "Leave balance record not found."}, status=status.HTTP_400_BAD_REQUEST)
 

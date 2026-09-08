@@ -89,7 +89,7 @@ class LeaveAPITests(TestCase):
         request = LeaveRequest.objects.create(
             employee=self.employee, leave_type=self.leave_type,
             start_date=timezone.now().date() + timedelta(days=1),
-            end_date=timezone.now().date() + timedelta(days=12),  # 12 days > 10
+            end_date=timezone.now().date() + timedelta(days=20),  # 20 days ensures it exceeds 10 even with weekends
             reason='Long vacation'
         )
         self.client.force_authenticate(user=self.manager_user)
@@ -230,3 +230,55 @@ class AdminLeaveTypeAPITests(TestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(len(response.data), 1)
         self.assertEqual(response.data[0]['name'], 'Initial Leave')
+
+    def test_duration_days_excludes_weekends(self):
+        # Monday to following Monday = 8 calendar days, 6 working days
+        start = timezone.now().date()
+        while start.weekday() != 0: # find a Monday
+            start += timedelta(days=1)
+        end = start + timedelta(days=7) # next Monday
+        
+        request = LeaveRequest(
+            employee=self.emp_profile, leave_type=self.leave_type,
+            start_date=start, end_date=end, reason='Weekend test'
+        )
+        self.assertEqual(request.duration_days, 6)
+
+    def test_cannot_edit_approved_request(self):
+        self.client.force_authenticate(user=self.employee)
+        request = LeaveRequest.objects.create(
+            employee=self.emp_profile, leave_type=self.leave_type,
+            start_date=timezone.now().date() + timedelta(days=1),
+            end_date=timezone.now().date() + timedelta(days=2),
+            reason='Testing edit',
+            status='approved'
+        )
+        from unittest.mock import patch
+        with patch('apps.authorization.services.AuthorizationService.has_permission', return_value=True):
+            response = self.client.patch(reverse('leave-requests-detail', kwargs={'pk': request.id}), {
+                'reason': 'Changed my mind'
+            })
+            self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_deleting_approved_request_restores_balance(self):
+        # First ensure there's a balance record
+        balance = LeaveBalance.objects.get(employee=self.emp_profile, leave_type=self.leave_type)
+        balance.used = 5
+        balance.save()
+        
+        request = LeaveRequest.objects.create(
+            employee=self.emp_profile, leave_type=self.leave_type,
+            start_date=timezone.now().date() + timedelta(days=1),
+            end_date=timezone.now().date() + timedelta(days=2),
+            reason='Testing delete',
+            status='approved'
+        )
+        
+        # duration is roughly 2 days (assuming not weekend)
+        duration = request.duration_days
+        
+        # delete request
+        request.delete()
+        
+        balance.refresh_from_db()
+        self.assertEqual(balance.used, 5 - duration)
