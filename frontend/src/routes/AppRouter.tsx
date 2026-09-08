@@ -17,6 +17,7 @@ import { AttendancePage } from '../pages/AttendancePage';
 import { AttendanceManagementPage } from '../pages/admin/AttendanceManagementPage';
 import { LeavePage } from '../pages/LeavePage';
 import { PayrollPage } from '../pages/PayrollPage';
+import { PayrollReportsPage } from '../pages/PayrollReportsPage';
 import { MyPayslipsPage } from '../pages/MyPayslipsPage';
 
 // Admin Pages
@@ -63,6 +64,10 @@ export const AppRouter: React.FC = () => {
 
           <Route element={<ProtectedRoute requiredPermission="payroll.view" />}>
             <Route path="/payroll" element={<PayrollPage />} />
+          </Route>
+
+          <Route element={<ProtectedRoute requiredPermission={['payroll.view_reports', 'payroll.view']} />}>
+            <Route path="/payroll/reports" element={<PayrollReportsPage />} />
           </Route>
 
           {/* Admin Routes */}

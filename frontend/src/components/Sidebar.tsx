@@ -14,6 +14,7 @@ import {
   CalendarDays,
   DollarSign,
   FileText,
+  BarChart2,
 } from 'lucide-react';
 
 import { useAuth } from '../contexts/AuthContext';
@@ -26,7 +27,7 @@ interface NavItem {
   path: string;
   label: string;
   icon: React.ElementType;
-  permission?: string;
+  permission?: string | string[];
   end?: boolean;
 }
 
@@ -73,6 +74,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen }) => {
       items: [
         { path: '/payslips', label: 'My Payslips', icon: FileText },
         { path: '/payroll', label: 'Payroll', icon: DollarSign, permission: 'payroll.view' },
+        { path: '/payroll/reports', label: 'Reports', icon: BarChart2, permission: ['payroll.view_reports', 'payroll.view'] },
       ],
     },
 
@@ -119,9 +121,12 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen }) => {
       {/* Nav */}
       <nav className="sidebar-menu" aria-label="Main navigation">
         {navigation.map((section, idx) => {
-          const visibleItems = section.items.filter(
-            (item) => !item.permission || hasPermission(item.permission)
-          );
+          const visibleItems = section.items.filter((item) => {
+            if (!item.permission) return true;
+            return Array.isArray(item.permission)
+              ? item.permission.some((p) => hasPermission(p))
+              : hasPermission(item.permission);
+          });
           if (visibleItems.length === 0) return null;
 
           return (
