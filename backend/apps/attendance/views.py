@@ -4,7 +4,7 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from django.utils import timezone
-from django.db import transaction
+from django.db import transaction, IntegrityError
 from datetime import timedelta
 from apps.authorization.permissions import IsNetworkAllowed, require_permission
 from .models import Attendance, AttendanceBreak, Holiday, Shift
@@ -80,26 +80,29 @@ class AttendanceViewSet(viewsets.GenericViewSet):
         if isinstance(loc, Response):
             return loc
 
-        with transaction.atomic():
-            if Attendance.objects.filter(employee=employee, date=today).exists():
-                return Response({'detail': 'Check-in already exists for today.'}, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            with transaction.atomic():
+                if Attendance.objects.filter(employee=employee, date=today).exists():
+                    return Response({'detail': 'Check-in already exists for today.'}, status=status.HTTP_400_BAD_REQUEST)
 
-            attendance = Attendance.objects.create(
-                employee=employee,
-                date=today,
-                check_in=timezone.now(),
-                status='present',
-                check_in_latitude=loc.get('lat') if loc else None,
-                check_in_longitude=loc.get('lon') if loc else None,
-                check_in_accuracy=loc.get('acc') if loc else None
-            )
-            AuditService.log(
-                action='check-in',
-                actor=request.user,
-                target_type='attendance',
-                target_id=attendance.id,
-                request=request
-            )
+                attendance = Attendance.objects.create(
+                    employee=employee,
+                    date=today,
+                    check_in=timezone.now(),
+                    status='present',
+                    check_in_latitude=loc.get('lat') if loc else None,
+                    check_in_longitude=loc.get('lon') if loc else None,
+                    check_in_accuracy=loc.get('acc') if loc else None
+                )
+                AuditService.log(
+                    action='check-in',
+                    actor=request.user,
+                    target_type='attendance',
+                    target_id=attendance.id,
+                    request=request
+                )
+        except IntegrityError:
+            return Response({'detail': 'Check-in already exists for today.'}, status=status.HTTP_400_BAD_REQUEST)
 
         serializer = self.get_serializer(attendance)
         return Response(serializer.data, status=status.HTTP_201_CREATED)
@@ -143,7 +146,7 @@ class AttendanceViewSet(viewsets.GenericViewSet):
             
             attendance.total_break_duration = total_break
             productive = (now - attendance.check_in) - total_break
-            attendance.productive_work_duration = productive
+            attendance.productive_work_duration = max(timedelta(0), productive)
 
             attendance.save()
 

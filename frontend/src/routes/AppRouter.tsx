@@ -79,7 +79,7 @@ export const AppRouter: React.FC = () => {
             <Route path="/admin/employees/:employeeId/access" element={<EmployeeAccessPage />} />
           </Route>
 
-          <Route element={<ProtectedRoute requiredPermission="attendance.view" />}>
+          <Route element={<ProtectedRoute requiredPermission="attendance.view_all" />}>
             <Route path="/admin/attendance" element={<AttendanceManagementPage />} />
           </Route>
 

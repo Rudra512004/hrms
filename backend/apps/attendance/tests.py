@@ -262,3 +262,22 @@ class AttendanceAPITests(TestCase):
         self.assertIn('employee_code', data)
         self.assertNotIn('personal_email', data)
         self.assertNotIn('address', data)
+
+    def test_concurrent_check_in_integrity_handled(self):
+        self.client.force_authenticate(user=self.user)
+        from unittest.mock import patch
+        from django.db import IntegrityError
+        # Simulate database throwing IntegrityError as in concurrent race
+        with patch('apps.attendance.models.Attendance.objects.create', side_effect=IntegrityError("duplicate key")):
+            response = self.client.post(reverse('attendance-check-in'), REMOTE_ADDR=self.office_ip)
+            self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+            self.assertEqual(response.data.get('detail'), 'Check-in already exists for today.')
+
+    def test_check_out_productive_duration_non_negative(self):
+        self.client.force_authenticate(user=self.user)
+        self.client.post(reverse('attendance-check-in'), REMOTE_ADDR=self.office_ip)
+        response = self.client.post(reverse('attendance-check-out'), REMOTE_ADDR=self.office_ip)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        att = Attendance.objects.get(employee=self.employee, date=timezone.now().date())
+        self.assertIsNotNone(att.productive_work_duration)
+        self.assertGreaterEqual(att.productive_work_duration, timedelta(0))

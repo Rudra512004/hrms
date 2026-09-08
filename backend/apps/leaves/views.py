@@ -145,16 +145,20 @@ class LeaveRequestViewSet(viewsets.ModelViewSet):
         )
 
     def perform_update(self, serializer):
-        from rest_framework.exceptions import ValidationError
+        from rest_framework.exceptions import ValidationError, PermissionDenied
         instance = self.get_object()
         if instance.status != 'pending':
             raise ValidationError({"detail": "Only pending requests can be modified."})
+        if not self.request.user.is_superuser and instance.employee != getattr(self.request.user, 'employee', None):
+            raise PermissionDenied("You can only modify your own leave requests.")
         super().perform_update(serializer)
 
     def perform_destroy(self, instance):
-        from rest_framework.exceptions import ValidationError
+        from rest_framework.exceptions import ValidationError, PermissionDenied
         if instance.status != 'pending':
             raise ValidationError({"detail": f"Cannot delete a leave request with status '{instance.status}'. Only pending requests can be deleted."})
+        if not self.request.user.is_superuser and instance.employee != getattr(self.request.user, 'employee', None):
+            raise PermissionDenied("You can only delete your own leave requests.")
         super().perform_destroy(instance)
 
     @action(detail=True, methods=['post'])
@@ -163,11 +167,28 @@ class LeaveRequestViewSet(viewsets.ModelViewSet):
             return Response(status=status.HTTP_403_FORBIDDEN)
 
         with transaction.atomic():
-            leave = self.get_object()
+            leave = LeaveRequest.objects.select_for_update().get(pk=self.get_object().pk)
+            if not request.user.is_superuser:
+                if not hasattr(request.user, 'employee') or leave.employee.organization_id != request.user.employee.organization_id:
+                    return Response(status=status.HTTP_403_FORBIDDEN)
+
             if leave.employee == getattr(request.user, 'employee', None):
                 return Response({"detail": "Cannot approve own request."}, status=status.HTTP_403_FORBIDDEN)
             if leave.status != 'pending':
                 return Response({"detail": "Only pending requests can be approved."}, status=status.HTTP_400_BAD_REQUEST)
+
+            # Defensive check against overlapping approved leaves
+            overlap = LeaveRequest.objects.filter(
+                employee=leave.employee,
+                status='approved',
+                start_date__lte=leave.end_date,
+                end_date__gte=leave.start_date,
+            ).exclude(pk=leave.pk).exists()
+            if overlap:
+                return Response(
+                    {"detail": "Cannot approve: an overlapping approved leave already exists for this employee."},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
 
             serializer = LeaveRequestReviewSerializer(data=request.data)
             serializer.is_valid(raise_exception=True)
@@ -205,17 +226,23 @@ class LeaveRequestViewSet(viewsets.ModelViewSet):
         if not AuthorizationService.has_permission(request.user, 'leave.reject'):
             return Response(status=status.HTTP_403_FORBIDDEN)
 
-        leave = self.get_object()
-        if leave.status != 'pending':
-            return Response({"detail": "Only pending requests can be rejected."}, status=status.HTTP_400_BAD_REQUEST)
+        with transaction.atomic():
+            leave = LeaveRequest.objects.select_for_update().get(pk=self.get_object().pk)
+            if not request.user.is_superuser:
+                if not hasattr(request.user, 'employee') or leave.employee.organization_id != request.user.employee.organization_id:
+                    return Response(status=status.HTTP_403_FORBIDDEN)
 
-        serializer = LeaveRequestReviewSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        leave.status = 'rejected'
-        leave.reviewed_by = request.user
-        leave.reviewed_at = timezone.now()
-        leave.reviewer_comment = serializer.validated_data.get('reviewer_comment', '')
-        leave.save()
+            if leave.status != 'pending':
+                return Response({"detail": "Only pending requests can be rejected."}, status=status.HTTP_400_BAD_REQUEST)
+
+            serializer = LeaveRequestReviewSerializer(data=request.data)
+            serializer.is_valid(raise_exception=True)
+            leave.status = 'rejected'
+            leave.reviewed_by = request.user
+            leave.reviewed_at = timezone.now()
+            leave.reviewer_comment = serializer.validated_data.get('reviewer_comment', '')
+            leave.save()
+
         AuditService.log(
             action='leave_request_rejected',
             actor=request.user,
@@ -227,16 +254,22 @@ class LeaveRequestViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=['post'])
     def cancel(self, request, pk=None):
-        leave = self.get_object()
-        if leave.employee != getattr(request.user, 'employee', None):
-            if not AuthorizationService.has_permission(request.user, 'leave.cancel'):
-                return Response(status=status.HTTP_403_FORBIDDEN)
+        with transaction.atomic():
+            leave = LeaveRequest.objects.select_for_update().get(pk=self.get_object().pk)
+            if not request.user.is_superuser:
+                if not hasattr(request.user, 'employee') or leave.employee.organization_id != request.user.employee.organization_id:
+                    return Response(status=status.HTTP_403_FORBIDDEN)
 
-        if leave.status != 'pending':
-            return Response({"detail": "Only pending requests can be cancelled."}, status=status.HTTP_400_BAD_REQUEST)
+            if leave.employee != getattr(request.user, 'employee', None):
+                if not AuthorizationService.has_permission(request.user, 'leave.cancel'):
+                    return Response(status=status.HTTP_403_FORBIDDEN)
 
-        leave.status = 'cancelled'
-        leave.save()
+            if leave.status != 'pending':
+                return Response({"detail": "Only pending requests can be cancelled."}, status=status.HTTP_400_BAD_REQUEST)
+
+            leave.status = 'cancelled'
+            leave.save()
+
         AuditService.log(
             action='leave_request_cancelled',
             actor=request.user,
