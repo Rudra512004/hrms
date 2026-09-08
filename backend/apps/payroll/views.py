@@ -8,13 +8,15 @@ from django.utils import timezone
 from apps.authorization.services import AuthorizationService
 from apps.audit.services import AuditService
 
-from .models import CompensationHistory, PayrollPeriod, PayrollRecord
+from .models import CompensationHistory, PayrollPeriod, PayrollRecord, Payslip
 from .serializers import (
     CompensationHistorySerializer,
     PayrollPeriodSerializer,
     PayrollRecordSerializer,
+    PayslipSummarySerializer,
+    PayslipDetailSerializer,
 )
-from .services import generate_payroll_for_period
+from .services import generate_payroll_for_period, issue_payslips_for_period
 
 
 def _require(user, codename):
@@ -216,6 +218,10 @@ class PayrollPeriodViewSet(viewsets.ModelViewSet):
             return Response({'detail': 'Generate payroll before approving.'}, status=status.HTTP_400_BAD_REQUEST)
 
         with transaction.atomic():
+            period = PayrollPeriod.objects.select_for_update().get(id=period.id)
+            if period.status == PayrollPeriod.STATUS_APPROVED:
+                return Response({'detail': 'Period is already approved.'}, status=status.HTTP_400_BAD_REQUEST)
+
             period.status = PayrollPeriod.STATUS_APPROVED
             period.approved_by = request.user
             period.approved_at = timezone.now()
@@ -226,6 +232,9 @@ class PayrollPeriodViewSet(viewsets.ModelViewSet):
                 status=PayrollRecord.STATUS_APPROVED
             )
 
+            # Issue payslips for all approved records in this period
+            issue_payslips_for_period(period)
+
         AuditService.log(
             action='payroll_approved',
             actor=request.user,
@@ -233,7 +242,15 @@ class PayrollPeriodViewSet(viewsets.ModelViewSet):
             target_id=period.id,
             request=request,
         )
+        AuditService.log(
+            action='payslips_issued',
+            actor=request.user,
+            target_type='payroll_period',
+            target_id=period.id,
+            request=request,
+        )
         return Response(self.get_serializer(period).data, status=status.HTTP_200_OK)
+
 
 
 class PayrollRecordViewSet(viewsets.ReadOnlyModelViewSet):
@@ -269,3 +286,86 @@ class PayrollRecordViewSet(viewsets.ReadOnlyModelViewSet):
         if err:
             return err
         return super().retrieve(request, *args, **kwargs)
+
+
+class PayslipViewSet(viewsets.ReadOnlyModelViewSet):
+    """
+    ReadOnly endpoint for issued Payslips.
+    - /my/: Returns the authenticated employee's own issued payslips.
+    - /{id}/: Retrieves payslip detail (owner or authorized admin only).
+    - /: Admin listing (requires payslip.view or payroll.view, scoped to user's org).
+    """
+    permission_classes = [IsAuthenticated]
+    http_method_names = ['get', 'head', 'options']
+
+    def get_serializer_class(self):
+        if self.action == 'retrieve':
+            return PayslipDetailSerializer
+        return PayslipSummarySerializer
+
+    def get_queryset(self):
+        user = self.request.user
+        org = _employee_org(self.request)
+        if org is None:
+            return Payslip.objects.none()
+
+        base_qs = Payslip.objects.filter(
+            payroll_record__period__organization=org,
+            payroll_record__status=PayrollRecord.STATUS_APPROVED,
+            payroll_record__period__status=PayrollPeriod.STATUS_APPROVED,
+        ).select_related(
+            'payroll_record',
+            'payroll_record__period',
+            'payroll_record__employee',
+            'payroll_record__employee__user',
+            'payroll_record__employee__department',
+            'payroll_record__employee__designation',
+        )
+
+        if self.action == 'my':
+            if not hasattr(user, 'employee'):
+                return Payslip.objects.none()
+            return base_qs.filter(payroll_record__employee=user.employee)
+
+        if self.action == 'retrieve':
+            if (
+                AuthorizationService.has_permission(user, 'payslip.view')
+                or AuthorizationService.has_permission(user, 'payroll.view')
+            ):
+                return base_qs
+            if hasattr(user, 'employee'):
+                return base_qs.filter(payroll_record__employee=user.employee)
+            return Payslip.objects.none()
+
+        # For list (/), requires payslip.view or payroll.view
+        if not (
+            AuthorizationService.has_permission(user, 'payslip.view')
+            or AuthorizationService.has_permission(user, 'payroll.view')
+        ):
+            return Payslip.objects.none()
+
+        period_id = self.request.query_params.get('period')
+        if period_id:
+            base_qs = base_qs.filter(payroll_record__period_id=period_id)
+        emp_id = self.request.query_params.get('employee')
+        if emp_id:
+            base_qs = base_qs.filter(payroll_record__employee_id=emp_id)
+
+        return base_qs
+
+    def list(self, request, *args, **kwargs):
+        if not (
+            AuthorizationService.has_permission(request.user, 'payslip.view')
+            or AuthorizationService.has_permission(request.user, 'payroll.view')
+        ):
+            return Response({'detail': 'Permission denied.'}, status=status.HTTP_403_FORBIDDEN)
+        return super().list(request, *args, **kwargs)
+
+    @action(detail=False, methods=['get'], url_path='my')
+    def my(self, request):
+        """Returns the authenticated employee's issued payslips."""
+        if not hasattr(request.user, 'employee'):
+            return Response([], status=status.HTTP_200_OK)
+        qs = self.get_queryset()
+        serializer = PayslipSummarySerializer(qs, many=True, context={'request': request})
+        return Response(serializer.data, status=status.HTTP_200_OK)

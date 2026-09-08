@@ -14,7 +14,7 @@ from django.utils import timezone
 
 from apps.attendance.models import Attendance, Holiday
 from apps.leaves.models import LeaveRequest
-from .models import CompensationHistory, PayrollPeriod, PayrollRecord
+from .models import CompensationHistory, PayrollPeriod, PayrollRecord, Payslip
 
 
 def _working_days_in_period(organization_id: int, start: date, end: date) -> int:
@@ -182,3 +182,31 @@ def generate_payroll_for_period(period: PayrollPeriod, requesting_user=None) -> 
     period.save(update_fields=['generated_at'])
 
     return records
+
+
+def issue_payslips_for_period(period: PayrollPeriod) -> list:
+    """
+    Atomically issue exactly one Payslip for each approved PayrollRecord in the period.
+    Must be called within an atomic transaction.
+    Raises ValueError if period is not approved.
+    """
+    if period.status != PayrollPeriod.STATUS_APPROVED:
+        raise ValueError("Cannot issue payslips for an unapproved period.")
+
+    records = period.records.filter(status=PayrollRecord.STATUS_APPROVED).select_related(
+        'employee', 'period'
+    )
+    payslips = []
+    for record in records:
+        emp_code = record.employee.employee_code.strip()
+        num = f"PAY-{period.year}{period.month:02d}-{emp_code}"
+        payslip, _ = Payslip.objects.get_or_create(
+            payroll_record=record,
+            defaults={
+                'payslip_number': num,
+                'status': Payslip.STATUS_ISSUED,
+            },
+        )
+        payslips.append(payslip)
+
+    return payslips

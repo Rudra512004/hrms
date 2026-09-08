@@ -13,7 +13,9 @@ import {
   Network,
   CalendarDays,
   DollarSign,
+  FileText,
 } from 'lucide-react';
+
 import { useAuth } from '../contexts/AuthContext';
 
 interface SidebarProps {
@@ -69,9 +71,11 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen }) => {
     {
       title: 'Finance',
       items: [
+        { path: '/payslips', label: 'My Payslips', icon: FileText },
         { path: '/payroll', label: 'Payroll', icon: DollarSign, permission: 'payroll.view' },
       ],
     },
+
     {
       title: 'Admin',
       items: [

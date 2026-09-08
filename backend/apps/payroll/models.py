@@ -171,3 +171,48 @@ class PayrollRecord(models.Model):
             f"{self.employee.employee_code} — "
             f"{self.period.year}/{self.period.month:02d} — ₹{self.net_salary}"
         )
+
+
+class Payslip(models.Model):
+    """
+    Issued receipt/reference for an approved PayrollRecord.
+    References the authoritative PayrollRecord snapshot without duplicating calculation fields.
+    """
+    STATUS_ISSUED = 'issued'
+    STATUS_REVOKED = 'revoked'
+    STATUS_CHOICES = [
+        (STATUS_ISSUED, 'Issued'),
+        (STATUS_REVOKED, 'Revoked'),
+    ]
+
+    payroll_record = models.OneToOneField(
+        PayrollRecord,
+        on_delete=models.PROTECT,
+        related_name='payslip',
+    )
+    payslip_number = models.CharField(
+        max_length=64,
+        unique=True,
+        db_index=True,
+        help_text="Format: PAY-YYYYMM-EMPLOYEE_CODE",
+    )
+    issued_at = models.DateTimeField(auto_now_add=True)
+    status = models.CharField(
+        max_length=20,
+        choices=STATUS_CHOICES,
+        default=STATUS_ISSUED,
+    )
+
+    class Meta:
+        ordering = [
+            '-payroll_record__period__year',
+            '-payroll_record__period__month',
+            'payroll_record__employee__employee_code',
+        ]
+        indexes = [
+            models.Index(fields=['payslip_number']),
+            models.Index(fields=['status']),
+        ]
+
+    def __str__(self):
+        return f"{self.payslip_number} — {self.payroll_record.employee.employee_code}"

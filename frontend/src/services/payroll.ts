@@ -75,7 +75,61 @@ export interface PayrollRecord {
   generated_at: string;
 }
 
+export interface PayslipSummary {
+  id: number;
+  payslip_number: string;
+  status: 'issued' | 'revoked';
+  issued_at: string;
+  period_label: string;
+  year: number;
+  month: number;
+  start_date: string;
+  end_date: string;
+  net_salary: string;
+  employee_code: string;
+  employee_name: string;
+}
+
+export interface PayslipDetail {
+  id: number;
+  payslip_number: string;
+  status: 'issued' | 'revoked';
+  issued_at: string;
+  period_label: string;
+  employee: {
+    id: number;
+    code: string;
+    name: string;
+    email: string;
+    department: string | null;
+    designation: string | null;
+  };
+  period: {
+    id: number;
+    year: number;
+    month: number;
+    label: string;
+    start_date: string;
+    end_date: string;
+  };
+  attendance: {
+    working_days: number;
+    present_days: number;
+    half_days: number;
+    leave_days: number;
+    absent_days: number;
+    effective_days: string;
+  };
+  financials: {
+    basic_salary: string | null;
+    gross_salary: string | null;
+    deductions: string | null;
+    net_salary: string | null;
+  };
+}
+
 export interface CreatePeriodPayload {
+
   year: number;
   month: number;
   start_date: string;
@@ -150,7 +204,28 @@ export const payrollService = {
     const res = await fetch(`${BASE}/records/${query}`, { headers: getHeaders() });
     return handleResponse<PayrollRecord[]>(res);
   },
+
+  // Payslips
+  getMyPayslips: async (): Promise<PayslipSummary[]> => {
+    const res = await fetch(`${BASE}/payslips/my/`, { headers: getHeaders() });
+    return handleResponse<PayslipSummary[]>(res);
+  },
+
+  getPayslipDetail: async (id: number): Promise<PayslipDetail> => {
+    const res = await fetch(`${BASE}/payslips/${id}/`, { headers: getHeaders() });
+    return handleResponse<PayslipDetail>(res);
+  },
+
+  getPayslips: async (periodId?: number, employeeId?: number): Promise<PayslipSummary[]> => {
+    const params = new URLSearchParams();
+    if (periodId) params.set('period', String(periodId));
+    if (employeeId) params.set('employee', String(employeeId));
+    const query = params.toString() ? `?${params.toString()}` : '';
+    const res = await fetch(`${BASE}/payslips/${query}`, { headers: getHeaders() });
+    return handleResponse<PayslipSummary[]>(res);
+  },
 };
+
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
