@@ -1,9 +1,11 @@
+import os
 from decimal import Decimal
 from rest_framework import serializers
 from django.contrib.auth import get_user_model
 from django.utils.crypto import get_random_string
+from django.conf import settings
 from apps.organization.models import Branch, Department, Designation
-from .models import Employee, EmploymentStatus, EmployeeLifecycleEvent
+from .models import Employee, EmploymentStatus, EmployeeLifecycleEvent, EmployeeDocument, DocumentType, DocumentStatus
 
 User = get_user_model()
 
@@ -212,3 +214,93 @@ class EmployeeExitSerializer(serializers.Serializer):
         if res_date and exit_date and exit_date < res_date:
             raise serializers.ValidationError({'exit_date': 'Exit date cannot be before resignation date.'})
         return attrs
+
+
+# ── Employee Document Serializers ──────────────────────────────────────────────
+
+ALLOWED_DOCUMENT_EXTENSIONS = {'.pdf', '.png', '.jpg', '.jpeg', '.doc', '.docx'}
+
+# Explicit deny-list of dangerous extensions as a secondary safety net
+BLOCKED_EXTENSIONS = {
+    '.exe', '.sh', '.bat', '.cmd', '.py', '.js', '.html', '.htm', '.php',
+    '.vbs', '.ps1', '.rb', '.pl', '.jar', '.msi', '.dll', '.so', '.out',
+    '.bin', '.run', '.com', '.pif', '.scr', '.reg', '.hta', '.cpl', '.inf',
+}
+
+
+class EmployeeDocumentSerializer(serializers.ModelSerializer):
+    """Read-only representation of an uploaded document (no file binary)."""
+    document_type_display = serializers.CharField(source='get_document_type_display', read_only=True)
+    status_display = serializers.CharField(source='get_status_display', read_only=True)
+    uploaded_by_email = serializers.CharField(source='uploaded_by.email', read_only=True)
+
+    class Meta:
+        model = EmployeeDocument
+        fields = (
+            'id', 'employee', 'document_type', 'document_type_display',
+            'document_name', 'file_size', 'mime_type', 'description',
+            'expiry_date', 'status', 'status_display',
+            'uploaded_at', 'uploaded_by', 'uploaded_by_email',
+        )
+        read_only_fields = fields
+
+
+class EmployeeDocumentUploadSerializer(serializers.Serializer):
+    """Write serializer — validates file before accepting the upload."""
+    employee = serializers.PrimaryKeyRelatedField(queryset=Employee.objects.all())
+    document_type = serializers.ChoiceField(choices=DocumentType.choices, default=DocumentType.OTHER)
+    document_name = serializers.CharField(max_length=255, required=False, allow_blank=True)
+    description = serializers.CharField(required=False, allow_blank=True, default='')
+    expiry_date = serializers.DateField(required=False, allow_null=True)
+    file = serializers.FileField()
+
+    def validate_file(self, file):
+        # 1. Size check
+        max_size = getattr(settings, 'MAX_DOCUMENT_UPLOAD_SIZE', 5 * 1024 * 1024)
+        if file.size > max_size:
+            raise serializers.ValidationError(
+                f"File size {file.size} bytes exceeds the maximum allowed {max_size} bytes (5 MB)."
+            )
+
+        # 2. Extension — allow-list only
+        ext = os.path.splitext(file.name)[-1].lower()
+        if ext not in ALLOWED_DOCUMENT_EXTENSIONS:
+            raise serializers.ValidationError(
+                f"File type '{ext}' is not allowed. Accepted types: {', '.join(sorted(ALLOWED_DOCUMENT_EXTENSIONS))}."
+            )
+
+        # 3. Secondary deny-list guard
+        if ext in BLOCKED_EXTENSIONS:
+            raise serializers.ValidationError(
+                f"File type '{ext}' is explicitly blocked for security reasons."
+            )
+
+        return file
+
+    def validate_document_name(self, value):
+        # Sanitize against path-traversal sequences
+        if value:
+            value = value.replace('..', '').replace('/', '').replace('\\', '').strip()
+        return value
+
+    def create(self, validated_data):
+        file = validated_data['file']
+        employee = validated_data['employee']
+
+        # Fall back to the original filename if document_name not provided
+        doc_name = validated_data.get('document_name') or os.path.basename(file.name)
+        # Sanitize the fallback name too
+        doc_name = doc_name.replace('..', '').replace('/', '').replace('\\', '').strip()
+
+        document = EmployeeDocument.objects.create(
+            employee=employee,
+            document_type=validated_data.get('document_type', DocumentType.OTHER),
+            document_name=doc_name,
+            file=file,
+            file_size=file.size,
+            mime_type=getattr(file, 'content_type', ''),
+            description=validated_data.get('description', ''),
+            expiry_date=validated_data.get('expiry_date'),
+            uploaded_by=self.context.get('request').user if self.context.get('request') else None,
+        )
+        return document

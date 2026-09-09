@@ -114,3 +114,6 @@ CORS_ALLOW_ALL_ORIGINS = True
 CORS_ALLOW_CREDENTIALS = True
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+
+MEDIA_ROOT = BASE_DIR / 'media' / 'private'
+MAX_DOCUMENT_UPLOAD_SIZE = 5 * 1024 * 1024  # 5 MB

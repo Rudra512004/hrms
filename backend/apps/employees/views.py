@@ -1,3 +1,5 @@
+import mimetypes
+from django.http import FileResponse
 from rest_framework import status, viewsets
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -11,7 +13,7 @@ from django.db import transaction
 from django.utils import timezone
 from apps.authorization.permissions import HasRequiredPermission, IsNetworkAllowed, require_permission
 from apps.authorization.services import AuthorizationService
-from .models import Employee, EmploymentStatus, EmployeeLifecycleEvent, WFHRequest
+from .models import Employee, EmploymentStatus, EmployeeLifecycleEvent, WFHRequest, EmployeeDocument
 from .serializers import (
     EmployeeSerializer,
     ProvisionEmployeeSerializer,
@@ -19,6 +21,8 @@ from .serializers import (
     EmployeeTransferSerializer,
     EmployeePromotionSerializer,
     EmployeeExitSerializer,
+    EmployeeDocumentSerializer,
+    EmployeeDocumentUploadSerializer,
 )
 from apps.notifications.services import NotificationService
 from apps.audit.services import AuditService
@@ -659,3 +663,217 @@ class WFHRequestViewSet(viewsets.ModelViewSet):
             request=request
         )
         return Response(WFHRequestSerializer(wfh).data)
+
+
+class EmployeeDocumentViewSet(viewsets.GenericViewSet):
+    """
+    Manages employee document uploads.
+
+    All file downloads are served through backend-authenticated endpoints.
+    No public MEDIA_URL exposure.
+    Organization isolation (IDOR protection) is enforced in get_queryset().
+    """
+
+    def _get_employee_org(self, user):
+        """Return org_id for the requesting user, or None for superusers."""
+        if user.is_superuser:
+            return None
+        if hasattr(user, 'employee') and user.employee.organization_id:
+            return user.employee.organization_id
+        return -1  # sentinel: force empty queryset for users without employee
+
+    def get_queryset(self):
+        user = self.request.user
+        org_id = self._get_employee_org(user)
+        if org_id is None:
+            qs = EmployeeDocument.objects.all()
+        elif org_id == -1:
+            return EmployeeDocument.objects.none()
+        else:
+            qs = EmployeeDocument.objects.filter(employee__organization_id=org_id)
+
+        # Optional ?employee=<id> filter
+        employee_id = self.request.query_params.get('employee')
+        if employee_id:
+            qs = qs.filter(employee_id=employee_id)
+
+        return qs.select_related('employee', 'uploaded_by')
+
+    def list(self, request):
+        """List documents. Requires employee.document.view permission."""
+        if not (
+            AuthorizationService.has_permission(request.user, 'employee.document.view') or
+            request.user.is_superuser
+        ):
+            return Response(status=status.HTTP_403_FORBIDDEN)
+
+        queryset = self.get_queryset()
+        serializer = EmployeeDocumentSerializer(queryset, many=True)
+        return Response(serializer.data)
+
+    def retrieve(self, request, pk=None):
+        """Retrieve document metadata. Returns 404 for cross-org (IDOR protection)."""
+        try:
+            doc = self.get_queryset().get(pk=pk)
+        except EmployeeDocument.DoesNotExist:
+            return Response(status=status.HTTP_404_NOT_FOUND)
+
+        # Employees may view their own documents
+        is_own = (
+            hasattr(request.user, 'employee') and
+            doc.employee_id == request.user.employee.id
+        )
+        if not is_own and not (
+            AuthorizationService.has_permission(request.user, 'employee.document.view') or
+            request.user.is_superuser
+        ):
+            return Response(status=status.HTTP_403_FORBIDDEN)
+
+        serializer = EmployeeDocumentSerializer(doc)
+        return Response(serializer.data)
+
+    def create(self, request):
+        """Upload a document. Requires employee.document.upload permission."""
+        if not (
+            AuthorizationService.has_permission(request.user, 'employee.document.upload') or
+            request.user.is_superuser
+        ):
+            return Response(status=status.HTTP_403_FORBIDDEN)
+
+        serializer = EmployeeDocumentUploadSerializer(data=request.data, context={'request': request})
+        serializer.is_valid(raise_exception=True)
+
+        # Org isolation: ensure the target employee belongs to the same org
+        target_employee = serializer.validated_data['employee']
+        org_id = self._get_employee_org(request.user)
+        if org_id is not None and org_id != -1:
+            if target_employee.organization_id != org_id:
+                return Response(
+                    {'detail': 'Cannot upload documents for an employee in a different organization.'},
+                    status=status.HTTP_403_FORBIDDEN
+                )
+
+        document = serializer.save()
+
+        AuditService.log(
+            action='employee_document_uploaded',
+            actor=request.user,
+            target_type='employeedocument',
+            target_id=document.id,
+            metadata={
+                'employee_id': target_employee.id,
+                'document_name': document.document_name,
+                'document_type': document.document_type,
+                'file_size': document.file_size,
+            },
+            request=request
+        )
+
+        return Response(EmployeeDocumentSerializer(document).data, status=status.HTTP_201_CREATED)
+
+    def destroy(self, request, pk=None):
+        """Delete a document (db record + file). Requires employee.document.delete."""
+        if not (
+            AuthorizationService.has_permission(request.user, 'employee.document.delete') or
+            request.user.is_superuser
+        ):
+            return Response(status=status.HTTP_403_FORBIDDEN)
+
+        try:
+            doc = self.get_queryset().get(pk=pk)
+        except EmployeeDocument.DoesNotExist:
+            return Response(status=status.HTTP_404_NOT_FOUND)
+
+        doc_id = doc.id
+        doc_name = doc.document_name
+        emp_id = doc.employee_id
+
+        # Delete the physical file from storage
+        if doc.file and doc.file.name:
+            try:
+                doc.file.delete(save=False)
+            except Exception:
+                pass  # Log but don't block db cleanup
+
+        doc.delete()
+
+        AuditService.log(
+            action='employee_document_deleted',
+            actor=request.user,
+            target_type='employeedocument',
+            target_id=doc_id,
+            metadata={
+                'employee_id': emp_id,
+                'document_name': doc_name,
+            },
+            request=request
+        )
+
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+    @action(detail=True, methods=['get'])
+    def download(self, request, pk=None):
+        """Serve file as attachment. Auth + RBAC required."""
+        try:
+            doc = self.get_queryset().get(pk=pk)
+        except EmployeeDocument.DoesNotExist:
+            return Response(status=status.HTTP_404_NOT_FOUND)
+
+        is_own = (
+            hasattr(request.user, 'employee') and
+            doc.employee_id == request.user.employee.id
+        )
+        if not is_own and not (
+            AuthorizationService.has_permission(request.user, 'employee.document.view') or
+            request.user.is_superuser
+        ):
+            return Response(status=status.HTTP_403_FORBIDDEN)
+
+        try:
+            file_handle = doc.file.open('rb')
+        except (FileNotFoundError, OSError):
+            return Response({'detail': 'File not found on storage.'}, status=status.HTTP_404_NOT_FOUND)
+
+        content_type = doc.mime_type or mimetypes.guess_type(doc.file.name)[0] or 'application/octet-stream'
+        response = FileResponse(file_handle, content_type=content_type, as_attachment=True)
+        response['Content-Disposition'] = f'attachment; filename="{doc.document_name}"'
+
+        AuditService.log(
+            action='employee_document_downloaded',
+            actor=request.user,
+            target_type='employeedocument',
+            target_id=doc.id,
+            metadata={'employee_id': doc.employee_id, 'document_name': doc.document_name},
+            request=request
+        )
+
+        return response
+
+    @action(detail=True, methods=['get'])
+    def preview(self, request, pk=None):
+        """Serve file inline for browser preview. Auth + RBAC required."""
+        try:
+            doc = self.get_queryset().get(pk=pk)
+        except EmployeeDocument.DoesNotExist:
+            return Response(status=status.HTTP_404_NOT_FOUND)
+
+        is_own = (
+            hasattr(request.user, 'employee') and
+            doc.employee_id == request.user.employee.id
+        )
+        if not is_own and not (
+            AuthorizationService.has_permission(request.user, 'employee.document.view') or
+            request.user.is_superuser
+        ):
+            return Response(status=status.HTTP_403_FORBIDDEN)
+
+        try:
+            file_handle = doc.file.open('rb')
+        except (FileNotFoundError, OSError):
+            return Response({'detail': 'File not found on storage.'}, status=status.HTTP_404_NOT_FOUND)
+
+        content_type = doc.mime_type or mimetypes.guess_type(doc.file.name)[0] or 'application/octet-stream'
+        response = FileResponse(file_handle, content_type=content_type, as_attachment=False)
+        response['Content-Disposition'] = f'inline; filename="{doc.document_name}"'
+
+        return response

@@ -78,6 +78,11 @@ class Command(BaseCommand):
             {'codename': 'payroll.view_reports', 'resource': 'payroll', 'action': 'view_reports', 'name': 'View Payroll Reports'},
             {'codename': 'payslip.view', 'resource': 'payslip', 'action': 'view', 'name': 'View Payslips'},
             {'codename': 'payslip.download', 'resource': 'payslip', 'action': 'download', 'name': 'Download Payslips'},
+
+            # Employee Documents
+            {'codename': 'employee.document.view', 'resource': 'employee_document', 'action': 'view', 'name': 'View Employee Documents'},
+            {'codename': 'employee.document.upload', 'resource': 'employee_document', 'action': 'upload', 'name': 'Upload Employee Documents'},
+            {'codename': 'employee.document.delete', 'resource': 'employee_document', 'action': 'delete', 'name': 'Delete Employee Documents'},
         ]
 
         for p_data in permissions_data:

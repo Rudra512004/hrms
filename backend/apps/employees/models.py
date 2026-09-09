@@ -1,9 +1,38 @@
 # pyrefly: ignore [missing-import]
+import os
+import uuid
 from django.db import models
 from django.conf import settings
 from django.core.exceptions import ValidationError
 
 from apps.organization.models import Organization, Department, Designation
+
+
+def employee_document_upload_path(instance, filename):
+    """
+    Store documents at:
+      media/private/employee_documents/<employee_id>/<uuid>.<ext>
+    Using a UUID-based filename prevents both directory traversal and name collisions.
+    The original filename is stored in the `document_name` field.
+    """
+    ext = os.path.splitext(filename)[-1].lower()
+    new_filename = f"{uuid.uuid4()}{ext}"
+    return os.path.join('employee_documents', str(instance.employee_id), new_filename)
+
+
+class DocumentType(models.TextChoices):
+    IDENTITY = 'identity', 'Identity'
+    ADDRESS = 'address', 'Address Proof'
+    EDUCATION = 'education', 'Education'
+    EMPLOYMENT = 'employment', 'Employment'
+    CONTRACT = 'contract', 'Contract'
+    OTHER = 'other', 'Other'
+
+
+class DocumentStatus(models.TextChoices):
+    PENDING = 'pending', 'Pending'
+    VERIFIED = 'verified', 'Verified'
+    REJECTED = 'rejected', 'Rejected'
 
 class EmploymentStatus(models.TextChoices):
     ONBOARDING = 'onboarding', 'Onboarding'
@@ -131,3 +160,32 @@ class EmployeeLifecycleEvent(models.Model):
 
     def __str__(self):
         return f"{self.employee.employee_code} - {self.get_event_type_display()} on {self.effective_date}"
+
+
+class EmployeeDocument(models.Model):
+    employee = models.ForeignKey(Employee, on_delete=models.CASCADE, related_name='documents')
+    document_type = models.CharField(
+        max_length=50, choices=DocumentType.choices, default=DocumentType.OTHER
+    )
+    document_name = models.CharField(max_length=255, help_text="Human-readable document label")
+    file = models.FileField(upload_to=employee_document_upload_path)
+    file_size = models.PositiveIntegerField(help_text="File size in bytes")
+    mime_type = models.CharField(max_length=100, blank=True)
+    description = models.TextField(blank=True)
+    expiry_date = models.DateField(null=True, blank=True)
+    status = models.CharField(
+        max_length=20, choices=DocumentStatus.choices, default=DocumentStatus.PENDING
+    )
+    uploaded_at = models.DateTimeField(auto_now_add=True)
+    uploaded_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='+'
+    )
+
+    class Meta:
+        ordering = ['-uploaded_at']
+
+    def __str__(self):
+        return f"{self.employee.employee_code} — {self.document_name} ({self.document_type})"
