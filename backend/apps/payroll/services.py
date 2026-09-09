@@ -105,11 +105,15 @@ def _attendance_summary(employee, start: date, end: date) -> dict:
     return {'present': present, 'half': half}
 
 
-def _approved_leave_days(employee, start: date, end: date) -> int:
+def _approved_leave_days(employee, start: date, end: date, exclude_dates: set = None) -> int:
     """
     Count distinct working days of approved LeaveRequests overlapping the pay period.
     Excludes weekends and holidays, and deduplicates overlapping requests.
+    Excludes dates already accounted for by attendance (exclude_dates) to prevent double counting.
     """
+    if exclude_dates is None:
+        exclude_dates = set()
+
     requests = LeaveRequest.objects.filter(
         employee=employee,
         status='approved',
@@ -130,7 +134,7 @@ def _approved_leave_days(employee, start: date, end: date) -> int:
 
         current = clipped_start
         while current <= clipped_end:
-            if current.weekday() < 5 and current not in holiday_dates:
+            if current.weekday() < 5 and current not in holiday_dates and current not in exclude_dates:
                 leave_dates.add(current)
             current += timedelta(days=1)
     return len(leave_dates)
@@ -166,7 +170,18 @@ def generate_payroll_for_period(period: PayrollPeriod, requesting_user=None) -> 
     for emp in employees:
         basic_salary = _get_active_salary(emp, period.start_date, period.end_date)
         att = _attendance_summary(emp, period.start_date, period.end_date)
-        leave_days = _approved_leave_days(emp, period.start_date, period.end_date)
+
+        # Dates already accounted for by present attendance to prevent double-counting with approved leave
+        present_dates = set(
+            Attendance.objects.filter(
+                employee=emp,
+                date__range=[period.start_date, period.end_date],
+                status='present',
+            ).values_list('date', flat=True)
+        )
+        leave_days = _approved_leave_days(
+            emp, period.start_date, period.end_date, exclude_dates=present_dates
+        )
 
         present = att['present']
         half = att['half']

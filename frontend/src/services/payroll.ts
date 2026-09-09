@@ -67,10 +67,12 @@ export interface PayrollRecord {
   absent_days: number;
   leave_days: number;
   effective_days: string;        // Decimal as string
+  lop_days?: string;             // Decimal as string
   // Salary fields — only present when user has payroll.view_sensitive
   basic_salary?: string;
   gross_salary?: string;
   net_salary?: string;
+  lop_amount?: string;
   status: 'draft' | 'approved';
   generated_at: string;
 }

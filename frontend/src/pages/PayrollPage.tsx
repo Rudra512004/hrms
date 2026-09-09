@@ -150,19 +150,31 @@ function RecordsPanel({ period, canViewSensitive, onClose }: RecordsPanelProps) 
   const columns = [
     { key: 'employee_code', title: 'Code' },
     { key: 'employee_name', title: 'Employee' },
-    { key: 'working_days',  title: 'Working Days' },
+    { key: 'working_days',  title: 'Working' },
     { key: 'present_days',  title: 'Present' },
+    { key: 'half_days',     title: 'Half' },
+    { key: 'leave_days',    title: 'Leave' },
     { key: 'absent_days',   title: 'Absent' },
-    { key: 'leave_days',    title: 'On Leave' },
-    { key: 'effective_days', title: 'Effective Days',
+    { key: 'effective_days', title: 'Effective',
       render: (r: PayrollRecord) => parseFloat(r.effective_days).toFixed(1) },
     ...(canViewSensitive ? [
       { key: 'basic_salary', title: 'Basic Salary',
         render: (r: PayrollRecord) => formatCurrency(r.basic_salary) },
       { key: 'gross_salary', title: 'Gross Salary',
+        render: (r: PayrollRecord) => formatCurrency(r.gross_salary) },
+      { key: 'net_salary', title: 'Net Salary',
         render: (r: PayrollRecord) => (
-          <strong style={{ color: 'var(--color-primary)' }}>{formatCurrency(r.gross_salary)}</strong>
+          <strong style={{ color: 'var(--color-primary)' }}>{formatCurrency(r.net_salary)}</strong>
         )},
+      { key: 'lop_amount', title: 'LOP',
+        render: (r: PayrollRecord) => {
+          const lop = r.lop_amount ?? (r.basic_salary && r.net_salary ? (Number(r.basic_salary) - Number(r.net_salary)).toFixed(2) : '0');
+          return (
+            <span style={{ color: Number(lop) > 0 ? 'var(--color-status-danger)' : undefined }}>
+              {formatCurrency(lop)}
+            </span>
+          );
+        }},
     ] : [
       { key: 'salary_hidden', title: 'Salary',
         render: () => (

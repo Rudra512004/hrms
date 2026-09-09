@@ -70,6 +70,8 @@ class PayrollRecordSerializer(serializers.ModelSerializer):
     employee_code = serializers.CharField(source='employee.employee_code', read_only=True)
     employee_name = serializers.SerializerMethodField()
     period_label = serializers.SerializerMethodField()
+    lop_days = serializers.DecimalField(max_digits=5, decimal_places=1, read_only=True)
+    lop_amount = serializers.DecimalField(max_digits=12, decimal_places=2, read_only=True)
 
     class Meta:
         model = PayrollRecord
@@ -77,8 +79,8 @@ class PayrollRecordSerializer(serializers.ModelSerializer):
             'id', 'period', 'period_label',
             'employee', 'employee_code', 'employee_name',
             'working_days', 'present_days', 'half_days', 'absent_days',
-            'leave_days', 'effective_days',
-            'basic_salary', 'gross_salary', 'net_salary',
+            'leave_days', 'effective_days', 'lop_days',
+            'basic_salary', 'gross_salary', 'net_salary', 'lop_amount',
             'status', 'generated_at',
         ]
         read_only_fields = fields  # records are fully computed; never user-editable
@@ -98,6 +100,7 @@ class PayrollRecordSerializer(serializers.ModelSerializer):
             ret.pop('basic_salary', None)
             ret.pop('gross_salary', None)
             ret.pop('net_salary', None)
+            ret.pop('lop_amount', None)
         return ret
 
 

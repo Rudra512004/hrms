@@ -759,3 +759,294 @@ class FuturePeriodWarningTest(TestCase):
         self.assertEqual(record.net_salary, Decimal('0.00'))
         # Basic salary snapshot must still be captured correctly.
         self.assertEqual(record.basic_salary, Decimal('50000.00'))
+
+
+class PayrollCalculationSemanticsRegressionTests(TestCase):
+    """
+    Exhaustive regression test suite ensuring payroll day-count semantics and salary calculations:
+    1. Zero attendance
+    2. Full attendance
+    3. Partial attendance
+    4. Attendance + approved paid leave
+    5. Half-day attendance
+    6. Weekend/holiday exclusion
+    7. Overlapping leave/attendance deduplication
+    8. Salary/LOP consistency for ₹100,000 basic salary
+    9. Partial LOP consistency
+    10. Payroll approval locking and record immutability
+    """
+
+    def setUp(self):
+        self.client = APIClient()
+        self.org = Organization.objects.create(name='Regression Org')
+        self.user = User.objects.create_user(
+            email='superadmin@company.com',
+            password='Password123!',
+            first_name='Super',
+            last_name='Admin',
+            status='active',
+        )
+        self.emp = Employee.objects.create(
+            user=self.user,
+            employee_code='ADMIN-001',
+            organization=self.org,
+            employment_status=EmploymentStatus.ACTIVE,
+        )
+        # ₹100,000 monthly basic salary configured
+        CompensationHistory.objects.create(
+            employee=self.emp,
+            effective_from=date(2025, 1, 1),
+            basic_salary=Decimal('100000.00'),
+            created_by=self.user,
+        )
+        # Holiday on Jan 1, 2025 (New Year) -> 23 weekdays - 1 holiday = 22 working days
+        Holiday.objects.create(
+            organization=self.org,
+            name='New Year',
+            date=date(2025, 1, 1),
+            is_active=True,
+        )
+        self.period = PayrollPeriod.objects.create(
+            organization=self.org,
+            year=2025,
+            month=1,
+            start_date=date(2025, 1, 1),
+            end_date=date(2025, 1, 31),
+        )
+        self.leave_type = LeaveType.objects.create(
+            organization=self.org,
+            name='Earned Leave',
+            annual_allocation=15,
+        )
+        # List of the 22 scheduled working dates in Jan 2025
+        self.working_dates = [
+            d for d in [date(2025, 1, day) for day in range(1, 32)]
+            if d.weekday() < 5 and d != date(2025, 1, 1)
+        ]
+        self.assertEqual(len(self.working_dates), 22)
+
+    def test_1_zero_attendance(self):
+        """
+        1. Zero attendance:
+        working_days = 22, present_days = 0, leave_days = 0, absent_days = 22,
+        effective_days = 0, lop_days = 22, lop_amount = 100,000, net_salary = 0.
+        Effective days MUST NOT equal working days.
+        """
+        generate_payroll_for_period(self.period)
+        record = PayrollRecord.objects.get(period=self.period, employee=self.emp)
+
+        self.assertEqual(record.working_days, 22)
+        self.assertEqual(record.present_days, 0)
+        self.assertEqual(record.half_days, 0)
+        self.assertEqual(record.leave_days, 0)
+        self.assertEqual(record.absent_days, 22)
+        self.assertEqual(record.effective_days, Decimal('0.0'))
+        self.assertEqual(record.lop_days, Decimal('22.0'))
+        self.assertEqual(record.basic_salary, Decimal('100000.00'))
+        self.assertEqual(record.gross_salary, Decimal('0.00'))
+        self.assertEqual(record.net_salary, Decimal('0.00'))
+        self.assertEqual(record.lop_amount, Decimal('100000.00'))
+
+        # Verify serializer representation
+        from .serializers import PayrollRecordSerializer
+        with patch('apps.authorization.services.AuthorizationService.has_permission', return_value=True):
+            data = PayrollRecordSerializer(record, context={'request': None}).data
+            self.assertEqual(Decimal(data['effective_days']), Decimal('0.0'))
+            self.assertEqual(Decimal(data['lop_days']), Decimal('22.0'))
+            self.assertEqual(Decimal(data['lop_amount']), Decimal('100000.00'))
+
+    def test_2_full_attendance(self):
+        """
+        2. Full attendance:
+        working_days = 22, present_days = 22, absent_days = 0, effective_days = 22,
+        lop_days = 0, lop_amount = 0, net_salary = 100,000.
+        """
+        for d in self.working_dates:
+            Attendance.objects.create(employee=self.emp, date=d, status='present')
+
+        generate_payroll_for_period(self.period)
+        record = PayrollRecord.objects.get(period=self.period, employee=self.emp)
+
+        self.assertEqual(record.working_days, 22)
+        self.assertEqual(record.present_days, 22)
+        self.assertEqual(record.half_days, 0)
+        self.assertEqual(record.leave_days, 0)
+        self.assertEqual(record.absent_days, 0)
+        self.assertEqual(record.effective_days, Decimal('22.0'))
+        self.assertEqual(record.lop_days, Decimal('0.0'))
+        self.assertEqual(record.basic_salary, Decimal('100000.00'))
+        self.assertEqual(record.gross_salary, Decimal('100000.00'))
+        self.assertEqual(record.net_salary, Decimal('100000.00'))
+        self.assertEqual(record.lop_amount, Decimal('0.00'))
+
+    def test_3_partial_attendance(self):
+        """
+        3. Partial attendance:
+        working_days = 22, present_days = 20, absent_days = 2,
+        effective_days = 20, lop_days = 2.
+        """
+        for d in self.working_dates[:20]:
+            Attendance.objects.create(employee=self.emp, date=d, status='present')
+
+        generate_payroll_for_period(self.period)
+        record = PayrollRecord.objects.get(period=self.period, employee=self.emp)
+
+        self.assertEqual(record.working_days, 22)
+        self.assertEqual(record.present_days, 20)
+        self.assertEqual(record.half_days, 0)
+        self.assertEqual(record.leave_days, 0)
+        self.assertEqual(record.absent_days, 2)
+        self.assertEqual(record.effective_days, Decimal('20.0'))
+        self.assertEqual(record.lop_days, Decimal('2.0'))
+        expected_gross = (Decimal('100000.00') * Decimal(20) / Decimal(22)).quantize(Decimal('0.01'))
+        self.assertEqual(record.gross_salary, expected_gross)
+        self.assertEqual(record.net_salary, expected_gross)
+        self.assertEqual(record.lop_amount, Decimal('100000.00') - expected_gross)
+
+    def test_4_attendance_plus_approved_paid_leave(self):
+        """
+        4. Attendance + approved paid leave:
+        working_days = 22, present_days = 20, leave_days = 2,
+        absent_days = 0, effective_days = 22, lop_days = 0.
+        """
+        # 20 days present
+        for d in self.working_dates[:20]:
+            Attendance.objects.create(employee=self.emp, date=d, status='present')
+
+        # Remaining 2 working days approved leave: Jan 30 & Jan 31
+        LeaveRequest.objects.create(
+            employee=self.emp,
+            leave_type=self.leave_type,
+            start_date=self.working_dates[20],
+            end_date=self.working_dates[21],
+            status='approved',
+        )
+
+        generate_payroll_for_period(self.period)
+        record = PayrollRecord.objects.get(period=self.period, employee=self.emp)
+
+        self.assertEqual(record.working_days, 22)
+        self.assertEqual(record.present_days, 20)
+        self.assertEqual(record.half_days, 0)
+        self.assertEqual(record.leave_days, 2)
+        self.assertEqual(record.absent_days, 0)
+        self.assertEqual(record.effective_days, Decimal('22.0'))
+        self.assertEqual(record.lop_days, Decimal('0.0'))
+        self.assertEqual(record.gross_salary, Decimal('100000.00'))
+        self.assertEqual(record.net_salary, Decimal('100000.00'))
+        self.assertEqual(record.lop_amount, Decimal('0.00'))
+
+    def test_5_half_day_attendance(self):
+        """
+        5. Half-day:
+        20 full present + 1 half day -> effective = 20.5, lop_days = 1.5.
+        """
+        for d in self.working_dates[:20]:
+            Attendance.objects.create(employee=self.emp, date=d, status='present')
+        Attendance.objects.create(employee=self.emp, date=self.working_dates[20], status='half_day')
+
+        generate_payroll_for_period(self.period)
+        record = PayrollRecord.objects.get(period=self.period, employee=self.emp)
+
+        self.assertEqual(record.working_days, 22)
+        self.assertEqual(record.present_days, 20)
+        self.assertEqual(record.half_days, 1)
+        self.assertEqual(record.leave_days, 0)
+        self.assertEqual(record.effective_days, Decimal('20.5'))
+        self.assertEqual(record.lop_days, Decimal('1.5'))
+        expected_gross = (Decimal('100000.00') * Decimal('20.5') / Decimal(22)).quantize(Decimal('0.01'))
+        self.assertEqual(record.gross_salary, expected_gross)
+        self.assertEqual(record.net_salary, expected_gross)
+        self.assertEqual(record.lop_amount, Decimal('100000.00') - expected_gross)
+
+    def test_6_weekend_holiday_exclusion(self):
+        """
+        6. Weekend/holiday exclusion:
+        Ensure working_days does not count excluded days (weekends & holidays).
+        """
+        wd = _working_days_in_period(self.org.id, date(2025, 1, 1), date(2025, 1, 31))
+        self.assertEqual(wd, 22)
+        # Jan 1 is holiday (Wednesday) -> excluded
+        # Jan 4, 5, 11, 12, 18, 19, 25, 26 are Saturdays/Sundays -> 8 weekend days excluded
+        # 31 - 8 - 1 = 22 scheduled working days
+
+    def test_7_overlapping_leave_and_attendance_no_double_counting(self):
+        """
+        7. Overlapping leave/attendance:
+        If an employee has attendance on a date that is also covered by approved leave,
+        the date is not double counted.
+        """
+        # Employee attended Jan 2 to Jan 29 (20 working days)
+        for d in self.working_dates[:20]:
+            Attendance.objects.create(employee=self.emp, date=d, status='present')
+
+        # Employee ALSO had an approved leave that covered Jan 29 and Jan 30
+        # self.working_dates[19] is Jan 29 (present attendance exists)
+        # self.working_dates[20] is Jan 30 (no attendance)
+        # self.working_dates[21] is Jan 31 (absent)
+        LeaveRequest.objects.create(
+            employee=self.emp,
+            leave_type=self.leave_type,
+            start_date=self.working_dates[19],
+            end_date=self.working_dates[20],
+            status='approved',
+        )
+
+        generate_payroll_for_period(self.period)
+        record = PayrollRecord.objects.get(period=self.period, employee=self.emp)
+
+        self.assertEqual(record.working_days, 22)
+        self.assertEqual(record.present_days, 20)
+        # Jan 29 is not double-counted; leave_days only counts Jan 30
+        self.assertEqual(record.leave_days, 1)
+        self.assertEqual(record.effective_days, Decimal('21.0'))
+        self.assertEqual(record.absent_days, 1)
+        self.assertEqual(record.lop_days, Decimal('1.0'))
+
+    def test_8_salary_and_lop_consistency(self):
+        """
+        8. Salary/LOP consistency:
+        For ₹100,000 salary, 22 working days, zero effective days:
+        LOP amount = ₹100,000, Net salary = ₹0.
+        """
+        generate_payroll_for_period(self.period)
+        record = PayrollRecord.objects.get(period=self.period, employee=self.emp)
+
+        self.assertEqual(record.basic_salary, Decimal('100000.00'))
+        self.assertEqual(record.gross_salary, Decimal('0.00'))
+        self.assertEqual(record.net_salary, Decimal('0.00'))
+        self.assertEqual(record.lop_amount, Decimal('100000.00'))
+        self.assertEqual(record.net_salary + record.lop_amount, record.basic_salary)
+
+    def test_9_partial_lop_consistency(self):
+        """
+        9. Partial LOP:
+        Verify LOP amount matches LOP days according to the salary calculation.
+        """
+        for d in self.working_dates[:20]:
+            Attendance.objects.create(employee=self.emp, date=d, status='present')
+
+        generate_payroll_for_period(self.period)
+        record = PayrollRecord.objects.get(period=self.period, employee=self.emp)
+
+        self.assertEqual(record.lop_days, Decimal('2.0'))
+        expected_lop = (Decimal('100000.00') * Decimal('2') / Decimal('22')).quantize(Decimal('0.01'))
+        self.assertEqual(record.lop_amount, expected_lop)
+        self.assertEqual(record.net_salary + record.lop_amount, record.basic_salary)
+
+    def test_10_payroll_approval_and_locking(self):
+        """
+        10. Payroll approval:
+        Verify the correction does not bypass payroll locking or mutate approved records unexpectedly.
+        """
+        generate_payroll_for_period(self.period)
+        self.period.status = PayrollPeriod.STATUS_APPROVED
+        self.period.save(update_fields=['status'])
+
+        # Attempting re-generation on approved period must fail
+        with self.assertRaises(ValueError):
+            generate_payroll_for_period(self.period)
+
+        # Approved records remain immutable
+        record = PayrollRecord.objects.get(period=self.period, employee=self.emp)
+        self.assertEqual(record.status, PayrollRecord.STATUS_DRAFT)

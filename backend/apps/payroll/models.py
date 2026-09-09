@@ -166,6 +166,21 @@ class PayrollRecord(models.Model):
         unique_together = ('period', 'employee')
         ordering = ['employee__employee_code']
 
+    @property
+    def lop_days(self) -> Decimal:
+        """
+        Unpaid absence days: working_days - effective_days.
+        Capped at 0.0 minimum.
+        """
+        return max(Decimal('0.0'), Decimal(self.working_days) - self.effective_days)
+
+    @property
+    def lop_amount(self) -> Decimal:
+        """
+        Loss of pay deduction amount: max(0, basic_salary - net_salary).
+        """
+        return max(Decimal('0.00'), self.basic_salary - self.net_salary)
+
     def __str__(self):
         return (
             f"{self.employee.employee_code} — "
