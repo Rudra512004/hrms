@@ -3,8 +3,13 @@ from apps.authorization.models import Permission, Role, RolePermission, UserRole
 from apps.leaves.models import LeaveType
 from apps.organization.models import Organization
 from apps.employees.models import Employee
+from apps.payroll.models import CompensationHistory
+from apps.attendance.models import Attendance
+from apps.leaves.models import LeaveRequest
 from django.contrib.auth import get_user_model
 from django.db import transaction
+from decimal import Decimal
+from datetime import date, timedelta
 
 class Command(BaseCommand):
     help = 'Seed deterministic base data for HRMS development'
@@ -59,6 +64,16 @@ class Command(BaseCommand):
             {'codename': 'designation.view', 'resource': 'designation', 'action': 'view', 'name': 'View Designations'},
             {'codename': 'designation.manage', 'resource': 'designation', 'action': 'manage', 'name': 'Manage Designations'},
             {'codename': 'hierarchy.manage', 'resource': 'hierarchy', 'action': 'manage', 'name': 'Manage Reporting Hierarchy'},
+
+            # Payroll
+            {'codename': 'payroll.view', 'resource': 'payroll', 'action': 'view', 'name': 'View Payroll'},
+            {'codename': 'payroll.generate', 'resource': 'payroll', 'action': 'generate', 'name': 'Generate Payroll'},
+            {'codename': 'payroll.approve', 'resource': 'payroll', 'action': 'approve', 'name': 'Approve Payroll'},
+            {'codename': 'payroll.view_sensitive', 'resource': 'payroll', 'action': 'view_sensitive', 'name': 'View Sensitive Payroll Data'},
+            {'codename': 'payroll.manage_compensation', 'resource': 'payroll', 'action': 'manage_compensation', 'name': 'Manage Compensation'},
+            {'codename': 'payroll.view_reports', 'resource': 'payroll', 'action': 'view_reports', 'name': 'View Payroll Reports'},
+            {'codename': 'payslip.view', 'resource': 'payslip', 'action': 'view', 'name': 'View Payslips'},
+            {'codename': 'payslip.download', 'resource': 'payslip', 'action': 'download', 'name': 'Download Payslips'},
         ]
 
         for p_data in permissions_data:
@@ -138,11 +153,54 @@ class Command(BaseCommand):
             if data['role']:
                 UserRole.objects.get_or_create(user=user, role=data['role'])
                 
-            Employee.objects.get_or_create(user=user, defaults={
+            emp, _ = Employee.objects.get_or_create(user=user, defaults={
                 'employee_code': data['code'],
                 'organization': org,
                 'personal_email': data['email'].replace('@demo.local', '@personal.local'),
                 'employment_status': 'active'
             })
-            
-        self.stdout.write(self.style.SUCCESS(f'Seeded {len(demo_users)} Demo Users with password "DevPass123!"'))
+            # Ensure compensation is configured
+            CompensationHistory.objects.get_or_create(
+                employee=emp,
+                effective_from=date(2026, 1, 1),
+                defaults={
+                    'basic_salary': Decimal('60000.00') if data['code'] != 'DEMO-NONE' else Decimal('45000.00'),
+                    'created_by': user,
+                }
+            )
+
+        # 6. Ensure Superuser is linked to an Employee record in the primary organization
+        superuser = User.objects.filter(is_superuser=True).first()
+        if superuser and not hasattr(superuser, 'employee'):
+            admin_emp = Employee.objects.create(
+                user=superuser,
+                employee_code='ADMIN-001',
+                organization=org,
+                personal_email=superuser.email,
+                employment_status='active',
+            )
+            CompensationHistory.objects.get_or_create(
+                employee=admin_emp,
+                effective_from=date(2026, 1, 1),
+                defaults={
+                    'basic_salary': Decimal('100000.00'),
+                    'created_by': superuser,
+                }
+            )
+
+        # 7. Seed sample attendance for active employees for the current month
+        today = date.today()
+        month_start = date(today.year, today.month, 1)
+        active_employees = Employee.objects.filter(organization=org, employment_status='active')
+        for emp in active_employees:
+            curr = month_start
+            while curr <= today:
+                if curr.weekday() < 5:  # Mon-Fri
+                    Attendance.objects.get_or_create(
+                        employee=emp,
+                        date=curr,
+                        defaults={'status': 'present'}
+                    )
+                curr += timedelta(days=1)
+
+        self.stdout.write(self.style.SUCCESS(f'Seeded {len(demo_users)} Demo Users with password "DevPass123!", compensation, and attendance.'))

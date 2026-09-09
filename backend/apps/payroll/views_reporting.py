@@ -29,11 +29,7 @@ from .serializers_reporting import (
 )
 
 
-def _employee_org(request):
-    try:
-        return request.user.employee.organization
-    except Exception:
-        return None
+from .views import _employee_org
 
 
 def _check_reports_permission(user):

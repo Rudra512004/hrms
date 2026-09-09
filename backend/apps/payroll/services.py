@@ -10,6 +10,7 @@ from decimal import Decimal, ROUND_HALF_UP
 from datetime import date, timedelta
 
 from django.db import transaction
+from django.db.models import Q
 from django.utils import timezone
 
 from apps.attendance.models import Attendance, Holiday
@@ -39,9 +40,10 @@ def _working_days_in_period(organization_id: int, start: date, end: date) -> int
     return days
 
 
-def _get_active_salary(employee, period_start: date) -> Decimal:
+def _get_active_salary(employee, period_start: date, period_end: date = None) -> Decimal:
     """
-    Return the basic_salary that was active at the start of the period.
+    Return the basic_salary that was active at the start of the period,
+    or during the period.
     Uses the CompensationHistory record whose effective_from <= period_start
     and (effective_to is null OR effective_to >= period_start).
     """
@@ -57,12 +59,34 @@ def _get_active_salary(employee, period_start: date) -> Decimal:
         .first()
     )
     if record is None:
-        # Fallback: find any record that was active during the period
+        # Fallback: check if any record was active as of period_start with an effective_to date
         record = (
             CompensationHistory.objects.filter(
                 employee=employee,
                 effective_from__lte=period_start,
                 effective_to__gte=period_start,
+            )
+            .order_by('-effective_from')
+            .first()
+        )
+    if record is None and period_end:
+        # Fallback: check if a compensation record became effective during the period
+        record = (
+            CompensationHistory.objects.filter(
+                employee=employee,
+                effective_from__lte=period_end,
+            )
+            .filter(
+                Q(effective_to__isnull=True) | Q(effective_to__gte=period_start)
+            )
+            .order_by('-effective_from')
+            .first()
+        )
+    if record is None:
+        # Fallback: most recent compensation record
+        record = (
+            CompensationHistory.objects.filter(
+                employee=employee,
             )
             .order_by('-effective_from')
             .first()
@@ -140,7 +164,7 @@ def generate_payroll_for_period(period: PayrollPeriod, requesting_user=None) -> 
     records = []
 
     for emp in employees:
-        basic_salary = _get_active_salary(emp, period.start_date)
+        basic_salary = _get_active_salary(emp, period.start_date, period.end_date)
         att = _attendance_summary(emp, period.start_date, period.end_date)
         leave_days = _approved_leave_days(emp, period.start_date, period.end_date)
 
