@@ -320,17 +320,16 @@ export const EmployeesPage: React.FC = () => {
           personal_email: formData.personal_email,
           first_name: formData.first_name,
           last_name: formData.last_name,
-          employee_code: formData.employee_code,
           ...payload
         });
 
-        let msg = `Employee created.`;
+        let msg = `Employee created successfully.\n\nEmployee ID: ${result.employee.employee_code}`;
         if (result.onboarding_email_status === 'sent') {
-          msg = "Employee created. Onboarding email sent.";
+          msg += "\nOnboarding email sent.";
         } else if (result.onboarding_email_status === 'queued') {
-          msg = "Employee created. Onboarding email queued.";
+          msg += "\nOnboarding email queued.";
         } else if (result.onboarding_email_status === 'failed') {
-          msg = "Employee created, but the onboarding email could not be sent.";
+          msg += "\nWarning: Onboarding email could not be sent.";
         }
         setSuccessMessage(msg);
       }
@@ -514,7 +513,7 @@ export const EmployeesPage: React.FC = () => {
         <Card className="mb-4">
           <div style={{...styles.errorBox, backgroundColor: 'rgba(34, 197, 94, 0.1)', color: 'var(--color-status-success)'}}>
             <Shield size={20} />
-            <span>{successMessage}</span>
+            <span style={{ whiteSpace: 'pre-wrap' }}>{successMessage}</span>
           </div>
         </Card>
       )}
@@ -628,13 +627,10 @@ export const EmployeesPage: React.FC = () => {
               {!editingEmployee && (
                 <>
                   <div style={styles.formGroup}>
-                    <label style={styles.label}>Employee Code</label>
-                    <input
-                      style={styles.input}
-                      value={formData.employee_code}
-                      onChange={(e) => setFormData({...formData, employee_code: e.target.value})}
-                      required
-                    />
+                    <label style={styles.label}>Employee ID</label>
+                    <div style={{ padding: '10px 12px', backgroundColor: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: '4px', color: '#6b7280', fontSize: '0.95rem' }}>
+                      Employee ID will be generated automatically.
+                    </div>
                   </div>
                   <div style={{ display: 'flex', gap: 'var(--spacing-md)' }}>
                     <div style={{ ...styles.formGroup, flex: 1 }}>

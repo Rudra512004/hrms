@@ -69,8 +69,8 @@ class ProvisionEmployeeSerializer(serializers.Serializer):
     email = serializers.EmailField()
     first_name = serializers.CharField(max_length=150)
     last_name = serializers.CharField(max_length=150)
-    employee_code = serializers.CharField(max_length=50)
-    personal_email = serializers.EmailField()
+    employee_code = serializers.CharField(max_length=50, required=False, allow_blank=True)
+    personal_email = serializers.EmailField(required=False, allow_null=True, allow_blank=True)
 
     def validate_email(self, value):
         value = User.objects.normalize_email(value)
@@ -89,18 +89,28 @@ class ProvisionEmployeeSerializer(serializers.Serializer):
         return value
 
     def create(self, validated_data):
-        user = User.objects.create_user(
-            email=validated_data['email'],
-            first_name=validated_data['first_name'],
-            last_name=validated_data['last_name'],
-        )
+        from .utils import generate_next_employee_code
+        from django.db import IntegrityError, transaction
 
-        employee = Employee.objects.create(
-            user=user,
-            employee_code=validated_data['employee_code'],
-            personal_email=validated_data.get('personal_email')
-        )
-        return employee
+        try:
+            with transaction.atomic():
+                employee_code = validated_data.get('employee_code')
+                if not employee_code:
+                    employee_code = generate_next_employee_code()
+                user = User.objects.create_user(
+                    email=validated_data['email'],
+                    first_name=validated_data['first_name'],
+                    last_name=validated_data['last_name'],
+                )
+
+                employee = Employee.objects.create(
+                    user=user,
+                    employee_code=employee_code,
+                    personal_email=validated_data.get('personal_email')
+                )
+                return employee
+        except IntegrityError as e:
+            raise serializers.ValidationError(f"Failed to create employee due to database constraint: {str(e)}")
 
 from .models import WFHRequest
 

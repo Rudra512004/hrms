@@ -5,7 +5,7 @@ export interface ProvisionEmployeeData {
   personal_email: string;
   first_name: string;
   last_name: string;
-  employee_code: string;
+  employee_code?: string;
   organization?: number;
   department?: number;
   designation?: number;

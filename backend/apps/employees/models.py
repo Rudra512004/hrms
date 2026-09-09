@@ -1,3 +1,4 @@
+# pyrefly: ignore [missing-import]
 from django.db import models
 from django.conf import settings
 from django.core.exceptions import ValidationError
@@ -84,3 +85,6 @@ class WFHRequest(models.Model):
 
     def __str__(self):
         return f"WFH: {self.employee.employee_code} ({self.start_at} - {self.end_at})"
+
+class EmployeeIDSequence(models.Model):
+    last_generated = models.IntegerField(default=0)

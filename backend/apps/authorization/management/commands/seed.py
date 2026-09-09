@@ -133,10 +133,10 @@ class Command(BaseCommand):
         # 5. Demo Users
         User = get_user_model()
         demo_users = [
-            {'email': 'hr@demo.local', 'first_name': 'HR', 'last_name': 'Demo', 'role': hr_role, 'code': 'DEMO-HR'},
-            {'email': 'manager@demo.local', 'first_name': 'Manager', 'last_name': 'Demo', 'role': manager_role, 'code': 'DEMO-MGR'},
-            {'email': 'employee@demo.local', 'first_name': 'Employee', 'last_name': 'Demo', 'role': employee_role, 'code': 'DEMO-EMP'},
-            {'email': 'noperm@demo.local', 'first_name': 'NoPerm', 'last_name': 'Demo', 'role': None, 'code': 'DEMO-NONE'},
+            {'email': 'hr@demo.local', 'first_name': 'HR', 'last_name': 'Demo', 'role': hr_role, 'code': 'EMPBS001'},
+            {'email': 'manager@demo.local', 'first_name': 'Manager', 'last_name': 'Demo', 'role': manager_role, 'code': 'EMPBS002'},
+            {'email': 'employee@demo.local', 'first_name': 'Employee', 'last_name': 'Demo', 'role': employee_role, 'code': 'EMPBS003'},
+            {'email': 'noperm@demo.local', 'first_name': 'NoPerm', 'last_name': 'Demo', 'role': None, 'code': 'EMPBS004'},
         ]
         
         for data in demo_users:
@@ -159,6 +159,9 @@ class Command(BaseCommand):
                 'personal_email': data['email'].replace('@demo.local', '@personal.local'),
                 'employment_status': 'active'
             })
+            if emp.employee_code.startswith('DEMO-') or emp.employee_code != data['code']:
+                emp.employee_code = data['code']
+                emp.save()
             # Ensure compensation is configured
             CompensationHistory.objects.get_or_create(
                 employee=emp,
@@ -171,14 +174,20 @@ class Command(BaseCommand):
 
         # 6. Ensure Superuser is linked to an Employee record in the primary organization
         superuser = User.objects.filter(is_superuser=True).first()
-        if superuser and not hasattr(superuser, 'employee'):
-            admin_emp = Employee.objects.create(
+        if superuser:
+            admin_emp, created = Employee.objects.get_or_create(
                 user=superuser,
-                employee_code='ADMIN-001',
-                organization=org,
-                personal_email=superuser.email,
-                employment_status='active',
+                defaults={
+                    'employee_code': 'EMPBS005',
+                    'organization': org,
+                    'personal_email': superuser.email,
+                    'employment_status': 'active',
+                }
             )
+            if admin_emp.employee_code == 'ADMIN-001':
+                admin_emp.employee_code = 'EMPBS005'
+                admin_emp.save()
+
             CompensationHistory.objects.get_or_create(
                 employee=admin_emp,
                 effective_from=date(2026, 1, 1),
