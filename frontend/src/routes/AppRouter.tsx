@@ -37,6 +37,7 @@ import { DesignationsPage } from '../pages/admin/organization/DesignationsPage';
 import { BranchesPage } from '../pages/admin/organization/BranchesPage';
 import { HolidaysPage } from '../pages/admin/HolidaysPage';
 import { ShiftsPage } from '../pages/admin/ShiftsPage';
+import { AssetsPage } from '../pages/admin/AssetsPage';
 import { ProtectedRoute } from '../components/ProtectedRoute';
 
 export const AppRouter: React.FC = () => {
@@ -77,6 +78,10 @@ export const AppRouter: React.FC = () => {
             <Route path="/admin/employees" element={<EmployeesPage />} />
             <Route path="/admin/employees/:id" element={<EmployeeProfilePage />} />
             <Route path="/admin/employees/:employeeId/access" element={<EmployeeAccessPage />} />
+          </Route>
+
+          <Route element={<ProtectedRoute requiredPermission="asset.view" />}>
+            <Route path="/admin/assets" element={<AssetsPage />} />
           </Route>
 
           <Route element={<ProtectedRoute requiredPermission="attendance.view_all" />}>

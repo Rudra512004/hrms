@@ -8,8 +8,9 @@ import { Card } from '../../components/Card';
 import { StatusBadge } from '../../components/StatusBadge';
 import {
   Loader2, ArrowLeft, Mail, Phone, MapPin, Building, Briefcase, Calendar,
-  User as UserIcon, FileText, Upload, Download, Eye, Trash2, X, AlertCircle
+  User as UserIcon, FileText, Upload, Download, Eye, Trash2, X, AlertCircle, Package
 } from 'lucide-react';
+import { assetService, type Asset } from '../../services/assets';
 import { EmptyState } from '../../components/EmptyState';
 
 const DOCUMENT_TYPES = [
@@ -43,16 +44,22 @@ export const EmployeeProfilePage: React.FC = () => {
   const canViewDocs = hasPermission('employee.document.view');
   const canUploadDocs = hasPermission('employee.document.upload');
   const canDeleteDocs = hasPermission('employee.document.delete');
+  const canViewAssets = hasPermission('asset.view');
 
   const [employee, setEmployee] = useState<EmployeeProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<'overview' | 'contact' | 'employment' | 'documents'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'contact' | 'employment' | 'documents' | 'assets'>('overview');
 
   // Documents state
   const [documents, setDocuments] = useState<EmployeeDocument[]>([]);
   const [docsLoading, setDocsLoading] = useState(false);
   const [docsError, setDocsError] = useState<string | null>(null);
+
+  // Assets state
+  const [assignedAssets, setAssignedAssets] = useState<Asset[]>([]);
+  const [assetsLoading, setAssetsLoading] = useState(false);
+  const [assetsError, setAssetsError] = useState<string | null>(null);
 
   // Upload modal state
   const [showUploadModal, setShowUploadModal] = useState(false);
@@ -111,6 +118,35 @@ export const EmployeeProfilePage: React.FC = () => {
       fetchDocuments();
     }
   }, [activeTab, fetchDocuments]);
+
+  const fetchAssignedAssets = useCallback(async () => {
+    if (!id) return;
+    setAssetsLoading(true);
+    setAssetsError(null);
+    try {
+      if (canViewAssets) {
+        const res = await assetService.getAssets({ employee: parseInt(id, 10) });
+        setAssignedAssets(res || []);
+      } else {
+        const myAssets = await assetService.getMyAssets();
+        setAssignedAssets(myAssets || []);
+      }
+    } catch (err: any) {
+      if (err.response?.status === 403) {
+        setAssetsError("403 Forbidden: You do not have permission to view assets.");
+      } else {
+        setAssetsError("Failed to load assigned assets.");
+      }
+    } finally {
+      setAssetsLoading(false);
+    }
+  }, [id, canViewAssets]);
+
+  useEffect(() => {
+    if (activeTab === 'assets') {
+      fetchAssignedAssets();
+    }
+  }, [activeTab, fetchAssignedAssets]);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setUploadValidationError(null);
@@ -279,7 +315,7 @@ export const EmployeeProfilePage: React.FC = () => {
         
         {/* Tabs */}
         <div style={{ display: 'flex', borderTop: '1px solid var(--color-border)', padding: '0 var(--spacing-xl)', gap: '8px' }}>
-          {(['overview', 'contact', 'employment', 'documents'] as const).map(tab => (
+          {(['overview', 'contact', 'employment', 'documents', 'assets'] as const).map(tab => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
@@ -299,6 +335,7 @@ export const EmployeeProfilePage: React.FC = () => {
               }}
             >
               {tab === 'documents' && <FileText size={16} />}
+              {tab === 'assets' && <Package size={16} />}
               {tab}
               {tab === 'documents' && documents.length > 0 && (
                 <span style={{
@@ -309,6 +346,17 @@ export const EmployeeProfilePage: React.FC = () => {
                   color: activeTab === 'documents' ? 'var(--color-primary)' : 'var(--color-text-muted)',
                 }}>
                   {documents.length}
+                </span>
+              )}
+              {tab === 'assets' && assignedAssets.length > 0 && (
+                <span style={{
+                  fontSize: '0.75rem',
+                  padding: '2px 6px',
+                  borderRadius: '10px',
+                  backgroundColor: activeTab === 'assets' ? 'var(--color-primary-light)' : 'var(--color-bg-subtle, #f1f5f9)',
+                  color: activeTab === 'assets' ? 'var(--color-primary)' : 'var(--color-text-muted)',
+                }}>
+                  {assignedAssets.length}
                 </span>
               )}
             </button>
@@ -576,6 +624,87 @@ export const EmployeeProfilePage: React.FC = () => {
                               </button>
                             )}
                           </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </Card>
+        )}
+
+        {activeTab === 'assets' && (
+          <Card
+            title="Assigned Company Assets"
+            style={{ gridColumn: '1 / -1' }}
+          >
+            {assetsLoading ? (
+              <div style={{ display: 'flex', justifyContent: 'center', padding: '40px' }}>
+                <Loader2 className="animate-spin" size={28} color="var(--color-primary)" />
+              </div>
+            ) : assetsError ? (
+              <div style={{ padding: '24px', textAlign: 'center' }}>
+                <p style={{ color: 'var(--color-danger, #ef4444)', marginBottom: '12px' }}>{assetsError}</p>
+                <button className="btn btn-secondary" onClick={fetchAssignedAssets}>Retry</button>
+              </div>
+            ) : assignedAssets.length === 0 ? (
+              <EmptyState
+                title="No Assets Assigned"
+                description="There are currently no company assets or equipment allocated to this employee."
+                icon={Package}
+              />
+            ) : (
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.9rem' }}>
+                  <thead>
+                    <tr style={{ borderBottom: '1px solid var(--color-border)', color: 'var(--color-text-muted)' }}>
+                      <th style={{ padding: '12px 16px', fontWeight: 600 }}>Asset Name</th>
+                      <th style={{ padding: '12px 16px', fontWeight: 600 }}>Tag / Code</th>
+                      <th style={{ padding: '12px 16px', fontWeight: 600 }}>Category</th>
+                      <th style={{ padding: '12px 16px', fontWeight: 600 }}>Serial / Model</th>
+                      <th style={{ padding: '12px 16px', fontWeight: 600 }}>Allocated Date</th>
+                      <th style={{ padding: '12px 16px', fontWeight: 600 }}>Expected Return</th>
+                      <th style={{ padding: '12px 16px', fontWeight: 600 }}>Condition</th>
+                      <th style={{ padding: '12px 16px', fontWeight: 600 }}>Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {assignedAssets.map((asset) => (
+                      <tr key={asset.id} style={{ borderBottom: '1px solid var(--color-border)' }}>
+                        <td style={{ padding: '12px 16px', fontWeight: 500 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <Package size={16} color="var(--color-primary)" />
+                            <span>{asset.name}</span>
+                          </div>
+                        </td>
+                        <td style={{ padding: '12px 16px' }}>
+                          <span style={{ fontFamily: 'monospace', fontSize: '0.85rem', fontWeight: 600, color: 'var(--color-primary)' }}>
+                            {asset.asset_tag}
+                          </span>
+                        </td>
+                        <td style={{ padding: '12px 16px', color: 'var(--color-text-muted)' }}>
+                          {asset.category_name}
+                        </td>
+                        <td style={{ padding: '12px 16px', color: 'var(--color-text-muted)', fontSize: '0.85rem' }}>
+                          <div>{asset.serial_number || '—'}</div>
+                          {asset.model_number && <div style={{ fontSize: '0.75rem' }}>Model: {asset.model_number}</div>}
+                        </td>
+                        <td style={{ padding: '12px 16px', color: 'var(--color-text-muted)', fontSize: '0.85rem' }}>
+                          {asset.current_assignment?.allocated_at
+                            ? new Date(asset.current_assignment.allocated_at).toLocaleDateString()
+                            : '—'}
+                        </td>
+                        <td style={{ padding: '12px 16px', color: 'var(--color-text-muted)', fontSize: '0.85rem' }}>
+                          {asset.current_assignment?.expected_return_date
+                            ? new Date(asset.current_assignment.expected_return_date).toLocaleDateString()
+                            : '—'}
+                        </td>
+                        <td style={{ padding: '12px 16px', fontSize: '0.85rem' }}>
+                          {asset.current_assignment?.condition_at_allocation || '—'}
+                        </td>
+                        <td style={{ padding: '12px 16px' }}>
+                          <StatusBadge status={asset.status as any} />
                         </td>
                       </tr>
                     ))}

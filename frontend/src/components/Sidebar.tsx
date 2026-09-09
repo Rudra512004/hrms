@@ -15,6 +15,7 @@ import {
   DollarSign,
   FileText,
   BarChart2,
+  Package,
 } from 'lucide-react';
 
 import { useAuth } from '../contexts/AuthContext';
@@ -50,6 +51,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen }) => {
       title: 'People',
       items: [
         { path: '/admin/employees',    label: 'Employees',     icon: Users,      permission: 'employee.view' },
+        { path: '/admin/assets',       label: 'Assets',        icon: Package,    permission: 'asset.view' },
         { path: '/admin/organizations',label: 'Organizations', icon: Building2,  permission: 'organization.view' },
         { path: '/admin/departments',  label: 'Departments',   icon: GitBranch,  permission: 'department.view' },
         { path: '/admin/branches',     label: 'Branches',      icon: Building2,  permission: 'branch.view' },

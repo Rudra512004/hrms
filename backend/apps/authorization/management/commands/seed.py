@@ -83,6 +83,13 @@ class Command(BaseCommand):
             {'codename': 'employee.document.view', 'resource': 'employee_document', 'action': 'view', 'name': 'View Employee Documents'},
             {'codename': 'employee.document.upload', 'resource': 'employee_document', 'action': 'upload', 'name': 'Upload Employee Documents'},
             {'codename': 'employee.document.delete', 'resource': 'employee_document', 'action': 'delete', 'name': 'Delete Employee Documents'},
+
+            # Assets
+            {'codename': 'asset.view', 'resource': 'asset', 'action': 'view', 'name': 'View Assets'},
+            {'codename': 'asset.create', 'resource': 'asset', 'action': 'create', 'name': 'Create Assets'},
+            {'codename': 'asset.update', 'resource': 'asset', 'action': 'update', 'name': 'Update Assets'},
+            {'codename': 'asset.delete', 'resource': 'asset', 'action': 'delete', 'name': 'Delete Assets'},
+            {'codename': 'asset.assign', 'resource': 'asset', 'action': 'assign', 'name': 'Assign and Return Assets'},
         ]
 
         for p_data in permissions_data:

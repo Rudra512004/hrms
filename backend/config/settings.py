@@ -31,6 +31,7 @@ INSTALLED_APPS = [
     'apps.leaves',
     'apps.audit',
     'apps.payroll',
+    'apps.assets',
 ]
 
 MIDDLEWARE = [
