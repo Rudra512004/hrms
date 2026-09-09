@@ -8,6 +8,8 @@ from apps.organization.models import Organization, Department, Designation
 class EmploymentStatus(models.TextChoices):
     ONBOARDING = 'onboarding', 'Onboarding'
     ACTIVE = 'active', 'Active'
+    ON_NOTICE = 'on_notice', 'On Notice'
+    ON_LEAVE = 'on_leave', 'On Leave'
     INACTIVE = 'inactive', 'Inactive'
     EXITED = 'exited', 'Exited'
 
@@ -28,6 +30,10 @@ class Employee(models.Model):
     employment_status = models.CharField(max_length=20, choices=EmploymentStatus.choices, default=EmploymentStatus.ONBOARDING)
     joining_date = models.DateField(null=True, blank=True)
     exit_date = models.DateField(null=True, blank=True)
+    resignation_date = models.DateField(null=True, blank=True)
+    exit_reason = models.TextField(blank=True)
+    notice_period_start = models.DateField(null=True, blank=True)
+    notice_period_end = models.DateField(null=True, blank=True)
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -56,6 +62,12 @@ class Employee(models.Model):
 
         if self.joining_date and self.exit_date and self.exit_date < self.joining_date:
             raise ValidationError({'exit_date': 'Exit date cannot be before joining date.'})
+
+        if self.notice_period_start and self.notice_period_end and self.notice_period_end < self.notice_period_start:
+            raise ValidationError({'notice_period_end': 'Notice period end date cannot be before start date.'})
+
+        if self.resignation_date and self.exit_date and self.exit_date < self.resignation_date:
+            raise ValidationError({'exit_date': 'Exit date cannot be before resignation date.'})
 
     def save(self, *args, **kwargs):
         self.clean()
@@ -88,3 +100,34 @@ class WFHRequest(models.Model):
 
 class EmployeeIDSequence(models.Model):
     last_generated = models.IntegerField(default=0)
+
+class EmployeeLifecycleEvent(models.Model):
+    EVENT_TYPES = [
+        ('status_change', 'Status Change'),
+        ('transfer', 'Transfer'),
+        ('promotion', 'Promotion'),
+        ('resignation', 'Resignation'),
+        ('exit', 'Exit'),
+        ('reactivation', 'Reactivation'),
+    ]
+
+    employee = models.ForeignKey(Employee, on_delete=models.CASCADE, related_name='lifecycle_events')
+    event_type = models.CharField(max_length=50, choices=EVENT_TYPES)
+    from_status = models.CharField(max_length=50, blank=True)
+    to_status = models.CharField(max_length=50, blank=True)
+    from_department = models.ForeignKey(Department, on_delete=models.SET_NULL, null=True, blank=True, related_name='+')
+    to_department = models.ForeignKey(Department, on_delete=models.SET_NULL, null=True, blank=True, related_name='+')
+    from_branch = models.ForeignKey('organization.Branch', on_delete=models.SET_NULL, null=True, blank=True, related_name='+')
+    to_branch = models.ForeignKey('organization.Branch', on_delete=models.SET_NULL, null=True, blank=True, related_name='+')
+    from_designation = models.ForeignKey(Designation, on_delete=models.SET_NULL, null=True, blank=True, related_name='+')
+    to_designation = models.ForeignKey(Designation, on_delete=models.SET_NULL, null=True, blank=True, related_name='+')
+    effective_date = models.DateField()
+    reason = models.TextField(blank=True)
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='+')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"{self.employee.employee_code} - {self.get_event_type_display()} on {self.effective_date}"

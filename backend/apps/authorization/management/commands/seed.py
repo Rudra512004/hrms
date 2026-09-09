@@ -33,13 +33,17 @@ class Command(BaseCommand):
             {'codename': 'leave.cancel', 'resource': 'leave', 'action': 'cancel', 'name': 'Cancel Leave'},
             {'codename': 'leave_type.manage', 'resource': 'leave_type', 'action': 'manage', 'name': 'Manage Leave Types'},
             
-            # Employee
+            # Employee & Lifecycle
             {'codename': 'employee.view', 'resource': 'employee', 'action': 'view', 'name': 'View Employees'},
             {'codename': 'employee.create', 'resource': 'employee', 'action': 'create', 'name': 'Create Employee'},
             {'codename': 'employee.update', 'resource': 'employee', 'action': 'update', 'name': 'Update Employee'},
             {'codename': 'employee.status', 'resource': 'employee', 'action': 'status', 'name': 'Change Employee Login Status'},
             {'codename': 'employee.manage_status', 'resource': 'employee', 'action': 'manage_status', 'name': 'Manage Employment Status'},
             {'codename': 'employee.view_sensitive', 'resource': 'employee', 'action': 'view_sensitive', 'name': 'View Sensitive Info'},
+            {'codename': 'employee.transfer', 'resource': 'employee', 'action': 'transfer', 'name': 'Transfer Employee'},
+            {'codename': 'employee.promote', 'resource': 'employee', 'action': 'promote', 'name': 'Promote Employee'},
+            {'codename': 'employee.exit', 'resource': 'employee', 'action': 'exit', 'name': 'Exit Employee'},
+            {'codename': 'employee.lifecycle.view', 'resource': 'employee', 'action': 'lifecycle_view', 'name': 'View Employee Lifecycle History'},
             
             # WFH
             {'codename': 'wfh.view', 'resource': 'wfh', 'action': 'view', 'name': 'View WFH Requests'},

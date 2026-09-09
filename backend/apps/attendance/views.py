@@ -74,6 +74,9 @@ class AttendanceViewSet(viewsets.GenericViewSet):
             return Response({'detail': 'Employee profile not found.'}, status=status.HTTP_404_NOT_FOUND)
 
         employee = request.user.employee
+        if getattr(employee, 'employment_status', None) == 'exited':
+            return Response({'detail': 'Exited employees cannot record attendance.'}, status=status.HTTP_400_BAD_REQUEST)
+
         today = timezone.now().date()
 
         loc = self._validate_location(request, employee)
@@ -113,6 +116,9 @@ class AttendanceViewSet(viewsets.GenericViewSet):
             return Response({'detail': 'Employee profile not found.'}, status=status.HTTP_404_NOT_FOUND)
 
         employee = request.user.employee
+        if getattr(employee, 'employment_status', None) == 'exited':
+            return Response({'detail': 'Exited employees cannot record attendance.'}, status=status.HTTP_400_BAD_REQUEST)
+
         today = timezone.now().date()
 
         loc = self._validate_location(request, employee)

@@ -135,7 +135,12 @@ class LeaveRequestViewSet(viewsets.ModelViewSet):
         return permissions
 
     def perform_create(self, serializer):
-        leave = serializer.save(employee=self.request.user.employee)
+        from rest_framework.exceptions import ValidationError
+        employee = getattr(self.request.user, 'employee', None)
+        if employee and getattr(employee, 'employment_status', None) == 'exited':
+            raise ValidationError({"detail": "Exited employees cannot request leave."})
+
+        leave = serializer.save(employee=employee)
         AuditService.log(
             action='leave_request_created',
             actor=self.request.user,

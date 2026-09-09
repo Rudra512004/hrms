@@ -158,7 +158,9 @@ def generate_payroll_for_period(period: PayrollPeriod, requesting_user=None) -> 
 
     employees = Employee.objects.filter(
         organization=period.organization,
-        employment_status=EmploymentStatus.ACTIVE,
+        employment_status__in=[EmploymentStatus.ACTIVE, EmploymentStatus.ON_NOTICE],
+    ).filter(
+        Q(exit_date__isnull=True) | Q(exit_date__gte=period.start_date)
     ).select_related('organization', 'user')
 
     working_days = _working_days_in_period(

@@ -1,7 +1,9 @@
+from decimal import Decimal
 from rest_framework import serializers
 from django.contrib.auth import get_user_model
 from django.utils.crypto import get_random_string
-from .models import Employee
+from apps.organization.models import Branch, Department, Designation
+from .models import Employee, EmploymentStatus, EmployeeLifecycleEvent
 
 User = get_user_model()
 
@@ -11,16 +13,23 @@ class EmployeeSerializer(serializers.ModelSerializer):
     last_name = serializers.CharField(source='user.last_name', read_only=True)
     status = serializers.CharField(source='user.status', read_only=True)
     branch_name = serializers.CharField(source='branch.name', read_only=True)
+    department_name = serializers.CharField(source='department.name', read_only=True)
+    designation_name = serializers.CharField(source='designation.name', read_only=True)
 
     class Meta:
         model = Employee
         fields = (
             'id', 'email', 'first_name', 'last_name', 'status', 'employee_code', 'personal_email',
             'phone_number', 'address', 'emergency_contact_name', 'emergency_contact_phone',
-            'organization', 'branch', 'branch_name', 'department', 'designation', 'reporting_manager',
-            'employment_status', 'joining_date', 'exit_date'
+            'organization', 'branch', 'branch_name', 'department', 'department_name',
+            'designation', 'designation_name', 'reporting_manager',
+            'employment_status', 'joining_date', 'exit_date', 'resignation_date',
+            'exit_reason', 'notice_period_start', 'notice_period_end'
         )
-        read_only_fields = ('id', 'email', 'first_name', 'last_name', 'status', 'employee_code', 'personal_email', 'employment_status')
+        read_only_fields = (
+            'id', 'email', 'first_name', 'last_name', 'status', 'employee_code',
+            'personal_email', 'employment_status', 'exit_date', 'resignation_date'
+        )
 
     def validate(self, attrs):
         org = attrs.get('organization', getattr(self.instance, 'organization', None))
@@ -129,3 +138,77 @@ class WFHRequestSerializer(serializers.ModelSerializer):
 
 class WFHRequestReviewSerializer(serializers.Serializer):
     reviewer_comment = serializers.CharField(required=False, allow_blank=True)
+
+
+class EmployeeLifecycleEventSerializer(serializers.ModelSerializer):
+    from_department_name = serializers.CharField(source='from_department.name', read_only=True)
+    to_department_name = serializers.CharField(source='to_department.name', read_only=True)
+    from_branch_name = serializers.CharField(source='from_branch.name', read_only=True)
+    to_branch_name = serializers.CharField(source='to_branch.name', read_only=True)
+    from_designation_name = serializers.CharField(source='from_designation.name', read_only=True)
+    to_designation_name = serializers.CharField(source='to_designation.name', read_only=True)
+    created_by_email = serializers.CharField(source='created_by.email', read_only=True)
+    event_type_display = serializers.CharField(source='get_event_type_display', read_only=True)
+
+    class Meta:
+        model = EmployeeLifecycleEvent
+        fields = (
+            'id', 'employee', 'event_type', 'event_type_display',
+            'from_status', 'to_status',
+            'from_department', 'from_department_name', 'to_department', 'to_department_name',
+            'from_branch', 'from_branch_name', 'to_branch', 'to_branch_name',
+            'from_designation', 'from_designation_name', 'to_designation', 'to_designation_name',
+            'effective_date', 'reason', 'created_by', 'created_by_email', 'created_at'
+        )
+        read_only_fields = fields
+
+
+class EmployeeTransferSerializer(serializers.Serializer):
+    department = serializers.PrimaryKeyRelatedField(
+        queryset=Department.objects.all(), required=False, allow_null=True
+    )
+    branch = serializers.PrimaryKeyRelatedField(
+        queryset=Branch.objects.all(), required=False, allow_null=True
+    )
+    effective_date = serializers.DateField(required=True)
+    reason = serializers.CharField(required=False, allow_blank=True, default='')
+
+    def validate(self, attrs):
+        dept = attrs.get('department')
+        branch = attrs.get('branch')
+        if not dept and not branch:
+            raise serializers.ValidationError("At least one of department or branch must be specified for transfer.")
+        return attrs
+class EmployeePromotionSerializer(serializers.Serializer):
+    designation = serializers.PrimaryKeyRelatedField(
+        queryset=Designation.objects.all(), required=True
+    )
+    effective_date = serializers.DateField(required=True)
+    reason = serializers.CharField(required=False, allow_blank=True, default='')
+    new_basic_salary = serializers.DecimalField(
+        max_digits=12, decimal_places=2, required=False, allow_null=True, min_value=Decimal('0.00')
+    )
+
+
+class EmployeeExitSerializer(serializers.Serializer):
+    exit_type = serializers.ChoiceField(
+        choices=['resignation', 'termination', 'end_of_contract', 'retirement', 'other'],
+        default='resignation'
+    )
+    exit_date = serializers.DateField(required=True)
+    exit_reason = serializers.CharField(required=False, allow_blank=True, default='')
+    resignation_date = serializers.DateField(required=False, allow_null=True)
+    notice_period_start = serializers.DateField(required=False, allow_null=True)
+    notice_period_end = serializers.DateField(required=False, allow_null=True)
+    set_notice_status = serializers.BooleanField(default=False)
+
+    def validate(self, attrs):
+        start = attrs.get('notice_period_start')
+        end = attrs.get('notice_period_end')
+        res_date = attrs.get('resignation_date')
+        exit_date = attrs.get('exit_date')
+        if start and end and end < start:
+            raise serializers.ValidationError({'notice_period_end': 'Notice period end cannot be before start.'})
+        if res_date and exit_date and exit_date < res_date:
+            raise serializers.ValidationError({'exit_date': 'Exit date cannot be before resignation date.'})
+        return attrs
