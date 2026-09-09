@@ -177,13 +177,13 @@ export const payrollService = {
     return handleResponse<PayrollPeriod>(res);
   },
 
-  generatePeriod: async (periodId: number): Promise<{ detail: string }> => {
+  generatePeriod: async (periodId: number): Promise<{ detail: string; warning?: string }> => {
     const res = await fetch(`${BASE}/periods/${periodId}/generate/`, {
       method: 'POST',
       headers: getHeaders(),
       body: JSON.stringify({}),
     });
-    return handleResponse<{ detail: string }>(res);
+    return handleResponse<{ detail: string; warning?: string }>(res);
   },
 
   approvePeriod: async (periodId: number): Promise<PayrollPeriod> => {

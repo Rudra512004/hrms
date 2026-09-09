@@ -27,11 +27,32 @@ def _require(user, codename):
 
 
 def _employee_org(request):
-    """Return the organization of the requesting user's employee profile."""
+    """Return the organization of the requesting user's employee profile or fallback for superadmin."""
     try:
-        return request.user.employee.organization
+        if hasattr(request.user, 'employee') and request.user.employee and request.user.employee.organization:
+            return request.user.employee.organization
     except Exception:
-        return None
+        pass
+
+    if getattr(request.user, 'is_superuser', False):
+        from apps.organization.models import Organization
+        org_id = None
+        if hasattr(request, 'query_params'):
+            org_id = request.query_params.get('organization')
+        if not org_id and hasattr(request, 'data') and isinstance(request.data, dict):
+            org_id = request.data.get('organization')
+        if org_id:
+            try:
+                return Organization.objects.get(id=org_id)
+            except (Organization.DoesNotExist, ValueError):
+                pass
+        return (
+            Organization.objects.filter(employees__isnull=False).distinct().first()
+            or Organization.objects.filter(status='active').first()
+            or Organization.objects.first()
+        )
+
+    return None
 
 
 class CompensationHistoryViewSet(viewsets.ReadOnlyModelViewSet):
@@ -76,6 +97,8 @@ class CompensationHistoryViewSet(viewsets.ReadOnlyModelViewSet):
 
         from apps.employees.models import Employee
         org = _employee_org(request)
+        if not org:
+            return Response({'detail': 'Organization not found.'}, status=status.HTTP_400_BAD_REQUEST)
         employee_id = request.data.get('employee')
 
         try:
@@ -145,6 +168,9 @@ class PayrollPeriodViewSet(viewsets.ModelViewSet):
             return err
 
         org = _employee_org(request)
+        if not org:
+            return Response({'detail': 'User does not belong to an organization.'}, status=status.HTTP_400_BAD_REQUEST)
+
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
@@ -198,10 +224,20 @@ class PayrollPeriodViewSet(viewsets.ModelViewSet):
             target_id=period.id,
             request=request,
         )
-        return Response(
-            {'detail': f'Generated {len(records)} payroll record(s).'},
-            status=status.HTTP_200_OK,
-        )
+
+        response_data = {'detail': f'Generated {len(records)} payroll record(s).'}
+
+        # Warn when the period has not yet ended: attendance records are likely
+        # incomplete, so effective_days and net_salary will be zero or understated.
+        today = timezone.localdate()
+        if period.end_date > today:
+            response_data['warning'] = (
+                f'Payroll was generated before the period ends ({period.end_date}). '
+                'Attendance data may be incomplete, resulting in zero or understated pay. '
+                'Re-generate payroll after the period closes and attendance is finalised.'
+            )
+
+        return Response(response_data, status=status.HTTP_200_OK)
 
     @action(detail=True, methods=['post'])
     def approve(self, request, pk=None):
@@ -323,9 +359,9 @@ class PayslipViewSet(viewsets.ReadOnlyModelViewSet):
         )
 
         if self.action == 'my':
-            if not hasattr(user, 'employee'):
-                return Payslip.objects.none()
-            return base_qs.filter(payroll_record__employee=user.employee)
+            if hasattr(user, 'employee') and user.employee:
+                return base_qs.filter(payroll_record__employee=user.employee)
+            return base_qs.filter(payroll_record__employee__user=user)
 
         if self.action == 'retrieve':
             if (
@@ -364,8 +400,6 @@ class PayslipViewSet(viewsets.ReadOnlyModelViewSet):
     @action(detail=False, methods=['get'], url_path='my')
     def my(self, request):
         """Returns the authenticated employee's issued payslips."""
-        if not hasattr(request.user, 'employee'):
-            return Response([], status=status.HTTP_200_OK)
         qs = self.get_queryset()
         serializer = PayslipSummarySerializer(qs, many=True, context={'request': request})
         return Response(serializer.data, status=status.HTTP_200_OK)

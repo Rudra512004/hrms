@@ -12,10 +12,13 @@ import {
   payrollService,
   type PayrollPeriod,
   type PayrollRecord,
+  type CompensationHistory,
   MONTH_NAMES,
   formatCurrency,
   extractApiError,
 } from '../services/payroll';
+import { employeeManagementService } from '../services/employeeManagement';
+import { type EmployeeProfile } from '../services/employee';
 
 // ─── Month helpers ─────────────────────────────────────────────────────────────
 
@@ -207,6 +210,214 @@ function RecordsPanel({ period, canViewSensitive, onClose }: RecordsPanelProps) 
   );
 }
 
+// ─── Compensation Modal ───────────────────────────────────────────────────
+
+interface CompensationModalProps {
+  onClose: () => void;
+}
+
+function CompensationModal({ onClose }: CompensationModalProps) {
+  const [employees, setEmployees] = useState<EmployeeProfile[]>([]);
+  const [compHistories, setCompHistories] = useState<CompensationHistory[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [selectedEmpId, setSelectedEmpId] = useState<number | ''>('');
+  const [basicSalary, setBasicSalary] = useState('');
+  const [effectiveFrom, setEffectiveFrom] = useState(() => new Date().toISOString().slice(0, 10));
+  const [saving, setSaving] = useState(false);
+  const [saveSuccess, setSaveSuccess] = useState<string | null>(null);
+
+  const loadData = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const [emps, comps] = await Promise.all([
+        employeeManagementService.listEmployees().catch(() => []),
+        payrollService.getCompensation().catch(() => []),
+      ]);
+      setEmployees(emps.filter(e => e.employment_status === 'active' || e.status === 'active'));
+      setCompHistories(comps);
+    } catch (err) {
+      setError(extractApiError(err));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadData();
+  }, []);
+
+  const handleSetCompensation = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedEmpId || !basicSalary || !effectiveFrom) return;
+    setSaving(true);
+    setError(null);
+    setSaveSuccess(null);
+    try {
+      await payrollService.setCompensation({
+        employee: Number(selectedEmpId),
+        basic_salary: basicSalary,
+        effective_from: effectiveFrom,
+      });
+      setSaveSuccess('Compensation successfully updated.');
+      setBasicSalary('');
+      await loadData();
+    } catch (err) {
+      setError(extractApiError(err));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const getLatestSalary = (empId: number) => {
+    const records = compHistories.filter(c => c.employee === empId);
+    if (!records.length) return null;
+    return records[0].basic_salary;
+  };
+
+  return (
+    <Modal
+      title="Salary & Compensation Configuration"
+      onClose={onClose}
+      size="lg"
+      footer={
+        <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+          <button className="btn btn-secondary" onClick={onClose} type="button">Close</button>
+        </div>
+      }
+    >
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+        {error && <AlertBanner type="error" message={error} />}
+        {saveSuccess && <AlertBanner type="success" message={saveSuccess} />}
+
+        {/* Set / Update Form */}
+        <Card title="Configure Employee Salary" style={{ margin: 0 }}>
+          <form onSubmit={handleSetCompensation} style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 14, alignItems: 'flex-end' }}>
+            <div className="form-group" style={{ margin: 0 }}>
+              <label className="form-label">Employee</label>
+              <select
+                className="form-input"
+                value={selectedEmpId}
+                onChange={e => {
+                  const id = e.target.value ? Number(e.target.value) : '';
+                  setSelectedEmpId(id);
+                  if (id) {
+                    const current = getLatestSalary(id);
+                    if (current) setBasicSalary(current);
+                  }
+                }}
+                required
+              >
+                <option value="">Select Employee...</option>
+                {employees.map(emp => (
+                  <option key={emp.id} value={emp.id}>
+                    {emp.employee_code} — {emp.first_name} {emp.last_name}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="form-group" style={{ margin: 0 }}>
+              <label className="form-label">Basic Salary (Monthly ₹)</label>
+              <input
+                type="number"
+                step="0.01"
+                min="0"
+                className="form-input"
+                placeholder="e.g. 60000.00"
+                value={basicSalary}
+                onChange={e => setBasicSalary(e.target.value)}
+                required
+              />
+            </div>
+
+            <div className="form-group" style={{ margin: 0 }}>
+              <label className="form-label">Effective From</label>
+              <input
+                type="date"
+                className="form-input"
+                value={effectiveFrom}
+                onChange={e => setEffectiveFrom(e.target.value)}
+                required
+              />
+            </div>
+
+            <div>
+              <button
+                className="btn btn-primary"
+                type="submit"
+                disabled={saving || !selectedEmpId || !basicSalary}
+                style={{ width: '100%', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 6 }}
+              >
+                {saving && <Loader2 size={14} className="spin" />}
+                Save Salary
+              </button>
+            </div>
+          </form>
+        </Card>
+
+        {/* Current Salary Table */}
+        <Card title="Configured Salaries" noPadding style={{ margin: 0 }}>
+          {loading ? (
+            <div style={{ display: 'flex', justifyContent: 'center', padding: 32 }}>
+              <Loader2 size={24} className="spin" style={{ color: 'var(--color-primary)' }} />
+            </div>
+          ) : (
+            <div className="table-container">
+              <table className="table">
+                <thead>
+                  <tr>
+                    <th>Employee Code</th>
+                    <th>Name</th>
+                    <th>Configured Basic Salary</th>
+                    <th>Effective From</th>
+                    <th>Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {employees.map(emp => {
+                    const latest = compHistories.find(c => c.employee === emp.id);
+                    return (
+                      <tr key={emp.id}>
+                        <td><strong>{emp.employee_code}</strong></td>
+                        <td>{emp.first_name} {emp.last_name}</td>
+                        <td>
+                          {latest ? (
+                            <span style={{ fontWeight: 600, color: 'var(--color-primary)' }}>
+                              {formatCurrency(latest.basic_salary)}
+                            </span>
+                          ) : (
+                            <span style={{ color: 'var(--color-status-warning)' }}>Not configured</span>
+                          )}
+                        </td>
+                        <td>{latest?.effective_from || '—'}</td>
+                        <td>
+                          <button
+                            className="btn btn-secondary"
+                            style={{ padding: '2px 8px', fontSize: 'var(--font-size-xs)' }}
+                            type="button"
+                            onClick={() => {
+                              setSelectedEmpId(emp.id);
+                              if (latest) setBasicSalary(latest.basic_salary);
+                            }}
+                          >
+                            Edit
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </Card>
+      </div>
+    </Modal>
+  );
+}
+
 // ─── Main PayrollPage ──────────────────────────────────────────────────────────
 
 export function PayrollPage() {
@@ -216,6 +427,7 @@ export function PayrollPage() {
   const canGenerate     = hasPermission('payroll.generate');
   const canApprove      = hasPermission('payroll.approve');
   const canViewSensitive = hasPermission('payroll.view_sensitive');
+  const canManageCompensation = hasPermission('payroll.manage_compensation');
 
   const [periods, setPeriods] = useState<PayrollPeriod[]>([]);
   const [loading, setLoading] = useState(true);
@@ -223,6 +435,7 @@ export function PayrollPage() {
 
   // Modal states
   const [showCreate, setShowCreate] = useState(false);
+  const [showCompensation, setShowCompensation] = useState(false);
   const [viewRecordsPeriod, setViewRecordsPeriod] = useState<PayrollPeriod | null>(null);
 
   // Generate confirmation
@@ -236,7 +449,7 @@ export function PayrollPage() {
   const [approveError, setApproveError] = useState<string | null>(null);
 
   // Action feedback banner
-  const [actionBanner, setActionBanner] = useState<{ type: 'success' | 'error'; msg: string } | null>(null);
+  const [actionBanner, setActionBanner] = useState<{ type: 'success' | 'error' | 'warning'; msg: string } | null>(null);
 
   const loadPeriods = useCallback(async () => {
     setLoading(true);
@@ -258,10 +471,11 @@ export function PayrollPage() {
 
   useEffect(() => { if (canView) loadPeriods(); else setLoading(false); }, [canView, loadPeriods]);
 
-  // Clear action banner after 5s
+  // Clear action banner: warnings stay 8 s (longer message), others 5 s.
   useEffect(() => {
     if (!actionBanner) return;
-    const t = setTimeout(() => setActionBanner(null), 5000);
+    const delay = actionBanner.type === 'warning' ? 8000 : 5000;
+    const t = setTimeout(() => setActionBanner(null), delay);
     return () => clearTimeout(t);
   }, [actionBanner]);
 
@@ -273,8 +487,14 @@ export function PayrollPage() {
     try {
       const result = await payrollService.generatePeriod(generateTarget.id);
       setGenerateTarget(null);
-      setActionBanner({ type: 'success', msg: result.detail });
       await loadPeriods();
+      // If the backend flagged an incomplete/future period, show that prominently.
+      // Otherwise show the plain success confirmation.
+      if (result.warning) {
+        setActionBanner({ type: 'warning', msg: result.warning });
+      } else {
+        setActionBanner({ type: 'success', msg: result.detail });
+      }
     } catch (err) {
       setGenerateError(extractApiError(err));
     } finally {
@@ -409,17 +629,30 @@ export function PayrollPage() {
         title="Payroll"
         subtitle={`Manage payroll periods · ${totalPeriods} period${totalPeriods !== 1 ? 's' : ''}`}
         actions={
-          canGenerate ? (
-            <button
-              className="btn btn-primary"
-              onClick={() => setShowCreate(true)}
-              id="payroll-create-period-btn"
-              type="button"
-            >
-              <PlusCircle size={16} style={{ marginRight: 6 }} />
-              New Period
-            </button>
-          ) : undefined
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            {canManageCompensation && (
+              <button
+                className="btn btn-secondary"
+                onClick={() => setShowCompensation(true)}
+                id="payroll-manage-comp-btn"
+                type="button"
+              >
+                <DollarSign size={16} style={{ marginRight: 6 }} />
+                Salary Configuration
+              </button>
+            )}
+            {canGenerate && (
+              <button
+                className="btn btn-primary"
+                onClick={() => setShowCreate(true)}
+                id="payroll-create-period-btn"
+                type="button"
+              >
+                <PlusCircle size={16} style={{ marginRight: 6 }} />
+                New Period
+              </button>
+            )}
+          </div>
         }
       />
 
@@ -471,6 +704,12 @@ export function PayrollPage() {
         <CreatePeriodModal
           onCreated={async () => { setShowCreate(false); await loadPeriods(); setActionBanner({ type: 'success', msg: 'Payroll period created successfully.' }); }}
           onClose={() => setShowCreate(false)}
+        />
+      )}
+
+      {showCompensation && (
+        <CompensationModal
+          onClose={() => setShowCompensation(false)}
         />
       )}
 
