@@ -37,7 +37,14 @@ export interface UserPermissionGrant {
   granted_at: string;
   expires_at: string | null;
   is_revoked: boolean;
-  revoked_at: string | null;
+}
+
+export interface RolePermission {
+  id: number;
+  role: number;
+  permission: number;
+  permission_codename: string;
+  created_at: string;
 }
 
 export const authorizationManagementService = {
@@ -52,6 +59,48 @@ export const authorizationManagementService = {
       }
     });
     if (!response.ok) throw new Error('Failed to fetch roles');
+    return await response.json();
+  },
+
+  createRole: async (data: Partial<Role>): Promise<Role> => {
+    const token = localStorage.getItem('auth_token');
+    if (!token) throw new Error('No authentication token');
+
+    const response = await fetch('/api/v1/authorization/roles/', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Token ${token}`,
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
+      },
+      body: JSON.stringify(data)
+    });
+    
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw { response, errorData };
+    }
+    return await response.json();
+  },
+
+  updateRole: async (roleId: number, data: Partial<Role>): Promise<Role> => {
+    const token = localStorage.getItem('auth_token');
+    if (!token) throw new Error('No authentication token');
+
+    const response = await fetch(`/api/v1/authorization/roles/${roleId}/`, {
+      method: 'PATCH',
+      headers: {
+        'Authorization': `Token ${token}`,
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
+      },
+      body: JSON.stringify(data)
+    });
+    
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw { response, errorData };
+    }
     return await response.json();
   },
 
@@ -189,6 +238,60 @@ export const authorizationManagementService = {
     });
     
     if (!response.ok) throw new Error('Failed to fetch effective permissions');
+    return await response.json();
+  },
+
+  listRolePermissions: async (roleId: number): Promise<RolePermission[]> => {
+    const token = localStorage.getItem('auth_token');
+    if (!token) throw new Error('No authentication token');
+
+    const response = await fetch(`/api/v1/authorization/role-permissions/?role=${roleId}`, {
+      headers: {
+        'Authorization': `Token ${token}`,
+        'Accept': 'application/json'
+      }
+    });
+    if (!response.ok) throw new Error('Failed to fetch role permissions');
+    return await response.json();
+  },
+
+  assignPermissionToRole: async (roleId: number, permissionId: number): Promise<RolePermission> => {
+    const token = localStorage.getItem('auth_token');
+    if (!token) throw new Error('No authentication token');
+
+    const response = await fetch('/api/v1/authorization/role-permissions/', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Token ${token}`,
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
+      },
+      body: JSON.stringify({ role: roleId, permission: permissionId })
+    });
+    
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw { response, errorData };
+    }
+    return await response.json();
+  },
+
+  revokePermissionFromRole: async (rolePermissionId: number): Promise<{ detail: string }> => {
+    const token = localStorage.getItem('auth_token');
+    if (!token) throw new Error('No authentication token');
+
+    const response = await fetch(`/api/v1/authorization/role-permissions/${rolePermissionId}/revoke/`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Token ${token}`,
+        'Accept': 'application/json'
+      }
+    });
+    
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw { response, errorData };
+    }
     return await response.json();
   }
 };

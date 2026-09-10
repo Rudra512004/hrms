@@ -3,8 +3,13 @@ from apps.authorization.models import Permission, Role, RolePermission, UserRole
 from apps.leaves.models import LeaveType
 from apps.organization.models import Organization
 from apps.employees.models import Employee
+from apps.payroll.models import CompensationHistory
+from apps.attendance.models import Attendance
+from apps.leaves.models import LeaveRequest
 from django.contrib.auth import get_user_model
 from django.db import transaction
+from decimal import Decimal
+from datetime import date, timedelta
 
 class Command(BaseCommand):
     help = 'Seed deterministic base data for HRMS development'
@@ -28,13 +33,17 @@ class Command(BaseCommand):
             {'codename': 'leave.cancel', 'resource': 'leave', 'action': 'cancel', 'name': 'Cancel Leave'},
             {'codename': 'leave_type.manage', 'resource': 'leave_type', 'action': 'manage', 'name': 'Manage Leave Types'},
             
-            # Employee
+            # Employee & Lifecycle
             {'codename': 'employee.view', 'resource': 'employee', 'action': 'view', 'name': 'View Employees'},
             {'codename': 'employee.create', 'resource': 'employee', 'action': 'create', 'name': 'Create Employee'},
             {'codename': 'employee.update', 'resource': 'employee', 'action': 'update', 'name': 'Update Employee'},
             {'codename': 'employee.status', 'resource': 'employee', 'action': 'status', 'name': 'Change Employee Login Status'},
             {'codename': 'employee.manage_status', 'resource': 'employee', 'action': 'manage_status', 'name': 'Manage Employment Status'},
             {'codename': 'employee.view_sensitive', 'resource': 'employee', 'action': 'view_sensitive', 'name': 'View Sensitive Info'},
+            {'codename': 'employee.transfer', 'resource': 'employee', 'action': 'transfer', 'name': 'Transfer Employee'},
+            {'codename': 'employee.promote', 'resource': 'employee', 'action': 'promote', 'name': 'Promote Employee'},
+            {'codename': 'employee.exit', 'resource': 'employee', 'action': 'exit', 'name': 'Exit Employee'},
+            {'codename': 'employee.lifecycle.view', 'resource': 'employee', 'action': 'lifecycle_view', 'name': 'View Employee Lifecycle History'},
             
             # WFH
             {'codename': 'wfh.view', 'resource': 'wfh', 'action': 'view', 'name': 'View WFH Requests'},
@@ -59,6 +68,28 @@ class Command(BaseCommand):
             {'codename': 'designation.view', 'resource': 'designation', 'action': 'view', 'name': 'View Designations'},
             {'codename': 'designation.manage', 'resource': 'designation', 'action': 'manage', 'name': 'Manage Designations'},
             {'codename': 'hierarchy.manage', 'resource': 'hierarchy', 'action': 'manage', 'name': 'Manage Reporting Hierarchy'},
+
+            # Payroll
+            {'codename': 'payroll.view', 'resource': 'payroll', 'action': 'view', 'name': 'View Payroll'},
+            {'codename': 'payroll.generate', 'resource': 'payroll', 'action': 'generate', 'name': 'Generate Payroll'},
+            {'codename': 'payroll.approve', 'resource': 'payroll', 'action': 'approve', 'name': 'Approve Payroll'},
+            {'codename': 'payroll.view_sensitive', 'resource': 'payroll', 'action': 'view_sensitive', 'name': 'View Sensitive Payroll Data'},
+            {'codename': 'payroll.manage_compensation', 'resource': 'payroll', 'action': 'manage_compensation', 'name': 'Manage Compensation'},
+            {'codename': 'payroll.view_reports', 'resource': 'payroll', 'action': 'view_reports', 'name': 'View Payroll Reports'},
+            {'codename': 'payslip.view', 'resource': 'payslip', 'action': 'view', 'name': 'View Payslips'},
+            {'codename': 'payslip.download', 'resource': 'payslip', 'action': 'download', 'name': 'Download Payslips'},
+
+            # Employee Documents
+            {'codename': 'employee.document.view', 'resource': 'employee_document', 'action': 'view', 'name': 'View Employee Documents'},
+            {'codename': 'employee.document.upload', 'resource': 'employee_document', 'action': 'upload', 'name': 'Upload Employee Documents'},
+            {'codename': 'employee.document.delete', 'resource': 'employee_document', 'action': 'delete', 'name': 'Delete Employee Documents'},
+
+            # Assets
+            {'codename': 'asset.view', 'resource': 'asset', 'action': 'view', 'name': 'View Assets'},
+            {'codename': 'asset.create', 'resource': 'asset', 'action': 'create', 'name': 'Create Assets'},
+            {'codename': 'asset.update', 'resource': 'asset', 'action': 'update', 'name': 'Update Assets'},
+            {'codename': 'asset.delete', 'resource': 'asset', 'action': 'delete', 'name': 'Delete Assets'},
+            {'codename': 'asset.assign', 'resource': 'asset', 'action': 'assign', 'name': 'Assign and Return Assets'},
         ]
 
         for p_data in permissions_data:
@@ -118,10 +149,10 @@ class Command(BaseCommand):
         # 5. Demo Users
         User = get_user_model()
         demo_users = [
-            {'email': 'hr@demo.local', 'first_name': 'HR', 'last_name': 'Demo', 'role': hr_role, 'code': 'DEMO-HR'},
-            {'email': 'manager@demo.local', 'first_name': 'Manager', 'last_name': 'Demo', 'role': manager_role, 'code': 'DEMO-MGR'},
-            {'email': 'employee@demo.local', 'first_name': 'Employee', 'last_name': 'Demo', 'role': employee_role, 'code': 'DEMO-EMP'},
-            {'email': 'noperm@demo.local', 'first_name': 'NoPerm', 'last_name': 'Demo', 'role': None, 'code': 'DEMO-NONE'},
+            {'email': 'hr@demo.local', 'first_name': 'HR', 'last_name': 'Demo', 'role': hr_role, 'code': 'EMPBS001'},
+            {'email': 'manager@demo.local', 'first_name': 'Manager', 'last_name': 'Demo', 'role': manager_role, 'code': 'EMPBS002'},
+            {'email': 'employee@demo.local', 'first_name': 'Employee', 'last_name': 'Demo', 'role': employee_role, 'code': 'EMPBS003'},
+            {'email': 'noperm@demo.local', 'first_name': 'NoPerm', 'last_name': 'Demo', 'role': None, 'code': 'EMPBS004'},
         ]
         
         for data in demo_users:
@@ -138,11 +169,63 @@ class Command(BaseCommand):
             if data['role']:
                 UserRole.objects.get_or_create(user=user, role=data['role'])
                 
-            Employee.objects.get_or_create(user=user, defaults={
+            emp, _ = Employee.objects.get_or_create(user=user, defaults={
                 'employee_code': data['code'],
                 'organization': org,
                 'personal_email': data['email'].replace('@demo.local', '@personal.local'),
                 'employment_status': 'active'
             })
-            
-        self.stdout.write(self.style.SUCCESS(f'Seeded {len(demo_users)} Demo Users with password "DevPass123!"'))
+            if emp.employee_code.startswith('DEMO-') or emp.employee_code != data['code']:
+                emp.employee_code = data['code']
+                emp.save()
+            # Ensure compensation is configured
+            CompensationHistory.objects.get_or_create(
+                employee=emp,
+                effective_from=date(2026, 1, 1),
+                defaults={
+                    'basic_salary': Decimal('60000.00') if data['code'] != 'DEMO-NONE' else Decimal('45000.00'),
+                    'created_by': user,
+                }
+            )
+
+        # 6. Ensure Superuser is linked to an Employee record in the primary organization
+        superuser = User.objects.filter(is_superuser=True).first()
+        if superuser:
+            admin_emp, created = Employee.objects.get_or_create(
+                user=superuser,
+                defaults={
+                    'employee_code': 'EMPBS005',
+                    'organization': org,
+                    'personal_email': superuser.email,
+                    'employment_status': 'active',
+                }
+            )
+            if admin_emp.employee_code == 'ADMIN-001':
+                admin_emp.employee_code = 'EMPBS005'
+                admin_emp.save()
+
+            CompensationHistory.objects.get_or_create(
+                employee=admin_emp,
+                effective_from=date(2026, 1, 1),
+                defaults={
+                    'basic_salary': Decimal('100000.00'),
+                    'created_by': superuser,
+                }
+            )
+
+        # 7. Seed sample attendance for active employees for the current month
+        today = date.today()
+        month_start = date(today.year, today.month, 1)
+        active_employees = Employee.objects.filter(organization=org, employment_status='active')
+        for emp in active_employees:
+            curr = month_start
+            while curr <= today:
+                if curr.weekday() < 5:  # Mon-Fri
+                    Attendance.objects.get_or_create(
+                        employee=emp,
+                        date=curr,
+                        defaults={'status': 'present'}
+                    )
+                curr += timedelta(days=1)
+
+        self.stdout.write(self.style.SUCCESS(f'Seeded {len(demo_users)} Demo Users with password "DevPass123!", compensation, and attendance.'))

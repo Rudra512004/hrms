@@ -6,7 +6,7 @@ import { organizationService, type Organization, type Department, type Designati
 import { Card } from '../../components/Card';
 import { Table } from '../../components/Table';
 import { StatusBadge } from '../../components/StatusBadge';
-import { Plus, Edit2, Shield, Power, AlertCircle, Loader2 } from 'lucide-react';
+import { Plus, Edit2, Shield, Power, AlertCircle, Loader2, Search, Eye } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 
 
@@ -144,6 +144,8 @@ export const EmployeesPage: React.FC = () => {
   const [managers, setManagers] = useState<EmployeeProfile[]>([]);
 
   const [statusFilter, setStatusFilter] = useState('all');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [departmentFilter, setDepartmentFilter] = useState('all');
 
   const [formData, setFormData] = useState({
     email: '',
@@ -318,17 +320,16 @@ export const EmployeesPage: React.FC = () => {
           personal_email: formData.personal_email,
           first_name: formData.first_name,
           last_name: formData.last_name,
-          employee_code: formData.employee_code,
           ...payload
         });
 
-        let msg = `Employee created.`;
+        let msg = `Employee created successfully.\n\nEmployee ID: ${result.employee.employee_code}`;
         if (result.onboarding_email_status === 'sent') {
-          msg = "Employee created. Onboarding email sent.";
+          msg += "\nOnboarding email sent.";
         } else if (result.onboarding_email_status === 'queued') {
-          msg = "Employee created. Onboarding email queued.";
+          msg += "\nOnboarding email queued.";
         } else if (result.onboarding_email_status === 'failed') {
-          msg = "Employee created, but the onboarding email could not be sent.";
+          msg += "\nWarning: Onboarding email could not be sent.";
         }
         setSuccessMessage(msg);
       }
@@ -350,44 +351,132 @@ export const EmployeesPage: React.FC = () => {
   };
 
   const filteredEmployees = useMemo(() => {
-    if (statusFilter === 'all') return employees;
-    return employees.filter(e => (e.employment_status || e.status) === statusFilter);
-  }, [employees, statusFilter]);
+    return employees.filter(e => {
+      const matchStatus = statusFilter === 'all' || (e.employment_status || e.status) === statusFilter;
+      const matchDept = departmentFilter === 'all' || e.department_name === departmentFilter;
+      const q = searchQuery.toLowerCase();
+      const matchSearch = q === '' || 
+        e.first_name.toLowerCase().includes(q) || 
+        e.last_name.toLowerCase().includes(q) || 
+        e.employee_code.toLowerCase().includes(q) ||
+        (e.email && e.email.toLowerCase().includes(q));
+      
+      return matchStatus && matchDept && matchSearch;
+    });
+  }, [employees, statusFilter, departmentFilter, searchQuery]);
+
+  const uniqueDepartments = useMemo(() => {
+    const depts = new Set(employees.map(e => e.department_name).filter(Boolean));
+    return Array.from(depts);
+  }, [employees]);
 
   const columns = [
-    { key: 'employee_code', title: 'Code' },
-    { key: 'name', title: 'Name', render: (e: EmployeeProfile) => `${e.first_name} ${e.last_name}` },
-    { key: 'department', title: 'Department', render: (e: EmployeeProfile) => e.department_name || '-' },
-    { key: 'designation', title: 'Designation', render: (e: EmployeeProfile) => e.designation_name || '-' },
-    { key: 'joining_date', title: 'Joining Date', render: (e: EmployeeProfile) => e.joining_date || '-' },
+    {
+      key: 'name',
+      title: 'Employee',
+      render: (e: EmployeeProfile) => (
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <div
+            style={{
+              width: 38,
+              height: 38,
+              borderRadius: '50%',
+              background: 'linear-gradient(135deg, #ede9fe 0%, #ddd6fe 100%)',
+              color: 'var(--color-primary)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              fontWeight: 700,
+              fontSize: '0.85rem',
+              flexShrink: 0,
+              boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
+            }}
+          >
+            {e.first_name?.[0] || ''}{e.last_name?.[0] || ''}
+          </div>
+          <div style={{ minWidth: 0 }}>
+            <div style={{ fontWeight: 600, color: 'var(--color-text-main)', fontSize: 'var(--font-size-sm)' }}>
+              {e.first_name} {e.last_name}
+            </div>
+            <div style={{ fontSize: 'var(--font-size-xs)', color: 'var(--color-text-muted)' }}>
+              {e.email || e.employee_code}
+            </div>
+          </div>
+        </div>
+      ),
+    },
+    {
+      key: 'employee_code',
+      title: 'Employee ID',
+      render: (e: EmployeeProfile) => (
+        <span style={{ fontWeight: 600, fontVariantNumeric: 'tabular-nums', color: 'var(--color-text-sub)' }}>
+          {e.employee_code}
+        </span>
+      ),
+    },
+    {
+      key: 'department',
+      title: 'Department',
+      render: (e: EmployeeProfile) => (
+        <span style={{ display: 'inline-flex', padding: '2px 8px', borderRadius: '4px', backgroundColor: 'var(--color-bg-page)', fontSize: 'var(--font-size-xs)', fontWeight: 500 }}>
+          {e.department_name || '—'}
+        </span>
+      ),
+    },
+    { key: 'designation', title: 'Designation', render: (e: EmployeeProfile) => e.designation_name || '—' },
+    { key: 'joining_date', title: 'Joining Date', render: (e: EmployeeProfile) => e.joining_date || '—' },
     {
       key: 'status',
       title: 'Status',
       render: (e: EmployeeProfile) => (
         <StatusBadge status={(e.employment_status || e.status) as any} />
-      )
+      ),
     },
     {
       key: 'actions',
       title: 'Actions',
       render: (e: EmployeeProfile) => (
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
-          <button style={styles.actionBtn} onClick={() => openEditModal(e)} title="Edit Employee">
-            <Edit2 size={18} />
+        <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+          <button
+            style={{ ...styles.actionBtn, padding: '5px', borderRadius: '6px', backgroundColor: 'rgba(112, 38, 227, 0.08)' }}
+            onClick={() => navigate(`/admin/employees/${e.id}`)}
+            title="View Profile"
+          >
+            <Eye size={16} color="var(--color-primary)" />
           </button>
 
-          {hasPermission('employee.manage_status') && (
-            <button style={styles.actionBtn} onClick={() => openStatusModal(e)} title="Change Lifecycle Status">
-              <Power size={18} color="var(--color-primary)" />
+          {hasPermission('employee.update') && (
+            <button
+              style={{ ...styles.actionBtn, padding: '5px', borderRadius: '6px', backgroundColor: 'var(--color-bg-secondary)' }}
+              onClick={() => openEditModal(e)}
+              title="Edit Employee"
+            >
+              <Edit2 size={16} color="var(--color-text-sub)" />
             </button>
           )}
 
-          <button style={styles.actionBtn} onClick={() => navigate(`/admin/employees/${e.id}/access`)} title="RBAC Access">
-            <Shield size={18} color="var(--color-primary)" />
-          </button>
+          {hasPermission('employee.manage_status') && (
+            <button
+              style={{ ...styles.actionBtn, padding: '5px', borderRadius: '6px', backgroundColor: 'rgba(217, 119, 6, 0.08)' }}
+              onClick={() => openStatusModal(e)}
+              title="Change Lifecycle Status"
+            >
+              <Power size={16} color="#d97706" />
+            </button>
+          )}
+
+          {(hasPermission('role.assign') || hasPermission('permission.assign')) && (
+            <button
+              style={{ ...styles.actionBtn, padding: '5px', borderRadius: '6px', backgroundColor: 'rgba(14, 165, 233, 0.08)' }}
+              onClick={() => navigate(`/admin/employees/${e.id}/access`)}
+              title="RBAC Access"
+            >
+              <Shield size={16} color="#0284c7" />
+            </button>
+          )}
         </div>
-      )
-    }
+      ),
+    },
   ];
 
   if (loading && employees.length === 0) {
@@ -413,22 +502,45 @@ export const EmployeesPage: React.FC = () => {
     <div>
       <div style={styles.header}>
         <h1 style={styles.title}>Employee Management</h1>
-        <button className="btn btn-primary" onClick={openCreateModal}>
-          <Plus size={18} /> Add Employee
-        </button>
+        {hasPermission('employee.create') && (
+          <button className="btn btn-primary" onClick={openCreateModal}>
+            <Plus size={18} /> Add Employee
+          </button>
+        )}
       </div>
 
       {successMessage && (
         <Card className="mb-4">
           <div style={{...styles.errorBox, backgroundColor: 'rgba(34, 197, 94, 0.1)', color: 'var(--color-status-success)'}}>
             <Shield size={20} />
-            <span>{successMessage}</span>
+            <span style={{ whiteSpace: 'pre-wrap' }}>{successMessage}</span>
           </div>
         </Card>
       )}
 
       <Card>
-        <div style={styles.filterGroup}>
+        <div style={{ display: 'flex', gap: 'var(--spacing-md)', marginBottom: 'var(--spacing-lg)', flexWrap: 'wrap' }}>
+          <div style={{ flex: '1', minWidth: '250px', position: 'relative' }}>
+            <div style={{ position: 'absolute', top: '10px', left: '12px', color: 'var(--color-text-muted)' }}>
+              <Search size={18} />
+            </div>
+            <input 
+              style={{...styles.input, paddingLeft: '38px'}} 
+              placeholder="Search by name, code, or email..." 
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+            />
+          </div>
+          <select
+            style={{...styles.input, width: '200px'}}
+            value={departmentFilter}
+            onChange={(e) => setDepartmentFilter(e.target.value)}
+          >
+            <option value="all">All Departments</option>
+            {uniqueDepartments.map(dept => (
+              <option key={dept} value={dept}>{dept}</option>
+            ))}
+          </select>
           <select
             style={{...styles.input, width: '200px'}}
             value={statusFilter}
@@ -515,13 +627,10 @@ export const EmployeesPage: React.FC = () => {
               {!editingEmployee && (
                 <>
                   <div style={styles.formGroup}>
-                    <label style={styles.label}>Employee Code</label>
-                    <input
-                      style={styles.input}
-                      value={formData.employee_code}
-                      onChange={(e) => setFormData({...formData, employee_code: e.target.value})}
-                      required
-                    />
+                    <label style={styles.label}>Employee ID</label>
+                    <div style={{ padding: '10px 12px', backgroundColor: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: '4px', color: '#6b7280', fontSize: '0.95rem' }}>
+                      Employee ID will be generated automatically.
+                    </div>
                   </div>
                   <div style={{ display: 'flex', gap: 'var(--spacing-md)' }}>
                     <div style={{ ...styles.formGroup, flex: 1 }}>
@@ -559,16 +668,22 @@ export const EmployeesPage: React.FC = () => {
                       required
                     />
                   </div>
-                  <div style={styles.formGroup}>
-                    <label style={styles.label}>Personal Email</label>
-                    <input
-                      style={styles.input}
-                      type="email"
-                      value={formData.personal_email}
-                      onChange={(e) => setFormData({...formData, personal_email: e.target.value})}
-                      required
-                    />
-                  </div>
+                  {hasPermission('employee.view_sensitive') ? (
+                    <div style={styles.formGroup}>
+                      <label style={styles.label}>Personal Email</label>
+                      <input
+                        style={styles.input}
+                        type="email"
+                        value={formData.personal_email}
+                        onChange={(e) => setFormData({...formData, personal_email: e.target.value})}
+                        required
+                      />
+                    </div>
+                  ) : (
+                    <div style={{ fontSize: '0.9rem', color: 'var(--color-text-muted)', fontStyle: 'italic', marginBottom: '16px' }}>
+                      Sensitive contact fields are hidden due to permissions.
+                    </div>
+                  )}
                 </>
               )}
 

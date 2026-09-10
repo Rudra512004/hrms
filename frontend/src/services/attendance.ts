@@ -7,6 +7,8 @@ export interface AttendanceBreak {
 export interface AttendanceRecord {
   id: number;
   employee: number;
+  employee_name?: string;
+  employee_code?: string;
   date: string;
   check_in: string | null;
   check_out: string | null;
@@ -36,15 +38,17 @@ export const attendanceService = {
     return await response.json();
   },
 
-  checkIn: async (): Promise<AttendanceRecord> => {
+  checkIn: async (location?: { latitude: number; longitude: number; accuracy: number }): Promise<AttendanceRecord> => {
     const token = localStorage.getItem('auth_token');
     if (!token) throw new Error('No authentication token');
     
     const response = await fetch('/api/v1/attendance/check-in/', {
       method: 'POST',
       headers: {
-        'Authorization': `Token ${token}` 
-      }
+        'Authorization': `Token ${token}`,
+        'Content-Type': 'application/json'
+      },
+      body: location ? JSON.stringify(location) : undefined
     });
     
     if (!response.ok) {
@@ -55,15 +59,17 @@ export const attendanceService = {
     return await response.json();
   },
 
-  checkOut: async (): Promise<AttendanceRecord> => {
+  checkOut: async (location?: { latitude: number; longitude: number; accuracy: number }): Promise<AttendanceRecord> => {
     const token = localStorage.getItem('auth_token');
     if (!token) throw new Error('No authentication token');
     
     const response = await fetch('/api/v1/attendance/check-out/', {
       method: 'POST',
       headers: {
-        'Authorization': `Token ${token}` 
-      }
+        'Authorization': `Token ${token}`,
+        'Content-Type': 'application/json'
+      },
+      body: location ? JSON.stringify(location) : undefined
     });
     
     if (!response.ok) {
@@ -74,15 +80,17 @@ export const attendanceService = {
     return await response.json();
   },
 
-  startBreak: async (): Promise<AttendanceRecord> => {
+  startBreak: async (location?: { latitude: number; longitude: number; accuracy: number }): Promise<AttendanceRecord> => {
     const token = localStorage.getItem('auth_token');
     if (!token) throw new Error('No authentication token');
     
     const response = await fetch('/api/v1/attendance/start-break/', {
       method: 'POST',
       headers: {
-        'Authorization': `Token ${token}` 
-      }
+        'Authorization': `Token ${token}`,
+        'Content-Type': 'application/json'
+      },
+      body: location ? JSON.stringify(location) : undefined
     });
     
     if (!response.ok) {
@@ -93,12 +101,32 @@ export const attendanceService = {
     return await response.json();
   },
 
-  endBreak: async (): Promise<AttendanceRecord> => {
+  endBreak: async (location?: { latitude: number; longitude: number; accuracy: number }): Promise<AttendanceRecord> => {
     const token = localStorage.getItem('auth_token');
     if (!token) throw new Error('No authentication token');
     
     const response = await fetch('/api/v1/attendance/end-break/', {
       method: 'POST',
+      headers: {
+        'Authorization': `Token ${token}`,
+        'Content-Type': 'application/json'
+      },
+      body: location ? JSON.stringify(location) : undefined
+    });
+    
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw { response, errorData };
+    }
+    
+    return await response.json();
+  },
+
+  getManagementHistory: async (): Promise<AttendanceRecord[]> => {
+    const token = localStorage.getItem('auth_token');
+    if (!token) throw new Error('No authentication token');
+    
+    const response = await fetch('/api/v1/attendance/management/', {
       headers: {
         'Authorization': `Token ${token}` 
       }

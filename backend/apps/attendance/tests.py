@@ -138,13 +138,13 @@ class AttendanceAPITests(TestCase):
     def test_multiple_breaks(self):
         self.client.force_authenticate(user=self.user)
         self.client.post(reverse('attendance-check-in'), REMOTE_ADDR=self.office_ip)
-        
+
         self.client.post(reverse('attendance-start-break'), REMOTE_ADDR=self.office_ip)
         self.client.post(reverse('attendance-end-break'), REMOTE_ADDR=self.office_ip)
-        
+
         self.client.post(reverse('attendance-start-break'), REMOTE_ADDR=self.office_ip)
         self.client.post(reverse('attendance-end-break'), REMOTE_ADDR=self.office_ip)
-        
+
         response = self.client.get(reverse('attendance-list'), REMOTE_ADDR=self.office_ip)
         self.assertEqual(len(response.data[0]['breaks']), 2)
 
@@ -176,7 +176,7 @@ class AttendanceAPITests(TestCase):
     def test_checkout_calculates_duration(self):
         self.client.force_authenticate(user=self.user)
         self.client.post(reverse('attendance-check-in'), REMOTE_ADDR=self.office_ip)
-        
+
         att = Attendance.objects.get(employee=self.employee, date=timezone.now().date())
         att.check_in = timezone.now() - timedelta(hours=9)
         att.save()
@@ -190,12 +190,94 @@ class AttendanceAPITests(TestCase):
         b.refresh_from_db()
         b.ended_at = b.started_at + timedelta(minutes=45)
         b.save()
-        
+
         response = self.client.post(reverse('attendance-check-out'), REMOTE_ADDR=self.office_ip)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        
+
         att.refresh_from_db()
-        # Roughly 9 hours elapsed, 45 minutes break => roughly 8h 15m productive. 
+        # Roughly 9 hours elapsed, 45 minutes break => roughly 8h 15m productive.
         # Using almostEqual logic manually because of execution delay
         self.assertTrue(att.total_break_duration.total_seconds() == 45 * 60)
         self.assertTrue(att.productive_work_duration.total_seconds() > 8 * 3600)
+    def test_admin_attendance_list_unauthenticated(self):
+        response = self.client.get(reverse('attendance-management-list'), REMOTE_ADDR=self.office_ip)
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+
+    def test_admin_attendance_list_unauthorized(self):
+        # Authenticated, but no attendance.view_all permission
+        self.client.force_authenticate(user=self.user)
+        response = self.client.get(reverse('attendance-management-list'), REMOTE_ADDR=self.office_ip)
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_admin_attendance_list_scoping(self):
+        from apps.organization.models import Organization, Department, Designation
+        from apps.employees.models import Employee
+        from django.contrib.auth import get_user_model
+        User = get_user_model()
+
+        # Ensure self.employee belongs to self.org
+        self.employee.organization = self.org
+        self.employee.save()
+
+        # Create second organization and employee
+        org2 = Organization.objects.create(name='Org 2')
+        dept2 = Department.objects.create(organization=org2, name='Dept 2')
+        desig2 = Designation.objects.create(organization=org2, name='Desig 2')
+        user2 = User.objects.create_user(email='user2@example.com', password='password123', first_name='User', last_name='Two')
+        emp2 = Employee.objects.create(user=user2, organization=org2, department=dept2, designation=desig2, employee_code='EMP002')
+
+        # Create attendance for both
+        Attendance.objects.create(employee=self.employee, date=timezone.now().date(), status='present')
+        Attendance.objects.create(employee=emp2, date=timezone.now().date(), status='present')
+
+        # Super user should see all
+        self.client.force_authenticate(user=self.super_user)
+        response = self.client.get(reverse('attendance-management-list'), REMOTE_ADDR=self.office_ip)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(response.data), 2)
+
+        # Standard Admin (requires attendance.view_all)
+        from apps.authorization.models import Role, Permission, RolePermission, UserRole
+        role = Role.objects.create(name='Attendance Admin', organization=self.org)
+        perm, _ = Permission.objects.get_or_create(codename='attendance.view_all', defaults={'name': 'View All Attendance', 'resource': 'attendance', 'action': 'view_all'})
+        RolePermission.objects.create(role=role, permission=perm)
+        UserRole.objects.create(user=self.user, role=role)
+
+        self.client.force_authenticate(user=self.user)
+        response = self.client.get(reverse('attendance-management-list'), REMOTE_ADDR=self.office_ip)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        # Must only see their own organization's records
+        self.assertEqual(len(response.data), 1)
+        self.assertEqual(response.data[0]['employee'], self.employee.id)
+
+    def test_attendance_serializer_no_leak(self):
+        self.client.force_authenticate(user=self.user)
+        self.client.post(reverse('attendance-check-in'), REMOTE_ADDR=self.office_ip)
+        response = self.client.get(reverse('attendance-list'), REMOTE_ADDR=self.office_ip)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        # Ensure employee_name and code are present but NO sensitive info (like salary, phone, address) is leaked
+        data = response.data[0]
+        self.assertIn('employee_name', data)
+        self.assertIn('employee_code', data)
+        self.assertNotIn('personal_email', data)
+        self.assertNotIn('address', data)
+
+    def test_concurrent_check_in_integrity_handled(self):
+        self.client.force_authenticate(user=self.user)
+        from unittest.mock import patch
+        from django.db import IntegrityError
+        # Simulate database throwing IntegrityError as in concurrent race
+        with patch('apps.attendance.models.Attendance.objects.create', side_effect=IntegrityError("duplicate key")):
+            response = self.client.post(reverse('attendance-check-in'), REMOTE_ADDR=self.office_ip)
+            self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+            self.assertEqual(response.data.get('detail'), 'Check-in already exists for today.')
+
+    def test_check_out_productive_duration_non_negative(self):
+        self.client.force_authenticate(user=self.user)
+        self.client.post(reverse('attendance-check-in'), REMOTE_ADDR=self.office_ip)
+        response = self.client.post(reverse('attendance-check-out'), REMOTE_ADDR=self.office_ip)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        att = Attendance.objects.get(employee=self.employee, date=timezone.now().date())
+        self.assertIsNotNone(att.productive_work_duration)
+        self.assertGreaterEqual(att.productive_work_duration, timedelta(0))

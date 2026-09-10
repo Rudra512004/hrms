@@ -58,4 +58,23 @@ class LeaveRequest(models.Model):
 
     @property
     def duration_days(self):
-        return (self.end_date - self.start_date).days + 1
+        from apps.attendance.models import Holiday
+        from datetime import timedelta
+        
+        days = 0
+        current_date = self.start_date
+        
+        holidays = set(
+            Holiday.objects.filter(
+                organization=self.employee.organization,
+                date__range=[self.start_date, self.end_date],
+                is_active=True
+            ).values_list('date', flat=True)
+        )
+        
+        while current_date <= self.end_date:
+            if current_date.weekday() < 5 and current_date not in holidays:
+                days += 1
+            current_date += timedelta(days=1)
+            
+        return days

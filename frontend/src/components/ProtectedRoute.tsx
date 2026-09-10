@@ -4,7 +4,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { Loader2, AlertCircle } from 'lucide-react';
 
 interface ProtectedRouteProps {
-  requiredPermission?: string;
+  requiredPermission?: string | string[];
 }
 
 export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ requiredPermission }) => {
@@ -23,16 +23,26 @@ export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ requiredPermissi
     return <Navigate to="/login" replace />;
   }
 
-  if (requiredPermission && !hasPermission(requiredPermission)) {
-    return (
-      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100vh', width: '100%' }}>
-        <AlertCircle size={48} color="var(--color-danger)" style={{ marginBottom: '1rem' }} />
-        <h2 style={{ fontSize: '1.5rem', marginBottom: '0.5rem', fontWeight: 600 }}>Access Denied</h2>
-        <p style={{ color: 'var(--color-text-muted)', textAlign: 'center' }}>
-          You don't have the required permission ({requiredPermission}) to view this page.
-        </p>
-      </div>
-    );
+  if (requiredPermission) {
+    const hasAccess = Array.isArray(requiredPermission)
+      ? requiredPermission.some((p) => hasPermission(p))
+      : hasPermission(requiredPermission);
+
+    if (!hasAccess) {
+      const permLabel = Array.isArray(requiredPermission)
+        ? requiredPermission.join(' or ')
+        : requiredPermission;
+
+      return (
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100vh', width: '100%' }}>
+          <AlertCircle size={48} color="var(--color-danger)" style={{ marginBottom: '1rem' }} />
+          <h2 style={{ fontSize: '1.5rem', marginBottom: '0.5rem', fontWeight: 600 }}>Access Denied</h2>
+          <p style={{ color: 'var(--color-text-muted)', textAlign: 'center' }}>
+            You don't have the required permission ({permLabel}) to view this page.
+          </p>
+        </div>
+      );
+    }
   }
 
   return <Outlet />;

@@ -1,50 +1,70 @@
 import React from 'react';
 
-export type StatusType = 'active' | 'inactive' | 'pending' | 'approved' | 'rejected' | 'present' | 'absent' | 'warning' | 'cancelled' | 'onboarding' | 'exited';
+export type StatusType =
+  | 'active' | 'inactive'
+  | 'pending' | 'approved' | 'rejected' | 'cancelled'
+  | 'present' | 'absent' | 'half_day' | 'on_leave'
+  | 'warning' | 'info'
+  | 'onboarding' | 'exited'
+  | 'draft' | 'processing' | 'paid' | 'failed' | 'finalized' | 'generated';
 
 interface StatusBadgeProps {
-  status: StatusType;
+  status: StatusType | string;
   label?: string;
   className?: string;
 }
 
-const statusColors: Record<StatusType, string> = {
-  active: 'var(--color-status-success)',
-  present: 'var(--color-status-success)',
-  approved: 'var(--color-status-success)',
-  
-  inactive: 'var(--color-text-muted)',
-  
-  pending: 'var(--color-status-pending)',
-  onboarding: 'var(--color-status-pending)',
-  
-  rejected: 'var(--color-status-danger)',
-  absent: 'var(--color-status-danger)',
-  exited: 'var(--color-status-danger)',
-  
-  warning: 'var(--color-status-warning)',
-  cancelled: 'var(--color-text-muted)',
+const statusClass: Record<string, string> = {
+  // Success
+  active:     'badge badge-success',
+  present:    'badge badge-success',
+  approved:   'badge badge-success',
+  paid:       'badge badge-success',
+  finalized:  'badge badge-success',
+  generated:  'badge badge-success',
+
+  // Pending / In-progress
+  pending:    'badge badge-pending',
+  onboarding: 'badge badge-pending',
+
+  // Warning
+  draft:      'badge badge-warning',
+  processing: 'badge badge-warning',
+  warning:    'badge badge-warning',
+  half_day:   'badge badge-warning',
+  on_leave:   'badge badge-warning',
+
+  // Danger
+  rejected:   'badge badge-danger',
+  failed:     'badge badge-danger',
+  cancelled:  'badge badge-danger',
+  absent:     'badge badge-danger',
+  exited:     'badge badge-danger',
+
+  // Info
+  info:       'badge badge-info',
+
+  // Neutral
+  inactive:   'badge badge-neutral',
+  archived:   'badge badge-neutral',
+};
+
+const defaultLabel: Record<string, string> = {
+  half_day: 'Half Day',
+  on_leave: 'On Leave',
 };
 
 export const StatusBadge: React.FC<StatusBadgeProps> = ({ status, label, className = '' }) => {
-  const color = statusColors[status] || 'var(--color-text-muted)';
-  
-  const style = {
-    display: 'inline-flex',
-    alignItems: 'center',
-    padding: '0.25em 0.7em',
-    fontSize: '0.75rem',
-    fontWeight: 600,
-    lineHeight: 1,
-    color: color,
-    backgroundColor: 'var(--color-bg-body)',
-    borderRadius: '10px',
-    boxShadow: 'var(--shadow-inset)',
-  };
-  
+  const normalized = (status || '').toLowerCase();
+  const cls = statusClass[normalized] ?? 'badge badge-neutral';
+  const text = label ?? defaultLabel[normalized] ?? (
+    normalized ? normalized.charAt(0).toUpperCase() + normalized.slice(1).replace(/_/g, ' ') : ''
+  );
+
   return (
-    <span style={style} className={className}>
-      {label || status.charAt(0).toUpperCase() + status.slice(1)}
+    <span className={`${cls} ${className}`}>
+      <span className="badge-dot" aria-hidden="true" />
+      <span>{text}</span>
     </span>
   );
 };

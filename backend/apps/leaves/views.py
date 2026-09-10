@@ -16,12 +16,21 @@ class LeaveTypeViewSet(viewsets.ReadOnlyModelViewSet):
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
-        # ARCHITECTURAL LIMITATION: Employee model does not have an organization relationship.
-        return LeaveType.objects.filter(is_active=True)
+        user = self.request.user
+        if hasattr(user, 'employee') and user.employee.organization_id:
+            return LeaveType.objects.filter(is_active=True, organization_id=user.employee.organization_id)
+        return LeaveType.objects.none()
 
 class AdminLeaveTypeViewSet(viewsets.ModelViewSet):
-    queryset = LeaveType.objects.all()
     serializer_class = LeaveTypeSerializer
+
+    def get_queryset(self):
+        user = self.request.user
+        if user.is_superuser:
+            return LeaveType.objects.all()
+        if hasattr(user, 'employee') and user.employee.organization_id:
+            return LeaveType.objects.filter(organization_id=user.employee.organization_id)
+        return LeaveType.objects.none()
 
     def get_permissions(self):
         permission_class = require_permission('leave_type.manage')
@@ -31,8 +40,16 @@ class AdminLeaveTypeViewSet(viewsets.ModelViewSet):
         from django.db import IntegrityError
         from rest_framework.exceptions import ValidationError
         
-        # ARCHITECTURAL LIMITATION: Assign to default organization for single-tenant setup
-        org = Organization.objects.first()
+        # Enforce organization isolation
+        if self.request.user.is_superuser and not hasattr(self.request.user, 'employee'):
+            # Fallback for superadmin without an employee profile
+            org = Organization.objects.first()
+        else:
+            org = self.request.user.employee.organization
+
+        if not org:
+            raise ValidationError({"organization": "User does not belong to an organization."})
+
         try:
             leave_type = serializer.save(organization=org)
             AuditService.log(
@@ -64,10 +81,10 @@ class AdminLeaveTypeViewSet(viewsets.ModelViewSet):
     def destroy(self, request, *args, **kwargs):
         leave_type = self.get_object()
         
-        # Safe deletion: check for references
-        if leave_type.balances.exists() or leave_type.requests.exists():
+        # Safe deletion: check for requests or USED balances
+        if leave_type.requests.exists() or leave_type.balances.filter(used__gt=0).exists():
             return Response(
-                {"detail": "Cannot delete leave type that is in use by balances or requests."},
+                {"detail": "Cannot delete leave type that is in use by requests or has consumed balances."},
                 status=status.HTTP_409_CONFLICT
             )
             
@@ -101,7 +118,11 @@ class LeaveRequestViewSet(viewsets.ModelViewSet):
         if not user.is_authenticated:
             return LeaveRequest.objects.none()
         if AuthorizationService.has_permission(user, 'leave.view'):
-            return LeaveRequest.objects.all()
+            if user.is_superuser:
+                return LeaveRequest.objects.all()
+            if hasattr(user, 'employee') and user.employee.organization_id:
+                return LeaveRequest.objects.filter(employee__organization_id=user.employee.organization_id)
+            return LeaveRequest.objects.none()
         if hasattr(user, 'employee'):
             return LeaveRequest.objects.filter(employee=user.employee)
         return LeaveRequest.objects.none()
@@ -114,7 +135,12 @@ class LeaveRequestViewSet(viewsets.ModelViewSet):
         return permissions
 
     def perform_create(self, serializer):
-        leave = serializer.save(employee=self.request.user.employee)
+        from rest_framework.exceptions import ValidationError
+        employee = getattr(self.request.user, 'employee', None)
+        if employee and getattr(employee, 'employment_status', None) == 'exited':
+            raise ValidationError({"detail": "Exited employees cannot request leave."})
+
+        leave = serializer.save(employee=employee)
         AuditService.log(
             action='leave_request_created',
             actor=self.request.user,
@@ -123,24 +149,58 @@ class LeaveRequestViewSet(viewsets.ModelViewSet):
             request=self.request
         )
 
+    def perform_update(self, serializer):
+        from rest_framework.exceptions import ValidationError, PermissionDenied
+        instance = self.get_object()
+        if instance.status != 'pending':
+            raise ValidationError({"detail": "Only pending requests can be modified."})
+        if not self.request.user.is_superuser and instance.employee != getattr(self.request.user, 'employee', None):
+            raise PermissionDenied("You can only modify your own leave requests.")
+        super().perform_update(serializer)
+
+    def perform_destroy(self, instance):
+        from rest_framework.exceptions import ValidationError, PermissionDenied
+        if instance.status != 'pending':
+            raise ValidationError({"detail": f"Cannot delete a leave request with status '{instance.status}'. Only pending requests can be deleted."})
+        if not self.request.user.is_superuser and instance.employee != getattr(self.request.user, 'employee', None):
+            raise PermissionDenied("You can only delete your own leave requests.")
+        super().perform_destroy(instance)
+
     @action(detail=True, methods=['post'])
     def approve(self, request, pk=None):
         if not AuthorizationService.has_permission(request.user, 'leave.approve'):
             return Response(status=status.HTTP_403_FORBIDDEN)
 
         with transaction.atomic():
-            leave = self.get_object()
+            leave = LeaveRequest.objects.select_for_update().get(pk=self.get_object().pk)
+            if not request.user.is_superuser:
+                if not hasattr(request.user, 'employee') or leave.employee.organization_id != request.user.employee.organization_id:
+                    return Response(status=status.HTTP_403_FORBIDDEN)
+
             if leave.employee == getattr(request.user, 'employee', None):
                 return Response({"detail": "Cannot approve own request."}, status=status.HTTP_403_FORBIDDEN)
             if leave.status != 'pending':
                 return Response({"detail": "Only pending requests can be approved."}, status=status.HTTP_400_BAD_REQUEST)
+
+            # Defensive check against overlapping approved leaves
+            overlap = LeaveRequest.objects.filter(
+                employee=leave.employee,
+                status='approved',
+                start_date__lte=leave.end_date,
+                end_date__gte=leave.start_date,
+            ).exclude(pk=leave.pk).exists()
+            if overlap:
+                return Response(
+                    {"detail": "Cannot approve: an overlapping approved leave already exists for this employee."},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
 
             serializer = LeaveRequestReviewSerializer(data=request.data)
             serializer.is_valid(raise_exception=True)
 
             # Check balance
             try:
-                balance = LeaveBalance.objects.get(employee=leave.employee, leave_type=leave.leave_type)
+                balance = LeaveBalance.objects.select_for_update().get(employee=leave.employee, leave_type=leave.leave_type)
             except LeaveBalance.DoesNotExist:
                 return Response({"detail": "Leave balance record not found."}, status=status.HTTP_400_BAD_REQUEST)
 
@@ -171,17 +231,23 @@ class LeaveRequestViewSet(viewsets.ModelViewSet):
         if not AuthorizationService.has_permission(request.user, 'leave.reject'):
             return Response(status=status.HTTP_403_FORBIDDEN)
 
-        leave = self.get_object()
-        if leave.status != 'pending':
-            return Response({"detail": "Only pending requests can be rejected."}, status=status.HTTP_400_BAD_REQUEST)
+        with transaction.atomic():
+            leave = LeaveRequest.objects.select_for_update().get(pk=self.get_object().pk)
+            if not request.user.is_superuser:
+                if not hasattr(request.user, 'employee') or leave.employee.organization_id != request.user.employee.organization_id:
+                    return Response(status=status.HTTP_403_FORBIDDEN)
 
-        serializer = LeaveRequestReviewSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        leave.status = 'rejected'
-        leave.reviewed_by = request.user
-        leave.reviewed_at = timezone.now()
-        leave.reviewer_comment = serializer.validated_data.get('reviewer_comment', '')
-        leave.save()
+            if leave.status != 'pending':
+                return Response({"detail": "Only pending requests can be rejected."}, status=status.HTTP_400_BAD_REQUEST)
+
+            serializer = LeaveRequestReviewSerializer(data=request.data)
+            serializer.is_valid(raise_exception=True)
+            leave.status = 'rejected'
+            leave.reviewed_by = request.user
+            leave.reviewed_at = timezone.now()
+            leave.reviewer_comment = serializer.validated_data.get('reviewer_comment', '')
+            leave.save()
+
         AuditService.log(
             action='leave_request_rejected',
             actor=request.user,
@@ -193,16 +259,22 @@ class LeaveRequestViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=['post'])
     def cancel(self, request, pk=None):
-        leave = self.get_object()
-        if leave.employee != getattr(request.user, 'employee', None):
-            if not AuthorizationService.has_permission(request.user, 'leave.cancel'):
-                return Response(status=status.HTTP_403_FORBIDDEN)
+        with transaction.atomic():
+            leave = LeaveRequest.objects.select_for_update().get(pk=self.get_object().pk)
+            if not request.user.is_superuser:
+                if not hasattr(request.user, 'employee') or leave.employee.organization_id != request.user.employee.organization_id:
+                    return Response(status=status.HTTP_403_FORBIDDEN)
 
-        if leave.status != 'pending':
-            return Response({"detail": "Only pending requests can be cancelled."}, status=status.HTTP_400_BAD_REQUEST)
+            if leave.employee != getattr(request.user, 'employee', None):
+                if not AuthorizationService.has_permission(request.user, 'leave.cancel'):
+                    return Response(status=status.HTTP_403_FORBIDDEN)
 
-        leave.status = 'cancelled'
-        leave.save()
+            if leave.status != 'pending':
+                return Response({"detail": "Only pending requests can be cancelled."}, status=status.HTTP_400_BAD_REQUEST)
+
+            leave.status = 'cancelled'
+            leave.save()
+
         AuditService.log(
             action='leave_request_cancelled',
             actor=request.user,
