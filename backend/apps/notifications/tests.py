@@ -34,6 +34,7 @@ class NotificationModelTest(TestCase):
         """Test creating a notification with an optional reference_id."""
         notification = Notification.objects.create(
             recipient=self.user1,
+            organization=self.org,
             notification_type='LEAVE_APPROVED',
             title='Leave Approved',
             message='Your leave has been approved.',
@@ -41,19 +42,20 @@ class NotificationModelTest(TestCase):
         )
         
         self.assertEqual(notification.reference_id, 'leave_123')
-        # Organization is optional (null=True)
-        self.assertIsNone(notification.organization)
+        self.assertEqual(notification.organization, self.org)
 
     def test_notification_ordering(self):
         """Test that notifications are ordered by -created_at by default."""
         notif1 = Notification.objects.create(
             recipient=self.user1,
+            organization=self.org,
             title='First',
             message='First msg',
             notification_type='TYPE'
         )
         notif2 = Notification.objects.create(
             recipient=self.user1,
+            organization=self.org,
             title='Second',
             message='Second msg',
             notification_type='TYPE'
@@ -66,12 +68,14 @@ class NotificationModelTest(TestCase):
         """Test the related_name from User to Notifications."""
         Notification.objects.create(
             recipient=self.user1,
+            organization=self.org,
             title='For User 1',
             message='Msg 1',
             notification_type='TYPE'
         )
         Notification.objects.create(
             recipient=self.user2,
+            organization=self.org,
             title='For User 2',
             message='Msg 2',
             notification_type='TYPE'
@@ -98,6 +102,7 @@ class NotificationModelTest(TestCase):
         """Test the __str__ method."""
         notif = Notification.objects.create(
             recipient=self.user1,
+            organization=self.org,
             title='Welcome',
             message='Hello',
             notification_type='TYPE'

@@ -16,9 +16,7 @@ class Notification(models.Model):
         Organization,
         on_delete=models.CASCADE,
         related_name='notifications',
-        null=True,
-        blank=True,
-        help_text="The organization context. Null for global/system notifications."
+        help_text="The organization context."
     )
     notification_type = models.CharField(
         max_length=50,
