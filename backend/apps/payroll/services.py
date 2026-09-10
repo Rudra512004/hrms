@@ -238,10 +238,13 @@ def issue_payslips_for_period(period: PayrollPeriod) -> list:
         'employee', 'period'
     )
     payslips = []
+    from apps.notifications.services import NotificationService
+    from django.db import transaction
+
     for record in records:
         emp_code = record.employee.employee_code.strip()
         num = f"PAY-{period.year}{period.month:02d}-{emp_code}"
-        payslip, _ = Payslip.objects.get_or_create(
+        payslip, created = Payslip.objects.get_or_create(
             payroll_record=record,
             defaults={
                 'payslip_number': num,
@@ -249,5 +252,15 @@ def issue_payslips_for_period(period: PayrollPeriod) -> list:
             },
         )
         payslips.append(payslip)
+
+        if created:
+            transaction.on_commit(lambda p=payslip, r=record, num=num: NotificationService.create_in_app_notification(
+                recipient=r.employee.user,
+                organization=r.employee.organization,
+                notification_type='PAYSLIP_ISSUED',
+                title='Payslip Issued',
+                message=f'Your payslip {num} for {r.period.year}-{r.period.month:02d} has been issued.',
+                reference_id=str(p.id)
+            ))
 
     return payslips

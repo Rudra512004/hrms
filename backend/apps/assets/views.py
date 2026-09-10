@@ -18,6 +18,7 @@ from .serializers import (
 )
 from apps.authorization.services import AuthorizationService
 from apps.audit.services import AuditService
+from apps.notifications.services import NotificationService
 from apps.employees.models import Employee, EmploymentStatus
 
 
@@ -285,6 +286,15 @@ class AssetViewSet(viewsets.ModelViewSet):
             asset.status = AssetStatus.ASSIGNED
             asset.save(update_fields=['status', 'updated_at'])
 
+            transaction.on_commit(lambda e=employee, a=asset, assign=assignment: NotificationService.create_in_app_notification(
+                recipient=e.user,
+                organization=e.organization,
+                notification_type='ASSET_ASSIGNED',
+                title='Asset Assigned',
+                message=f'The asset {a.name} ({a.asset_tag}) has been assigned to you.',
+                reference_id=str(assign.id)
+            ))
+
             AuditService.log(
                 action='asset_assigned',
                 actor=request.user,
@@ -347,6 +357,15 @@ class AssetViewSet(viewsets.ModelViewSet):
             # Transition asset status
             asset.status = next_status
             asset.save(update_fields=['status', 'updated_at'])
+
+            transaction.on_commit(lambda emp=active_assignment.employee, a=asset, assign=active_assignment: NotificationService.create_in_app_notification(
+                recipient=emp.user,
+                organization=emp.organization,
+                notification_type='ASSET_RETURNED',
+                title='Asset Returned',
+                message=f'Your return of asset {a.name} ({a.asset_tag}) has been processed.',
+                reference_id=str(assign.id)
+            ))
 
             AuditService.log(
                 action='asset_returned',
