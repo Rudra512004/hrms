@@ -30,8 +30,32 @@ class LeaveRequestSerializer(serializers.ModelSerializer):
         read_only_fields = ['employee', 'status', 'reviewed_by', 'reviewed_at', 'reviewer_comment']
 
     def validate(self, data):
-        if data['end_date'] < data['start_date']:
+        start_date = data.get('start_date', self.instance.start_date if self.instance else None)
+        end_date = data.get('end_date', self.instance.end_date if self.instance else None)
+        if start_date and end_date and end_date < start_date:
             raise serializers.ValidationError({"end_date": "End date must be after start date."})
+
+        # Overlapping leave validation
+        request = self.context.get('request')
+        employee = None
+        if self.instance:
+            employee = self.instance.employee
+        elif request and hasattr(request.user, 'employee'):
+            employee = request.user.employee
+        elif 'employee' in data:
+            employee = data['employee']
+
+        if employee and start_date and end_date:
+            overlapping = LeaveRequest.objects.filter(
+                employee=employee,
+                status__in=['pending', 'approved'],
+                start_date__lte=end_date,
+                end_date__gte=start_date,
+            )
+            if self.instance and self.instance.pk:
+                overlapping = overlapping.exclude(pk=self.instance.pk)
+            if overlapping.exists():
+                raise serializers.ValidationError({"detail": "An overlapping leave request already exists for this date range."})
         return data
 
 class LeaveRequestReviewSerializer(serializers.Serializer):

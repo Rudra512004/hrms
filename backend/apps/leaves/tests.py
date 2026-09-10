@@ -17,13 +17,13 @@ class LeaveAPITests(TestCase):
         self.org = Organization.objects.create(name='Test Org')
 
         self.user = User.objects.create_user(email='emp@example.com', password='Password123!', status='active')
-        self.employee = Employee.objects.create(user=self.user, employee_code='EMP01')
+        self.employee = Employee.objects.create(user=self.user, employee_code='EMP01', organization=self.org)
 
         self.manager_user = User.objects.create_user(email='manager@example.com', password='Password123!', status='active')
-        self.manager_employee = Employee.objects.create(user=self.manager_user, employee_code='MGR01')
+        self.manager_employee = Employee.objects.create(user=self.manager_user, employee_code='MGR01', organization=self.org)
 
         self.leave_type = LeaveType.objects.create(organization=self.org, name='Sick Leave', annual_allocation=10)
-        self.balance = LeaveBalance.objects.create(employee=self.employee, leave_type=self.leave_type, allocated=10, used=0)
+        self.balance = LeaveBalance.objects.get(employee=self.employee, leave_type=self.leave_type)
 
         self.external_ip = '198.51.100.5'
 
@@ -57,10 +57,12 @@ class LeaveAPITests(TestCase):
             self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
 
     def test_approve_leave_request(self):
+        from datetime import date
+        base_date = date(2026, 9, 7) # Monday
         request = LeaveRequest.objects.create(
             employee=self.employee, leave_type=self.leave_type,
-            start_date=timezone.now().date() + timedelta(days=1),
-            end_date=timezone.now().date() + timedelta(days=2),
+            start_date=base_date,
+            end_date=base_date + timedelta(days=1),
             reason='Testing approval'
         )
         self.client.force_authenticate(user=self.manager_user)
@@ -89,7 +91,7 @@ class LeaveAPITests(TestCase):
         request = LeaveRequest.objects.create(
             employee=self.employee, leave_type=self.leave_type,
             start_date=timezone.now().date() + timedelta(days=1),
-            end_date=timezone.now().date() + timedelta(days=12),  # 12 days > 10
+            end_date=timezone.now().date() + timedelta(days=20),  # 20 days ensures it exceeds 10 even with weekends
             reason='Long vacation'
         )
         self.client.force_authenticate(user=self.manager_user)
@@ -122,7 +124,10 @@ class AdminLeaveTypeAPITests(TestCase):
         
         self.superadmin = User.objects.create_user(email='super@example.com', password='Password123!', status='active', is_superuser=True)
         self.admin = User.objects.create_user(email='admin@example.com', password='Password123!', status='active')
+        self.admin_employee = Employee.objects.create(user=self.admin, employee_code='ADM01', organization=self.org)
+        
         self.employee = User.objects.create_user(email='emp2@example.com', password='Password123!', status='active')
+        self.emp_profile = Employee.objects.create(user=self.employee, employee_code='EMP02', organization=self.org)
         
         self.leave_type = LeaveType.objects.create(organization=self.org, name='Initial Leave', annual_allocation=5)
 
@@ -199,8 +204,13 @@ class AdminLeaveTypeAPITests(TestCase):
 
     def test_referenced_leave_type_cannot_be_deleted(self):
         self.client.force_authenticate(user=self.superadmin)
-        emp_profile = Employee.objects.create(user=self.employee, employee_code='E99')
-        LeaveBalance.objects.create(employee=emp_profile, leave_type=self.leave_type, allocated=5)
+        # Create a request to make it undeletable
+        LeaveRequest.objects.create(
+            employee=self.emp_profile, leave_type=self.leave_type,
+            start_date=timezone.now().date() + timedelta(days=1),
+            end_date=timezone.now().date() + timedelta(days=2),
+            reason='Testing'
+        )
         
         from unittest.mock import patch
         with patch('apps.authorization.services.AuthorizationService.has_permission', return_value=True):
@@ -222,3 +232,208 @@ class AdminLeaveTypeAPITests(TestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(len(response.data), 1)
         self.assertEqual(response.data[0]['name'], 'Initial Leave')
+
+    def test_duration_days_excludes_weekends(self):
+        # Monday to following Monday = 8 calendar days, 6 working days
+        start = timezone.now().date()
+        while start.weekday() != 0: # find a Monday
+            start += timedelta(days=1)
+        end = start + timedelta(days=7) # next Monday
+        
+        request = LeaveRequest(
+            employee=self.emp_profile, leave_type=self.leave_type,
+            start_date=start, end_date=end, reason='Weekend test'
+        )
+        self.assertEqual(request.duration_days, 6)
+
+    def test_cannot_edit_approved_request(self):
+        self.client.force_authenticate(user=self.employee)
+        request = LeaveRequest.objects.create(
+            employee=self.emp_profile, leave_type=self.leave_type,
+            start_date=timezone.now().date() + timedelta(days=1),
+            end_date=timezone.now().date() + timedelta(days=2),
+            reason='Testing edit',
+            status='approved'
+        )
+        from unittest.mock import patch
+        with patch('apps.authorization.services.AuthorizationService.has_permission', return_value=True):
+            response = self.client.patch(reverse('leave-requests-detail', kwargs={'pk': request.id}), {
+                'reason': 'Changed my mind'
+            })
+            self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_deleting_approved_request_restores_balance(self):
+        # First ensure there's a balance record
+        balance = LeaveBalance.objects.get(employee=self.emp_profile, leave_type=self.leave_type)
+        balance.used = 5
+        balance.save()
+        
+        request = LeaveRequest.objects.create(
+            employee=self.emp_profile, leave_type=self.leave_type,
+            start_date=timezone.now().date() + timedelta(days=1),
+            end_date=timezone.now().date() + timedelta(days=2),
+            reason='Testing delete',
+            status='approved'
+        )
+        
+        # duration is roughly 2 days (assuming not weekend)
+        duration = request.duration_days
+        
+        # delete request
+        request.delete()
+        
+        balance.refresh_from_db()
+        self.assertEqual(balance.used, 5 - duration)
+
+    def test_cannot_delete_approved_request_via_api(self):
+        self.client.force_authenticate(user=self.employee)
+        req = LeaveRequest.objects.create(
+            employee=self.emp_profile, leave_type=self.leave_type,
+            start_date=timezone.now().date() + timedelta(days=5),
+            end_date=timezone.now().date() + timedelta(days=6),
+            reason='Testing API delete',
+            status='approved'
+        )
+        response = self.client.delete(reverse('leave-requests-detail', kwargs={'pk': req.id}))
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertTrue(LeaveRequest.objects.filter(id=req.id).exists())
+
+    def test_can_delete_pending_request_via_api(self):
+        self.client.force_authenticate(user=self.employee)
+        req = LeaveRequest.objects.create(
+            employee=self.emp_profile, leave_type=self.leave_type,
+            start_date=timezone.now().date() + timedelta(days=5),
+            end_date=timezone.now().date() + timedelta(days=6),
+            reason='Testing pending delete',
+            status='pending'
+        )
+        response = self.client.delete(reverse('leave-requests-detail', kwargs={'pk': req.id}))
+        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+        self.assertFalse(LeaveRequest.objects.filter(id=req.id).exists())
+
+    def test_overlapping_pending_leave_request_rejected(self):
+        self.client.force_authenticate(user=self.employee)
+        base_date = timezone.now().date() + timedelta(days=20)
+        LeaveRequest.objects.create(
+            employee=self.emp_profile, leave_type=self.leave_type,
+            start_date=base_date, end_date=base_date + timedelta(days=3),
+            reason='Existing pending leave', status='pending'
+        )
+        from unittest.mock import patch
+        with patch('apps.authorization.services.AuthorizationService.has_permission', return_value=True):
+            response = self.client.post(reverse('leave-requests-list'), {
+                'leave_type': self.leave_type.id,
+                'start_date': (base_date + timedelta(days=2)).isoformat(),
+                'end_date': (base_date + timedelta(days=5)).isoformat(),
+                'reason': 'Overlapping request'
+            })
+            self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+            self.assertIn('overlapping', str(response.data).lower())
+
+    def test_overlapping_approved_leave_request_rejected(self):
+        self.client.force_authenticate(user=self.employee)
+        base_date = timezone.now().date() + timedelta(days=30)
+        LeaveRequest.objects.create(
+            employee=self.emp_profile, leave_type=self.leave_type,
+            start_date=base_date, end_date=base_date + timedelta(days=3),
+            reason='Existing approved leave', status='approved'
+        )
+        from unittest.mock import patch
+        with patch('apps.authorization.services.AuthorizationService.has_permission', return_value=True):
+            response = self.client.post(reverse('leave-requests-list'), {
+                'leave_type': self.leave_type.id,
+                'start_date': (base_date + timedelta(days=1)).isoformat(),
+                'end_date': (base_date + timedelta(days=2)).isoformat(),
+                'reason': 'Overlapping approved request'
+            })
+            self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+            self.assertIn('overlapping', str(response.data).lower())
+
+    def test_leave_request_after_rejected_allowed(self):
+        self.client.force_authenticate(user=self.employee)
+        base_date = timezone.now().date() + timedelta(days=40)
+        LeaveRequest.objects.create(
+            employee=self.emp_profile, leave_type=self.leave_type,
+            start_date=base_date, end_date=base_date + timedelta(days=2),
+            reason='Rejected request', status='rejected'
+        )
+        from unittest.mock import patch
+        with patch('apps.authorization.services.AuthorizationService.has_permission', return_value=True):
+            response = self.client.post(reverse('leave-requests-list'), {
+                'leave_type': self.leave_type.id,
+                'start_date': base_date.isoformat(),
+                'end_date': (base_date + timedelta(days=2)).isoformat(),
+                'reason': 'Re-applied request'
+            })
+            self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+
+    def test_edit_pending_leave_request_no_overlap_succeeds(self):
+        self.client.force_authenticate(user=self.employee)
+        base_date = timezone.now().date() + timedelta(days=50)
+        req = LeaveRequest.objects.create(
+            employee=self.emp_profile, leave_type=self.leave_type,
+            start_date=base_date, end_date=base_date + timedelta(days=2),
+            reason='Initial reason', status='pending'
+        )
+        from unittest.mock import patch
+        with patch('apps.authorization.services.AuthorizationService.has_permission', return_value=True):
+            response = self.client.patch(reverse('leave-requests-detail', kwargs={'pk': req.id}), {
+                'reason': 'Updated reason'
+            })
+            self.assertEqual(response.status_code, status.HTTP_200_OK)
+            req.refresh_from_db()
+            self.assertEqual(req.reason, 'Updated reason')
+
+    def test_cannot_edit_other_employee_pending_leave(self):
+        other_user = User.objects.create_user(email='other@example.com', password='Password123!', status='active')
+        other_emp = Employee.objects.create(user=other_user, employee_code='EMP99', organization=self.org)
+        req = LeaveRequest.objects.create(
+            employee=other_emp, leave_type=self.leave_type,
+            start_date=timezone.now().date() + timedelta(days=60),
+            end_date=timezone.now().date() + timedelta(days=61),
+            reason='Other employee leave', status='pending'
+        )
+        self.client.force_authenticate(user=self.employee)
+        from unittest.mock import patch
+        with patch('apps.authorization.services.AuthorizationService.has_permission', return_value=True):
+            response = self.client.patch(reverse('leave-requests-detail', kwargs={'pk': req.id}), {
+                'reason': 'Malicious modification'
+            })
+            self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_cannot_delete_other_employee_pending_leave(self):
+        other_user = User.objects.create_user(email='other2@example.com', password='Password123!', status='active')
+        other_emp = Employee.objects.create(user=other_user, employee_code='EMP98', organization=self.org)
+        req = LeaveRequest.objects.create(
+            employee=other_emp, leave_type=self.leave_type,
+            start_date=timezone.now().date() + timedelta(days=70),
+            end_date=timezone.now().date() + timedelta(days=71),
+            reason='Other employee leave', status='pending'
+        )
+        self.client.force_authenticate(user=self.employee)
+        from unittest.mock import patch
+        with patch('apps.authorization.services.AuthorizationService.has_permission', return_value=True):
+            response = self.client.delete(reverse('leave-requests-detail', kwargs={'pk': req.id}))
+            self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+            self.assertTrue(LeaveRequest.objects.filter(id=req.id).exists())
+
+    def test_defensive_overlap_check_on_approve(self):
+        base_date = timezone.now().date() + timedelta(days=80)
+        # Already approved leave
+        LeaveRequest.objects.create(
+            employee=self.emp_profile, leave_type=self.leave_type,
+            start_date=base_date, end_date=base_date + timedelta(days=2),
+            reason='Approved', status='approved'
+        )
+        # Another pending request overlapping
+        req2 = LeaveRequest.objects.create(
+            employee=self.emp_profile, leave_type=self.leave_type,
+            start_date=base_date + timedelta(days=1), end_date=base_date + timedelta(days=3),
+            reason='Pending overlapping', status='pending'
+        )
+        self.client.force_authenticate(user=self.admin)
+        from unittest.mock import patch
+        with patch('apps.authorization.services.AuthorizationService.has_permission', return_value=True):
+            response = self.client.post(reverse('leave-requests-approve', kwargs={'pk': req2.id}))
+            self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+            self.assertIn('overlapping', str(response.data).lower())

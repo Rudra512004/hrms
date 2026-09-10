@@ -1,55 +1,38 @@
 import React from 'react';
+import { FileText } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
 
 interface Column<T> {
   key: string | keyof T;
   title: string;
   render?: (item: T) => React.ReactNode;
+  className?: string;
 }
 
 interface TableProps<T> {
   data: T[];
   columns: Column<T>[];
   keyExtractor: (item: T) => string | number;
+  emptyTitle?: string;
+  emptyDescription?: string;
+  emptyIcon?: LucideIcon;
 }
 
-const styles = {
-  container: {
-    width: '100%',
-    overflowX: 'auto' as const,
-    boxShadow: 'var(--shadow-inset)',
-    borderRadius: 'var(--radius-md)',
-  },
-  table: {
-    width: '100%',
-    borderCollapse: 'collapse' as const,
-    textAlign: 'left' as const,
-  },
-  th: {
-    padding: 'var(--spacing-md)',
-    backgroundColor: 'var(--color-bg-body)',
-    color: 'var(--color-text-main)',
-    fontWeight: 600,
-    borderBottom: '1px solid rgba(0,0,0,0.05)',
-    whiteSpace: 'nowrap' as const,
-  },
-  td: {
-    padding: 'var(--spacing-md)',
-    borderBottom: '1px solid rgba(0,0,0,0.03)',
-    color: 'var(--color-text-main)',
-  },
-  row: {
-    transition: 'background-color 0.2s',
-  }
-};
-
-export function Table<T>({ data, columns, keyExtractor }: TableProps<T>) {
+export function Table<T>({
+  data,
+  columns,
+  keyExtractor,
+  emptyTitle = 'No data',
+  emptyDescription = 'No records to display.',
+  emptyIcon: EmptyIcon = FileText,
+}: TableProps<T>) {
   return (
-    <div style={styles.container}>
-      <table style={styles.table}>
+    <div style={{ overflowX: 'auto' }}>
+      <table className="data-table">
         <thead>
           <tr>
             {columns.map((col) => (
-              <th key={col.key.toString()} style={styles.th}>
+              <th key={col.key.toString()} className={col.className}>
                 {col.title}
               </th>
             ))}
@@ -58,16 +41,22 @@ export function Table<T>({ data, columns, keyExtractor }: TableProps<T>) {
         <tbody>
           {data.length === 0 ? (
             <tr>
-              <td colSpan={columns.length} style={{ ...styles.td, textAlign: 'center' }}>
-                No data available
+              <td colSpan={columns.length} className="table-empty-cell">
+                <div className="empty-state" style={{ padding: '32px 16px' }}>
+                  <EmptyIcon size={32} className="empty-state-icon" />
+                  <p className="empty-state-title">{emptyTitle}</p>
+                  <p className="empty-state-description">{emptyDescription}</p>
+                </div>
               </td>
             </tr>
           ) : (
             data.map((item) => (
-              <tr key={keyExtractor(item)} style={styles.row}>
+              <tr key={keyExtractor(item)}>
                 {columns.map((col) => (
-                  <td key={col.key.toString()} style={styles.td}>
-                    {col.render ? col.render(item) : (item[col.key as keyof T] as React.ReactNode)}
+                  <td key={col.key.toString()} className={col.className}>
+                    {col.render
+                      ? col.render(item)
+                      : (item[col.key as keyof T] as React.ReactNode)}
                   </td>
                 ))}
               </tr>

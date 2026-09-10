@@ -1,98 +1,35 @@
-import React, { useState, useEffect } from 'react';
+import React from 'react';
 import { NavLink } from 'react-router-dom';
-import { 
-  LayoutDashboard, 
-  UserCircle,
-  Settings,
-  Network,
+import {
+  LayoutDashboard,
+  Users,
+  Building2,
+  GitBranch,
+  Briefcase,
   Clock,
   Calendar,
-  Users,
-  ShieldAlert
+  Settings,
+  ShieldAlert,
+  Network,
+  CalendarDays,
+  DollarSign,
+  FileText,
+  BarChart2,
+  Package,
 } from 'lucide-react';
-import { authService, type User as AuthUser } from '../services/auth';
+
+import { useAuth } from '../contexts/AuthContext';
 
 interface SidebarProps {
   isOpen: boolean;
 }
 
-const styles = {
-  sidebar: (isOpen: boolean) => ({
-    width: isOpen ? 'var(--sidebar-width)' : 'var(--sidebar-width-collapsed)',
-    backgroundColor: 'var(--color-bg-sidebar)',
-    color: 'var(--color-text-sidebar)',
-    height: '100vh',
-    position: 'fixed' as const,
-    left: 0,
-    top: 0,
-    bottom: 0,
-    zIndex: 100,
-    transition: 'width 0.3s ease',
-    overflowY: 'auto' as const,
-    overflowX: 'hidden' as const,
-    display: 'flex',
-    flexDirection: 'column' as const,
-    boxShadow: 'var(--shadow-md)', // Neumorphic soft shadow
-    borderRight: '1px solid rgba(255, 255, 255, 0.8)',
-  }),
-  logoArea: {
-    height: 'var(--header-height)',
-    display: 'flex',
-    alignItems: 'center',
-    padding: '0 var(--spacing-lg)',
-    fontSize: '1.5rem',
-    fontWeight: 700,
-    color: 'var(--color-primary)',
-    marginBottom: 'var(--spacing-md)',
-  },
-  menu: {
-    padding: '0 var(--spacing-md)',
-    display: 'flex',
-    flexDirection: 'column' as const,
-    gap: '4px',
-  },
-  sectionTitle: (isOpen: boolean) => ({
-    padding: 'var(--spacing-sm) var(--spacing-md)',
-    fontSize: '0.75rem',
-    textTransform: 'uppercase' as const,
-    color: 'var(--color-text-muted)',
-    marginTop: 'var(--spacing-md)',
-    opacity: isOpen ? 1 : 0,
-    display: isOpen ? 'block' : 'none',
-  }),
-  link: (isActive: boolean, isOpen: boolean) => ({
-    display: 'flex',
-    alignItems: 'center',
-    padding: '10px 16px',
-    justifyContent: isOpen ? 'flex-start' : 'center',
-    color: isActive ? 'var(--color-text-inverse)' : 'var(--color-text-sidebar)',
-    textDecoration: 'none',
-    transition: 'all 0.2s',
-    borderRadius: 'var(--radius-md)',
-    backgroundColor: isActive ? 'var(--color-primary)' : 'transparent',
-    boxShadow: isActive ? '0 2px 4px rgba(115, 103, 240, 0.4)' : 'none',
-    marginBottom: '4px',
-  }),
-  icon: {
-    marginRight: '12px',
-    display: 'flex',
-    alignItems: 'center',
-  },
-  iconCollapsed: {
-    marginRight: 0,
-    display: 'flex',
-    alignItems: 'center',
-  },
-  label: (isOpen: boolean) => ({
-    display: isOpen ? 'block' : 'none',
-    fontWeight: 500,
-  })
-};
-
 interface NavItem {
   path: string;
   label: string;
   icon: React.ElementType;
+  permission?: string | string[];
+  end?: boolean;
 }
 
 interface NavSection {
@@ -101,69 +38,166 @@ interface NavSection {
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({ isOpen }) => {
-  const [user, setUser] = useState<AuthUser | null>(null);
-
-  useEffect(() => {
-    authService.getCurrentUser().then(setUser);
-  }, []);
+  const { hasPermission } = useAuth();
 
   const navigation: NavSection[] = [
     {
-      title: 'Apps & Pages',
+      title: 'Overview',
       items: [
-        { path: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
-        { path: '/attendance', label: 'Attendance', icon: Clock },
-        { path: '/leaves', label: 'Leave', icon: Calendar },
-        { path: '/profile', label: 'My Profile', icon: UserCircle },
-      ]
-    }
+        { path: '/dashboard', label: 'Dashboard', icon: LayoutDashboard, end: true },
+      ],
+    },
+    {
+      title: 'People',
+      items: [
+        { path: '/admin/employees',    label: 'Employees',     icon: Users,      permission: 'employee.view' },
+        { path: '/admin/assets',       label: 'Assets',        icon: Package,    permission: 'asset.view' },
+        { path: '/admin/organizations',label: 'Organizations', icon: Building2,  permission: 'organization.view' },
+        { path: '/admin/departments',  label: 'Departments',   icon: GitBranch,  permission: 'department.view' },
+        { path: '/admin/branches',     label: 'Branches',      icon: Building2,  permission: 'branch.view' },
+        { path: '/admin/designations', label: 'Designations',  icon: Briefcase,  permission: 'designation.view' },
+      ],
+    },
+    {
+      title: 'Time',
+      items: [
+        { path: '/attendance',         label: 'My Attendance',         icon: Clock },
+        { path: '/admin/attendance',   label: 'Attendance Management', icon: CalendarDays, permission: 'attendance.view_all' },
+        { path: '/leaves',             label: 'My Leave',              icon: Calendar },
+        { path: '/admin/leaves',       label: 'Leave Requests',        icon: Calendar,  permission: 'leave.view' },
+        { path: '/admin/leave-types',  label: 'Leave Types',           icon: Settings,  permission: 'leave_type.manage' },
+        { path: '/admin/wfh',          label: 'WFH Requests',          icon: Network,   permission: 'wfh.view' },
+        { path: '/admin/holidays',     label: 'Holidays',              icon: CalendarDays, permission: 'holiday.view' },
+        { path: '/admin/shifts',       label: 'Shifts',                icon: Clock,     permission: 'shift.view' },
+      ],
+    },
+    {
+      title: 'Finance',
+      items: [
+        { path: '/payslips', label: 'My Payslips', icon: FileText },
+        { path: '/payroll', label: 'Payroll', icon: DollarSign, permission: 'payroll.view' },
+        { path: '/payroll/reports', label: 'Reports', icon: BarChart2, permission: 'payroll.view_reports' },
+      ],
+    },
+
+    {
+      title: 'Admin',
+      items: [
+        { path: '/admin/roles',          label: 'Roles & Permissions', icon: ShieldAlert, permission: 'role.view' },
+        { path: '/admin/audit-logs',     label: 'Audit Logs',          icon: Settings,    permission: 'audit.view' },
+        { path: '/admin/office-networks',label: 'Office Networks',     icon: Network,     permission: 'office_network.view' },
+      ],
+    },
   ];
 
-  if (user?.isStaff) {
-    navigation.push({
-      title: 'Administration',
-      items: [
-        { path: '/admin', label: 'Overview', icon: Settings },
-        { path: '/admin/employees', label: 'Employees', icon: Users },
-        { path: '/admin/office-networks', label: 'Office Networks', icon: Network },
-        { path: '/admin/wfh', label: 'WFH Requests', icon: Settings },
-        { path: '/admin/leaves', label: 'Leave Requests', icon: Calendar },
-        { path: '/admin/leave-types', label: 'Leave Types', icon: Calendar },
-        { path: '/admin/audit-logs', label: 'Audit Logs', icon: ShieldAlert },
-      ]
-    });
-  }
-
   return (
-    <aside style={styles.sidebar(isOpen)}>
-      <div style={styles.logoArea}>
-        {isOpen ? 'Vuexy HRMS' : 'VH'}
-      </div>
-      <nav style={styles.menu}>
-        {navigation.map((section, idx) => (
-          <div key={idx}>
-            <div style={styles.sectionTitle(isOpen)}>{section.title}</div>
-            {section.items.map((item) => (
-              <NavLink 
-                key={item.path} 
-                to={item.path} 
-                end={item.path === '/admin'}
-                style={({ isActive }) => styles.link(isActive, isOpen)}
-                title={!isOpen ? item.label : undefined}
-              >
-                {({ isActive }) => (
-                  <>
-                    <div style={isOpen ? styles.icon : styles.iconCollapsed}>
-                      <item.icon size={22} color={isActive ? 'var(--color-text-inverse)' : 'var(--color-text-sidebar)'} />
-                    </div>
-                    <span style={styles.label(isOpen)}>{item.label}</span>
-                  </>
-                )}
-              </NavLink>
-            ))}
+    <aside className={`sidebar ${isOpen ? 'open' : 'closed'}`}>
+      {/* Logo */}
+      <div className="sidebar-logo" style={{ justifyContent: 'center', padding: isOpen ? '0 14px' : '0 8px' }}>
+        {isOpen ? (
+          <div
+            style={{
+              backgroundColor: '#ffffff',
+              borderRadius: '8px',
+              padding: '6px 14px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              width: '100%',
+              boxShadow: '0 2px 6px rgba(0, 0, 0, 0.15)',
+            }}
+          >
+            <img
+              src="/beyondsure-logo.webp"
+              alt="BeyondSure HRMS"
+              style={{
+                width: '100%',
+                maxWidth: '170px',
+                height: 'auto',
+                maxHeight: '28px',
+                objectFit: 'contain',
+                display: 'block',
+              }}
+            />
           </div>
-        ))}
+        ) : (
+          <div
+            style={{
+              backgroundColor: '#ffffff',
+              borderRadius: '8px',
+              padding: '6px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              boxShadow: '0 2px 6px rgba(0, 0, 0, 0.15)',
+            }}
+          >
+            <img
+              src="/favicon.svg"
+              alt="BeyondSure"
+              style={{
+                width: 24,
+                height: 24,
+                objectFit: 'contain',
+                flexShrink: 0,
+              }}
+            />
+          </div>
+        )}
+      </div>
+
+      {/* Nav */}
+      <nav className="sidebar-menu" aria-label="Main navigation">
+        {navigation.map((section, idx) => {
+          const visibleItems = section.items.filter((item) => {
+            if (!item.permission) return true;
+            return Array.isArray(item.permission)
+              ? item.permission.some((p) => hasPermission(p))
+              : hasPermission(item.permission);
+          });
+          if (visibleItems.length === 0) return null;
+
+          return (
+            <div key={idx}>
+              {isOpen && (
+                <div className="sidebar-section">{section.title}</div>
+              )}
+              {visibleItems.map((item) => (
+                <NavLink
+                  key={item.path}
+                  to={item.path}
+                  end={item.end !== undefined ? item.end : false}
+                  className={({ isActive }) => `sidebar-link${isActive ? ' active' : ''}`}
+                  title={!isOpen ? item.label : undefined}
+                >
+                  <span className="sidebar-icon">
+                    <item.icon size={18} />
+                  </span>
+                  {isOpen && <span>{item.label}</span>}
+                </NavLink>
+              ))}
+            </div>
+          );
+        })}
       </nav>
+
+      {/* Sidebar Footer */}
+      {isOpen && (
+        <div
+          style={{
+            padding: '12px 16px',
+            borderTop: '1px solid var(--color-border-sidebar)',
+            fontSize: '0.7rem',
+            color: '#64748b',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+          }}
+        >
+          <span style={{ fontWeight: 600, color: '#94a3b8' }}>BEYONDSURE</span>
+          <span style={{ backgroundColor: 'rgba(112, 38, 227, 0.25)', color: '#c4b5fd', padding: '2px 6px', borderRadius: '4px', fontSize: '0.65rem', fontWeight: 600 }}>ENTERPRISE</span>
+        </div>
+      )}
     </aside>
   );
 };

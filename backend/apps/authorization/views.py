@@ -4,22 +4,70 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from django.utils import timezone
-from .models import Role, Permission, UserRole, UserPermissionGrant
-from .serializers import RoleSerializer, PermissionSerializer, UserRoleSerializer, UserPermissionGrantSerializer
+from .models import Role, Permission, UserRole, UserPermissionGrant, RolePermission
+from .serializers import RoleSerializer, PermissionSerializer, UserRoleSerializer, UserPermissionGrantSerializer, RolePermissionSerializer
 from apps.authorization.permissions import require_permission
 from apps.authorization.services import AuthorizationService
 from django.contrib.auth import get_user_model
+from rest_framework.views import APIView
 
 User = get_user_model()
 
-class RoleViewSet(viewsets.ReadOnlyModelViewSet):
+class CurrentUserPermissionsView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        user = request.user
+        
+        if user.is_superuser:
+            perms = set(Permission.objects.filter(is_active=True).values_list('codename', flat=True))
+        else:
+            perms = AuthorizationService.get_effective_permissions(user)
+            
+        roles = Role.objects.filter(
+            user_roles__user=user,
+            user_roles__is_revoked=False,
+            is_active=True
+        ).values_list('name', flat=True)
+
+        return Response({
+            'user': {
+                'id': user.id,
+                'email': user.email,
+                'first_name': user.first_name,
+                'last_name': user.last_name,
+                'is_superuser': user.is_superuser,
+            },
+            'roles': list(roles),
+            'permissions': list(perms)
+        })
+
+class RoleViewSet(viewsets.ModelViewSet):
     serializer_class = RoleSerializer
-    permission_classes = [IsAuthenticated, require_permission('role.view')]
+
+    def get_permissions(self):
+        permissions = [IsAuthenticated()]
+        if self.action in ['list', 'retrieve']:
+            permissions.append(require_permission('role.view')())
+        else:
+            permissions.append(require_permission('role.assign')())
+        return permissions
 
     def get_queryset(self):
         # ARCHITECTURAL LIMITATION: Employee model does not have an organization relationship.
         # Returning all roles instead of attempting to scope by organization.
         return Role.objects.all()
+
+    def perform_create(self, serializer):
+        user = self.request.user
+        org = None
+        if hasattr(user, 'employee') and user.employee.organization_id:
+            org = user.employee.organization
+        else:
+            from apps.organization.models import Organization
+            org = Organization.objects.first()
+        serializer.save(organization=org)
+
 
 class PermissionViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = PermissionSerializer
@@ -144,3 +192,55 @@ class UserPermissionGrantViewSet(viewsets.ModelViewSet):
             request=request
         )
         return Response(UserPermissionGrantSerializer(grant).data)
+
+class RolePermissionViewSet(viewsets.ModelViewSet):
+    serializer_class = RolePermissionSerializer
+
+    def get_permissions(self):
+        permissions = [IsAuthenticated()]
+        if self.action in ['list', 'retrieve']:
+            permissions.append(require_permission('role.view')())
+        else:
+            permissions.append(require_permission('permission.assign')())
+        return permissions
+
+    def get_queryset(self):
+        queryset = RolePermission.objects.all()
+        role_id = self.request.query_params.get('role', None)
+        if role_id is not None:
+            queryset = queryset.filter(role_id=role_id)
+        return queryset
+
+    def perform_create(self, serializer):
+        grant = serializer.save()
+        AuditService.log(
+            action='role_permission_granted',
+            actor=self.request.user,
+            target_type='role',
+            target_id=grant.role.id,
+            metadata={'permission_id': grant.permission.id, 'codename': grant.permission.codename},
+            request=self.request
+        )
+
+    @action(detail=True, methods=['post'])
+    def revoke(self, request, pk=None):
+        if not AuthorizationService.has_permission(request.user, 'permission.revoke'):
+            return Response(status=status.HTTP_403_FORBIDDEN)
+        
+        grant = self.get_object()
+        role_id = grant.role.id
+        perm_id = grant.permission.id
+        perm_codename = grant.permission.codename
+        
+        grant.delete()
+        
+        AuditService.log(
+            action='role_permission_revoked',
+            actor=request.user,
+            target_type='role',
+            target_id=role_id,
+            metadata={'permission_id': perm_id, 'codename': perm_codename},
+            request=request
+        )
+        return Response({'detail': 'Permission revoked from role'})
+

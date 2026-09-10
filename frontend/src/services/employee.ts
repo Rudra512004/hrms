@@ -5,11 +5,22 @@ export interface EmployeeProfile {
   last_name: string;
   status: string;
   employee_code: string;
-  personal_email: string;
-  phone_number: string;
-  address: string;
-  emergency_contact_name: string;
-  emergency_contact_phone: string;
+  employment_status: string;
+  personal_email?: string;
+  phone_number?: string;
+  address?: string;
+  emergency_contact_name?: string;
+  emergency_contact_phone?: string;
+  joining_date?: string | null;
+  exit_date?: string | null;
+  organization?: number;
+  department?: number;
+  designation?: number;
+  reporting_manager?: number;
+  organization_name?: string;
+  department_name?: string;
+  designation_name?: string;
+  reporting_manager_name?: string;
 }
 
 export const employeeService = {

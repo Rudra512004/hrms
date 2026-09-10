@@ -13,7 +13,8 @@ import { Card } from '../../components/Card';
 import { Table } from '../../components/Table';
 import { StatusBadge } from '../../components/StatusBadge';
 import { Shield, Plus, Trash2, ArrowLeft, AlertCircle, Loader2 } from 'lucide-react';
-import { authService } from '../../services/auth';
+import { useAuth } from '../../contexts/AuthContext';
+
 
 const styles = {
   header: {
@@ -152,6 +153,7 @@ const styles = {
 export const EmployeeAccessPage: React.FC = () => {
   const { employeeId } = useParams<{ employeeId: string }>();
   const navigate = useNavigate();
+  const { hasPermission } = useAuth();
   
   const [employee, setEmployee] = useState<EmployeeProfile | null>(null);
   const [userRoles, setUserRoles] = useState<UserRole[]>([]);
@@ -221,17 +223,7 @@ export const EmployeeAccessPage: React.FC = () => {
   }, [employeeId]);
 
   useEffect(() => {
-    authService.getCurrentUser().then(u => {
-      if (u) {
-        loadData();
-      } else {
-        setError("You are not authenticated.");
-        setLoading(false);
-      }
-    }).catch(() => {
-      setError("Authentication error.");
-      setLoading(false);
-    });
+    loadData();
   }, [employeeId, loadData]);
 
   const handleAssignRole = async (e: React.FormEvent) => {
@@ -339,9 +331,11 @@ export const EmployeeAccessPage: React.FC = () => {
         <Card>
           <div style={styles.sectionTitle}>
             <span>Role Assignments</span>
-            <button style={styles.button} onClick={() => { setIsRoleModalOpen(true); setFormError(null); setSelectedRoleId(''); }}>
-              <Plus size={16} /> Assign Role
-            </button>
+            {hasPermission('role.assign') && (
+              <button style={styles.button} onClick={() => { setIsRoleModalOpen(true); setFormError(null); setSelectedRoleId(''); }}>
+                <Plus size={16} /> Assign Role
+              </button>
+            )}
           </div>
           
           <Table 
@@ -351,9 +345,11 @@ export const EmployeeAccessPage: React.FC = () => {
               { key: 'role_name', title: 'Role' },
               { key: 'assigned_at', title: 'Assigned', render: r => new Date(r.assigned_at).toLocaleDateString() },
               { key: 'actions', title: '', render: r => (
-                <button style={styles.actionBtn} onClick={() => handleRevokeRole(r.id)} title="Revoke Role">
-                  <Trash2 size={18} color="var(--color-status-danger)" />
-                </button>
+                hasPermission('role.revoke') ? (
+                  <button style={styles.actionBtn} onClick={() => handleRevokeRole(r.id)} title="Revoke Role">
+                    <Trash2 size={18} color="var(--color-status-danger)" />
+                  </button>
+                ) : null
               )}
             ]}
           />
@@ -364,9 +360,11 @@ export const EmployeeAccessPage: React.FC = () => {
         <Card>
           <div style={styles.sectionTitle}>
             <span>Direct Permissions</span>
-            <button style={styles.button} onClick={() => { setIsPermModalOpen(true); setFormError(null); setSelectedPermId(''); }}>
-              <Plus size={16} /> Grant Permission
-            </button>
+            {hasPermission('permission.assign') && (
+              <button style={styles.button} onClick={() => { setIsPermModalOpen(true); setFormError(null); setSelectedPermId(''); }}>
+                <Plus size={16} /> Grant Permission
+              </button>
+            )}
           </div>
 
           <Table 
@@ -376,9 +374,11 @@ export const EmployeeAccessPage: React.FC = () => {
               { key: 'permission_codename', title: 'Permission' },
               { key: 'granted_at', title: 'Granted', render: p => new Date(p.granted_at).toLocaleDateString() },
               { key: 'actions', title: '', render: p => (
-                <button style={styles.actionBtn} onClick={() => handleRevokePermission(p.id)} title="Revoke Permission">
-                  <Trash2 size={18} color="var(--color-status-danger)" />
-                </button>
+                hasPermission('permission.revoke') ? (
+                  <button style={styles.actionBtn} onClick={() => handleRevokePermission(p.id)} title="Revoke Permission">
+                    <Trash2 size={18} color="var(--color-status-danger)" />
+                  </button>
+                ) : null
               )}
             ]}
           />

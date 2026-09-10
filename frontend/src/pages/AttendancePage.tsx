@@ -2,107 +2,42 @@ import React, { useState, useEffect } from 'react';
 import { Card } from '../components/Card';
 import { Table } from '../components/Table';
 import { StatusBadge } from '../components/StatusBadge';
-import { LogIn, LogOut, AlertCircle, Loader2 } from 'lucide-react';
+import { PageHeader } from '../components/PageHeader';
+import { AlertBanner } from '../components/AlertBanner';
+import { LogIn, LogOut, Loader2, Pause, Play, Clock } from 'lucide-react';
 import { attendanceService, type AttendanceRecord } from '../services/attendance';
 
-const styles = {
-  container: {
-    display: 'flex',
-    flexDirection: 'column' as const,
-    gap: 'var(--spacing-xl)',
-  },
-  header: {
-    marginBottom: 'var(--spacing-md)',
-  },
-  title: {
-    fontSize: '1.5rem',
-    fontWeight: 700,
-    color: 'var(--color-text-main)',
-    margin: '0 0 var(--spacing-xs) 0',
-  },
-  subtitle: {
-    color: 'var(--color-text-muted)',
-    margin: 0,
-    fontSize: '0.95rem',
-  },
-  todayCard: {
-    display: 'flex',
-    flexDirection: 'column' as const,
-    gap: 'var(--spacing-md)',
-  },
-  todayHeader: {
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    borderBottom: '1px solid var(--color-border)',
-    paddingBottom: 'var(--spacing-sm)',
-    marginBottom: 'var(--spacing-sm)',
-  },
-  todayDate: {
-    fontSize: '1.1rem',
-    fontWeight: 600,
-    color: 'var(--color-text-main)',
-    margin: 0,
-  },
-  timeRow: {
-    display: 'flex',
-    justifyContent: 'space-between',
-    padding: '8px 0',
-  },
-  timeLabel: {
-    color: 'var(--color-text-muted)',
-    fontWeight: 500,
-    display: 'flex',
-    alignItems: 'center',
-    gap: '8px',
-  },
-  timeValue: {
-    color: 'var(--color-text-main)',
-    fontWeight: 600,
-  },
-  actions: {
-    display: 'flex',
-    gap: 'var(--spacing-md)',
-    marginTop: 'var(--spacing-md)',
-    paddingTop: 'var(--spacing-md)',
-    borderTop: '1px solid var(--color-border)',
-  },
-  btn: {},
-  btnPrimary: {},
-  btnSecondary: {},
-  btnDisabled: {},
-  alert: {
-    padding: 'var(--spacing-md)',
-    borderRadius: 'var(--radius-md)',
-    backgroundColor: 'var(--color-status-danger)15',
-    color: 'var(--color-status-danger)',
-    border: '1px solid var(--color-status-danger)30',
-    display: 'flex',
-    alignItems: 'center',
-    gap: 'var(--spacing-sm)',
-    marginBottom: 'var(--spacing-md)',
-  },
-  centerState: {
-    display: 'flex',
-    flexDirection: 'column' as const,
-    alignItems: 'center',
-    justifyContent: 'center',
-    minHeight: '400px',
-    color: 'var(--color-text-muted)',
-  },
-  tableContainer: {
-    overflowX: 'auto' as const,
-  }
-};
-
-const formatTime = (isoString: string | null) => {
+const formatTimeOnly = (isoString: string | null) => {
   if (!isoString) return '--:--';
   return new Date(isoString).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 };
 
 const formatDate = (dateString: string) => {
   if (!dateString) return '';
-  return new Date(dateString).toLocaleDateString([], { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+  return new Date(dateString + 'T00:00:00').toLocaleDateString([], {
+    weekday: 'short',
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+  });
+};
+
+const formatDurationMs = (ms: number) => {
+  if (ms < 0) ms = 0;
+  const totalSeconds = Math.floor(ms / 1000);
+  const h = Math.floor(totalSeconds / 3600);
+  const m = Math.floor((totalSeconds % 3600) / 60);
+  const s = totalSeconds % 60;
+  return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+};
+
+const parseDjangoDuration = (dur: string | null) => {
+  if (!dur) return 0;
+  const parts = dur.split(' ');
+  const timePart = parts.length === 2 ? parts[1] : parts[0];
+  const [h, m, s] = timePart.split(':').map(Number);
+  const days = parts.length === 2 ? parseInt(parts[0]) : 0;
+  return (days * 86400 + h * 3600 + m * 60 + (s || 0)) * 1000;
 };
 
 export const AttendancePage: React.FC = () => {
@@ -110,9 +45,15 @@ export const AttendancePage: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [nowMs, setNowMs] = useState(Date.now());
 
   useEffect(() => {
     loadAttendance();
+  }, []);
+
+  useEffect(() => {
+    const interval = setInterval(() => setNowMs(Date.now()), 1000);
+    return () => clearInterval(interval);
   }, []);
 
   const loadAttendance = async () => {
@@ -121,40 +62,67 @@ export const AttendancePage: React.FC = () => {
       const data = await attendanceService.getHistory();
       setHistory(data);
     } catch {
-      setError("Failed to load attendance history.");
+      setError('Failed to load attendance history.');
     } finally {
       setLoading(false);
     }
   };
 
   const handleError = (err: any) => {
-    if (err?.response?.status === 403) {
-      setError("Attendance actions are currently unavailable from your current network or location.");
+    if (err?.response?.status === 403 && err?.errorData?.detail === 'ATTENDANCE_OUTSIDE_GEOFENCE') {
+      setError('You are outside the allowed branch radius for attendance.');
+    } else if (err?.response?.status === 403) {
+      setError('Attendance actions are unavailable from your current network or location.');
     } else if (err?.errorData?.detail) {
       setError(err.errorData.detail);
     } else {
-      setError("An unexpected error occurred.");
+      setError('An unexpected error occurred. Please try again.');
     }
   };
 
-  const handleCheckIn = async () => {
-    try {
-      setActionLoading(true);
-      setError(null);
-      await attendanceService.checkIn();
-      await loadAttendance();
-    } catch (err: any) {
-      handleError(err);
-    } finally {
-      setActionLoading(false);
-    }
+  const getLocation = (): Promise<{ latitude: number; longitude: number; accuracy: number }> => {
+    return new Promise((resolve, reject) => {
+      if (!navigator.geolocation) {
+        reject(new Error("Geolocation is not supported by your browser."));
+      } else {
+        navigator.geolocation.getCurrentPosition(
+          (pos) => {
+            resolve({
+              latitude: pos.coords.latitude,
+              longitude: pos.coords.longitude,
+              accuracy: pos.coords.accuracy,
+            });
+          },
+          (err) => {
+            if (err.code === err.PERMISSION_DENIED) {
+              reject(new Error("Location permission denied. Please allow location access to mark attendance."));
+            } else if (err.code === err.TIMEOUT) {
+              reject(new Error("Location request timed out. Please try again."));
+            } else {
+              reject(new Error("Unable to retrieve location. Please ensure location services are enabled."));
+            }
+          },
+          { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
+        );
+      }
+    });
   };
 
-  const handleCheckOut = async () => {
+  const handleAction = async (actionFn: (loc?: { latitude: number; longitude: number; accuracy: number }) => Promise<any>, requireLocation: boolean = true) => {
     try {
       setActionLoading(true);
       setError(null);
-      await attendanceService.checkOut();
+      let loc = undefined;
+      if (requireLocation) {
+        try {
+          loc = await getLocation();
+        } catch (err: any) {
+          setError(err.message || 'Unable to get location');
+          setActionLoading(false);
+          return;
+        }
+      }
+      await actionFn(loc);
       await loadAttendance();
     } catch (err: any) {
       handleError(err);
@@ -164,93 +132,271 @@ export const AttendancePage: React.FC = () => {
   };
 
   const todayStr = new Date().toISOString().split('T')[0];
-  const todayRecord = history.find(r => r.date === todayStr);
+  const todayRecord = history.find((r) => r.date === todayStr);
 
   const isCheckedIn = !!todayRecord?.check_in;
   const isCheckedOut = !!todayRecord?.check_out;
+  const isOnBreak = !!todayRecord?.is_on_break;
+
+  let productiveMs = 0;
+  let activeBreakMs = 0;
+  let totalBreakMs = 0;
+
+  if (todayRecord?.check_in) {
+    if (isCheckedOut) {
+      productiveMs = parseDjangoDuration(todayRecord.productive_work_duration);
+      totalBreakMs = parseDjangoDuration(todayRecord.total_break_duration);
+    } else {
+      const startMs = new Date(todayRecord.check_in).getTime();
+      const totalElapsed = nowMs - startMs;
+      for (const b of todayRecord.breaks || []) {
+        const bStart = new Date(b.started_at).getTime();
+        const bEnd = b.ended_at ? new Date(b.ended_at).getTime() : nowMs;
+        const dur = bEnd - bStart;
+        totalBreakMs += dur;
+        if (!b.ended_at) activeBreakMs = dur;
+      }
+      productiveMs = Math.max(0, totalElapsed - totalBreakMs);
+    }
+  }
+
+  let timerStateLabel = 'NOT CHECKED IN';
+  let timerStateColor = 'var(--color-text-muted)';
+  let mainTimerDisplay = '00:00:00';
+
+  if (isCheckedOut) {
+    timerStateLabel = 'COMPLETED';
+    timerStateColor = 'var(--color-status-success)';
+    mainTimerDisplay = formatDurationMs(productiveMs);
+  } else if (isOnBreak) {
+    timerStateLabel = 'ON BREAK';
+    timerStateColor = 'var(--color-status-warning)';
+    mainTimerDisplay = formatDurationMs(activeBreakMs);
+  } else if (isCheckedIn) {
+    timerStateLabel = 'WORKING';
+    timerStateColor = 'var(--color-status-success)';
+    mainTimerDisplay = formatDurationMs(productiveMs);
+  }
+
+  const columns = [
+    {
+      key: 'date',
+      title: 'Date',
+      render: (r: AttendanceRecord) => (
+        <span style={{ whiteSpace: 'nowrap' }}>{formatDate(r.date)}</span>
+      ),
+    },
+    { key: 'check_in', title: 'Check In',  render: (r: AttendanceRecord) => formatTimeOnly(r.check_in) },
+    { key: 'check_out', title: 'Check Out', render: (r: AttendanceRecord) => formatTimeOnly(r.check_out) },
+    {
+      key: 'break',
+      title: 'Break',
+      render: (r: AttendanceRecord) => {
+        const ms = r.total_break_duration
+          ? parseDjangoDuration(r.total_break_duration)
+          : (r.breaks || []).reduce((acc, b) => {
+              const end = b.ended_at ? new Date(b.ended_at).getTime() : new Date().getTime();
+              return acc + (end - new Date(b.started_at).getTime());
+            }, 0);
+        return <span style={{ fontVariantNumeric: 'tabular-nums' }}>{formatDurationMs(ms)}</span>;
+      },
+    },
+    {
+      key: 'work',
+      title: 'Productive',
+      render: (r: AttendanceRecord) => {
+        let ms = 0;
+        if (r.productive_work_duration) {
+          ms = parseDjangoDuration(r.productive_work_duration);
+        } else if (r.check_in && !r.check_out) {
+          const breakMs = (r.breaks || []).reduce((acc, b) => {
+            const end = b.ended_at ? new Date(b.ended_at).getTime() : new Date().getTime();
+            return acc + (end - new Date(b.started_at).getTime());
+          }, 0);
+          ms = Math.max(0, new Date().getTime() - new Date(r.check_in).getTime() - breakMs);
+        }
+        return <span style={{ fontVariantNumeric: 'tabular-nums' }}>{formatDurationMs(ms)}</span>;
+      },
+    },
+    {
+      key: 'status',
+      title: 'Status',
+      render: (r: AttendanceRecord) => <StatusBadge status={r.status as any} />,
+    },
+  ];
 
   if (loading && history.length === 0) {
     return (
-      <div style={styles.centerState}>
-        <Loader2 size={32} color="var(--color-primary)" style={{ animation: 'spin 1s linear infinite', marginBottom: 'var(--spacing-md)' }} />
-        <p>Loading attendance data...</p>
+      <div className="loading-center">
+        <Loader2 size={28} className="animate-spin" style={{ color: 'var(--color-primary)' }} />
+        <span>Loading attendance…</span>
       </div>
     );
   }
 
-  const columns = [
-    { key: 'date', title: 'Date', render: (r: AttendanceRecord) => formatDate(r.date) },
-    { key: 'status', title: 'Status', render: (r: AttendanceRecord) => <StatusBadge status={r.status as any} /> },
-    { key: 'check_in', title: 'Check In', render: (r: AttendanceRecord) => formatTime(r.check_in) },
-    { key: 'check_out', title: 'Check Out', render: (r: AttendanceRecord) => formatTime(r.check_out) },
-  ];
-
   return (
-    <div style={styles.container}>
-      <div style={styles.header}>
-        <h1 style={styles.title}>My Attendance</h1>
-        <p style={styles.subtitle}>Manage your daily check-in and check-out</p>
-      </div>
+    <div className="animate-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: 'var(--spacing-lg)' }}>
+      <PageHeader
+        title="My Attendance"
+        subtitle="Manage your daily check-in, check-out, and breaks."
+      />
 
-      {error && (
-        <div style={styles.alert}>
-          <AlertCircle size={20} />
-          <span>{error}</span>
-        </div>
-      )}
+      {error && <AlertBanner type="error" message={error} style={{ marginBottom: 0 }} />}
 
-      <Card>
-        <div style={styles.todayCard}>
-          <div style={styles.todayHeader}>
-            <h3 style={styles.todayDate}>{formatDate(todayStr)}</h3>
-            {todayRecord ? <StatusBadge status={todayRecord.status as any} /> : <StatusBadge status="absent" />}
-          </div>
-          
-          <div style={styles.timeRow}>
-            <span style={styles.timeLabel}><LogIn size={18} /> Check In Time</span>
-            <span style={styles.timeValue}>{formatTime(todayRecord?.check_in || null)}</span>
-          </div>
-          
-          <div style={styles.timeRow}>
-            <span style={styles.timeLabel}><LogOut size={18} /> Check Out Time</span>
-            <span style={styles.timeValue}>{formatTime(todayRecord?.check_out || null)}</span>
+      {/* Timer Card */}
+      <Card style={{ borderTop: '3px solid var(--color-primary)', boxShadow: 'var(--shadow-md)' }}>
+        <div
+          style={{
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            padding: 'var(--spacing-xl) var(--spacing-lg)',
+            gap: 'var(--spacing-md)',
+          }}
+        >
+          {/* State label */}
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              fontSize: 'var(--font-size-xs)',
+              fontWeight: 700,
+              letterSpacing: '0.1em',
+              textTransform: 'uppercase',
+              color: timerStateColor,
+              backgroundColor: `${timerStateColor}14`,
+              padding: '4px 12px',
+              borderRadius: 'var(--radius-full)',
+            }}
+          >
+            <span
+              style={{
+                width: 8,
+                height: 8,
+                borderRadius: '50%',
+                backgroundColor: timerStateColor,
+                display: 'inline-block',
+              }}
+            />
+            {timerStateLabel}
           </div>
 
-          <div style={styles.actions}>
-            <button
-              onClick={handleCheckIn}
-              disabled={actionLoading || isCheckedIn}
-              className={`btn btn-primary`}
-              style={{ flex: 1 }}
+          {/* Main timer */}
+          <div
+            style={{
+              fontSize: '3.5rem',
+              fontWeight: 800,
+              fontVariantNumeric: 'tabular-nums',
+              color: isCheckedIn && !isCheckedOut ? 'var(--color-primary)' : 'var(--color-text-main)',
+              lineHeight: 1,
+              letterSpacing: '-0.03em',
+            }}
+          >
+            {mainTimerDisplay}
+          </div>
+
+          {/* Action buttons */}
+          <div
+            style={{
+              display: 'flex',
+              gap: 'var(--spacing-sm)',
+              marginTop: 'var(--spacing-sm)',
+              width: '100%',
+              maxWidth: 420,
+            }}
+          >
+            {!isCheckedIn && !isCheckedOut && (
+              <button
+                onClick={() => handleAction(attendanceService.checkIn)}
+                disabled={actionLoading}
+                className="btn btn-primary"
+                style={{ flex: 1, padding: '10px 16px' }}
+              >
+                {actionLoading ? <Loader2 size={16} className="animate-spin" /> : <LogIn size={16} />}
+                Check In
+              </button>
+            )}
+            {isCheckedIn && !isCheckedOut && !isOnBreak && (
+              <>
+                <button
+                  onClick={() => handleAction(attendanceService.startBreak)}
+                  disabled={actionLoading}
+                  className="btn btn-secondary"
+                  style={{ flex: 1, padding: '10px 16px' }}
+                >
+                  {actionLoading ? <Loader2 size={16} className="animate-spin" /> : <Pause size={16} />}
+                  Start Break
+                </button>
+                <button
+                  onClick={() => handleAction(attendanceService.checkOut)}
+                  disabled={actionLoading}
+                  className="btn btn-primary"
+                  style={{ flex: 1, padding: '10px 16px' }}
+                >
+                  {actionLoading ? <Loader2 size={16} className="animate-spin" /> : <LogOut size={16} />}
+                  Check Out
+                </button>
+              </>
+            )}
+            {isCheckedIn && !isCheckedOut && isOnBreak && (
+              <button
+                onClick={() => handleAction(attendanceService.endBreak)}
+                disabled={actionLoading}
+                className="btn btn-warning"
+                style={{ flex: 1, padding: '10px 16px' }}
+              >
+                {actionLoading ? <Loader2 size={16} className="animate-spin" /> : <Play size={16} />}
+                End Break
+              </button>
+            )}
+          </div>
+
+          {/* Summary row when checked in */}
+          {isCheckedIn && (
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(4, 1fr)',
+                gap: 'var(--spacing-md)',
+                width: '100%',
+                maxWidth: 480,
+                marginTop: 'var(--spacing-md)',
+                paddingTop: 'var(--spacing-md)',
+                borderTop: '1px solid var(--color-border)',
+              }}
             >
-              {actionLoading && !isCheckedIn ? <Loader2 size={18} style={{ animation: 'spin 1s linear infinite' }} /> : <LogIn size={18} />}
-              Check In
-            </button>
-            <button
-              onClick={handleCheckOut}
-              disabled={actionLoading || !isCheckedIn || isCheckedOut}
-              className={`btn btn-secondary`}
-              style={{ flex: 1 }}
-            >
-              {actionLoading && isCheckedIn && !isCheckedOut ? <Loader2 size={18} style={{ animation: 'spin 1s linear infinite' }} /> : <LogOut size={18} />}
-              Check Out
-            </button>
-          </div>
+              {[
+                { label: 'Check In',   value: formatTimeOnly(todayRecord?.check_in || null) },
+                { label: 'Check Out',  value: formatTimeOnly(todayRecord?.check_out || null) },
+                { label: 'Break',      value: formatDurationMs(totalBreakMs) },
+                { label: 'Productive', value: formatDurationMs(productiveMs) },
+              ].map(({ label, value }) => (
+                <div key={label} style={{ textAlign: 'center' }}>
+                  <div style={{ fontSize: 'var(--font-size-xs)', color: 'var(--color-text-muted)', fontWeight: 500, marginBottom: 4 }}>
+                    {label}
+                  </div>
+                  <div style={{ fontSize: 'var(--font-size-base)', fontWeight: 600, fontVariantNumeric: 'tabular-nums' }}>
+                    {value}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </Card>
 
-      <div>
-        <h3 style={{ ...styles.title, fontSize: '1.25rem', marginBottom: 'var(--spacing-md)' }}>Attendance History</h3>
-        <Card>
-          <div style={styles.tableContainer}>
-            <Table
-              columns={columns}
-              data={history}
-              keyExtractor={(r) => r.id.toString()}
-            />
-          </div>
-        </Card>
-      </div>
+      {/* History */}
+      <Card title="Attendance History" noPadding>
+        <Table
+          columns={columns}
+          data={history}
+          keyExtractor={(r) => r.id.toString()}
+          emptyIcon={Clock}
+          emptyTitle="No attendance records"
+          emptyDescription="Your attendance history will appear here after your first check-in."
+        />
+      </Card>
     </div>
   );
 };

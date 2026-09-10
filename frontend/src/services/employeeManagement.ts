@@ -5,7 +5,11 @@ export interface ProvisionEmployeeData {
   personal_email: string;
   first_name: string;
   last_name: string;
-  employee_code: string;
+  employee_code?: string;
+  organization?: number;
+  department?: number;
+  designation?: number;
+  reporting_manager?: number;
 }
 
 export const employeeManagementService = {
@@ -125,6 +129,28 @@ export const employeeManagementService = {
         'Authorization': `Token ${token}`,
         'Accept': 'application/json'
       }
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw { response, errorData };
+    }
+
+    return await response.json();
+  },
+
+  changeEmploymentStatus: async (id: number, employment_status: string): Promise<EmployeeProfile> => {
+    const token = localStorage.getItem('auth_token');
+    if (!token) throw new Error('No authentication token');
+
+    const response = await fetch(`/api/v1/employees/management/${id}/change_employment_status/`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Token ${token}`,
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
+      },
+      body: JSON.stringify({ employment_status })
     });
 
     if (!response.ok) {

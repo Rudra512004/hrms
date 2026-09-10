@@ -4,7 +4,7 @@ import { Table } from '../../components/Table';
 import { StatusBadge } from '../../components/StatusBadge';
 import { leaveService, type LeaveRequest } from '../../services/leaves';
 import { AlertCircle, FileCheck2, Loader2, Check, X } from 'lucide-react';
-import { authService, type User } from '../../services/auth';
+import { useAuth } from '../../contexts/AuthContext';
 
 const styles = {
   container: {
@@ -91,7 +91,7 @@ export function AdminLeavePage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isDenied, setIsDenied] = useState(false);
-  
+
   // Review Modal State
   const [reviewModal, setReviewModal] = useState<{ isOpen: boolean; request: LeaveRequest | null; action: 'approve' | 'reject' | null }>({
     isOpen: false,
@@ -101,18 +101,14 @@ export function AdminLeavePage() {
   const [reviewComment, setReviewComment] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const [user, setUser] = useState<User | null>(null);
+  const { user, hasPermission } = useAuth();
 
   const loadRequests = async () => {
     try {
       setLoading(true);
       setError(null);
       setIsDenied(false);
-      const [u, data] = await Promise.all([
-        authService.getCurrentUser(),
-        leaveService.getRequests()
-      ]);
-      setUser(u);
+      const data = await leaveService.getRequests();
       setRequests(data);
     } catch (err: any) {
       if (err.response?.status === 403) {
@@ -136,7 +132,7 @@ export function AdminLeavePage() {
 
   const handleReviewSubmit = async () => {
     if (!reviewModal.request || !reviewModal.action) return;
-    
+
     try {
       setIsSubmitting(true);
       setError(null);
@@ -183,8 +179,8 @@ export function AdminLeavePage() {
     { key: 'start_date', title: 'Start' },
     { key: 'end_date', title: 'End' },
     { key: 'duration_days', title: 'Days' },
-    { 
-      key: 'status', 
+    {
+      key: 'status',
       title: 'Status',
       render: (r: LeaveRequest) => <StatusBadge status={r.status} />
     },
@@ -195,20 +191,24 @@ export function AdminLeavePage() {
         const isSelf = user?.id === r.employee.toString(); // Employee cannot approve own request
         return r.status === 'pending' ? (
           <div style={{ display: 'flex', gap: '8px' }}>
-            <button 
-              onClick={() => openReviewModal(r, 'approve')}
-              style={{...styles.button('success'), opacity: isSelf ? 0.5 : 1}}
-              disabled={isSelf}
-              title={isSelf ? "Cannot approve your own request" : "Approve Request"}
-            >
-              <Check size={14} /> Approve
-            </button>
-            <button 
-              onClick={() => openReviewModal(r, 'reject')}
-              style={styles.button('danger')}
-            >
-              <X size={14} /> Reject
-            </button>
+            {hasPermission('leave.approve') && (
+              <button
+                onClick={() => openReviewModal(r, 'approve')}
+                style={{...styles.button('success'), opacity: isSelf ? 0.5 : 1}}
+                disabled={isSelf}
+                title={isSelf ? "Cannot approve your own request" : "Approve Request"}
+              >
+                <Check size={14} /> Approve
+              </button>
+            )}
+            {hasPermission('leave.reject') && (
+              <button
+                onClick={() => openReviewModal(r, 'reject')}
+                style={styles.button('danger')}
+              >
+                <X size={14} /> Reject
+              </button>
+            )}
           </div>
         ) : <span style={{ fontSize: '13px', color: 'var(--color-text-muted)' }}>{r.reviewer_comment || '-'}</span>;
       }
@@ -235,7 +235,7 @@ export function AdminLeavePage() {
             <FileCheck2 size={20} style={{ color: 'var(--color-primary)' }} />
             <h2 style={{ fontSize: '18px', fontWeight: 600, color: 'var(--color-text-main)' }}>All Leave Requests</h2>
           </div>
-          <Table 
+          <Table
             columns={columns}
             data={requests}
             keyExtractor={(r) => r.id.toString()}
@@ -252,7 +252,7 @@ export function AdminLeavePage() {
             <p style={{ color: 'var(--color-text-muted)', marginBottom: '16px', fontSize: '14px' }}>
               You are about to {reviewModal.action} request #{reviewModal.request?.id}. You may provide an optional comment.
             </p>
-            
+
             <label style={{ display: 'block', marginBottom: '8px', color: 'var(--color-text-main)', fontSize: '14px', fontWeight: 500 }}>
               Reviewer Comment (Optional)
             </label>
@@ -264,15 +264,15 @@ export function AdminLeavePage() {
             />
 
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
-              <button 
-                style={styles.button('secondary')} 
+              <button
+                style={styles.button('secondary')}
                 onClick={() => setReviewModal({ isOpen: false, request: null, action: null })}
                 disabled={isSubmitting}
               >
                 Cancel
               </button>
-              <button 
-                style={reviewModal.action === 'approve' ? styles.button('success') : styles.button('danger')} 
+              <button
+                style={reviewModal.action === 'approve' ? styles.button('success') : styles.button('danger')}
                 onClick={handleReviewSubmit}
                 disabled={isSubmitting}
               >

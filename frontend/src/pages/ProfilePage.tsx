@@ -3,7 +3,7 @@ import { Card } from '../components/Card';
 import { StatusBadge } from '../components/StatusBadge';
 import { Loader2, Save, User as UserIcon, Building, ShieldAlert } from 'lucide-react';
 import { employeeService, type EmployeeProfile } from '../services/employee';
-import { authService } from '../services/auth';
+import { useAuth } from '../contexts/AuthContext';
 
 const styles = {
   container: {
@@ -93,8 +93,9 @@ const styles = {
 };
 
 export const ProfilePage: React.FC = () => {
+  const { hasPermission } = useAuth();
+  const canEditAll = hasPermission('employee.update');
   const [profile, setProfile] = useState<EmployeeProfile | null>(null);
-  const [isSuperuser, setIsSuperuser] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -114,10 +115,9 @@ export const ProfilePage: React.FC = () => {
   });
 
   useEffect(() => {
-    Promise.all([employeeService.getProfile(), authService.getCurrentUser()])
-      .then(([p, user]) => {
+    employeeService.getProfile()
+      .then((p) => {
         setProfile(p);
-        setIsSuperuser(!!user?.isSuperuser);
         setFormData({
           first_name: p.first_name || '',
           last_name: p.last_name || '',
@@ -230,7 +230,7 @@ export const ProfilePage: React.FC = () => {
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--spacing-lg)' }}>
               <div style={styles.formGroup}>
                 <label style={styles.label}>First Name</label>
-                {isSuperuser ? (
+                {canEditAll ? (
                   <input type="text" name="first_name" value={formData.first_name} onChange={handleChange} className="input-neumorphic" />
                 ) : (
                   <div style={styles.readOnlyValue}>{profile.first_name}</div>
@@ -238,7 +238,7 @@ export const ProfilePage: React.FC = () => {
               </div>
               <div style={styles.formGroup}>
                 <label style={styles.label}>Last Name</label>
-                {isSuperuser ? (
+                {canEditAll ? (
                   <input type="text" name="last_name" value={formData.last_name} onChange={handleChange} className="input-neumorphic" />
                 ) : (
                   <div style={styles.readOnlyValue}>{profile.last_name}</div>
@@ -252,12 +252,12 @@ export const ProfilePage: React.FC = () => {
           <div style={styles.section}>
             <h2 style={styles.sectionTitle}>
               <Building size={20} /> Company Information
-              {!isSuperuser && <span style={styles.readOnlyBadge}>HR CONTROLLED</span>}
+              {!canEditAll && <span style={styles.readOnlyBadge}>HR CONTROLLED</span>}
             </h2>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--spacing-lg)' }}>
               <div style={styles.formGroup}>
                 <label style={styles.label}>Company Email</label>
-                {isSuperuser ? (
+                {canEditAll ? (
                   <input type="email" name="email" value={formData.email} onChange={handleChange} className="input-neumorphic" />
                 ) : (
                   <div style={styles.readOnlyValue}>{profile.email}</div>
@@ -284,7 +284,7 @@ export const ProfilePage: React.FC = () => {
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--spacing-lg)' }}>
               <div style={styles.formGroup}>
                 <label style={styles.label}>Personal Email</label>
-                {isSuperuser ? (
+                {canEditAll ? (
                   <input type="email" name="personal_email" value={formData.personal_email} onChange={handleChange} className="input-neumorphic" />
                 ) : (
                   <div style={styles.readOnlyValue}>{profile.personal_email || 'Not provided'}</div>

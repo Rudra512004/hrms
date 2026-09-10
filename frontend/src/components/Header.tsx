@@ -1,173 +1,137 @@
-import React, { useState, useEffect } from 'react';
-import { Menu, Search, Bell, User, LogOut } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
-import { authService, type User as AuthUser } from '../services/auth';
+import React from 'react';
+import { Menu, User, LogOut, ChevronRight } from 'lucide-react';
+import { useNavigate, useLocation } from 'react-router-dom';
+import { useAuth } from '../contexts/AuthContext';
 
 interface HeaderProps {
   toggleSidebar: () => void;
   isSidebarOpen: boolean;
 }
 
-const styles = {
-  header: (isOpen: boolean) => ({
-    height: '62px',
-    backgroundColor: 'var(--color-bg-header)',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    padding: '0 var(--spacing-md)',
-    position: 'fixed' as const,
-    top: '1rem',
-    right: '1.5rem',
-    left: isOpen ? 'calc(var(--sidebar-width) + 1.5rem)' : 'calc(var(--sidebar-width-collapsed) + 1.5rem)',
-    zIndex: 90,
-    transition: 'left 0.3s ease',
-    borderRadius: 'var(--radius-md)',
-    boxShadow: 'var(--shadow-sm)',
-  }),
-  leftSide: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: 'var(--spacing-md)',
-  },
-  toggleBtn: {
-    background: 'none',
-    border: 'none',
-    color: 'var(--color-text-main)',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 'var(--spacing-xs)',
-    borderRadius: 'var(--radius-sm)',
-  },
-  searchBox: {
-    display: 'flex',
-    alignItems: 'center',
-    backgroundColor: 'transparent',
-    padding: '0.4rem',
-  },
-  searchInput: {
-    border: 'none',
-    background: 'none',
-    outline: 'none',
-    marginLeft: 'var(--spacing-sm)',
-    fontSize: '0.95rem',
-    width: '200px',
-    color: 'var(--color-text-main)',
-  },
-  rightSide: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: 'var(--spacing-md)',
-  },
-  iconBtn: {
-    background: 'none',
-    border: 'none',
-    color: 'var(--color-text-main)',
-    position: 'relative' as const,
-    cursor: 'pointer',
-    padding: '8px',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: '50%',
-  },
-  badge: {
-    position: 'absolute' as const,
-    top: '2px',
-    right: '2px',
-    backgroundColor: 'var(--color-status-danger)',
-    color: '#fff',
-    fontSize: '0.65rem',
-    fontWeight: 'bold',
-    width: '16px',
-    height: '16px',
-    borderRadius: '50%',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  userArea: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: 'var(--spacing-sm)',
-    cursor: 'pointer',
-    paddingLeft: 'var(--spacing-sm)',
-  },
-  avatar: {
-    width: '38px',
-    height: '38px',
-    borderRadius: '50%',
-    backgroundColor: 'var(--color-primary)',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    color: '#fff',
-  },
-  userName: {
-    fontSize: '0.9rem',
-    fontWeight: 500,
-    color: 'var(--color-text-main)',
-  }
+// Maps route prefixes to human-readable breadcrumb labels
+const routeLabels: Record<string, string> = {
+  '/dashboard': 'Dashboard',
+  '/attendance': 'My Attendance',
+  '/leaves': 'My Leave',
+  '/payslips': 'My Payslips',
+  '/payroll/reports': 'Payroll Reports',
+  '/payroll': 'Payroll',
+  '/profile': 'My Profile',
+  '/admin/employees': 'Employees',
+  '/admin/attendance': 'Attendance Management',
+  '/admin/leaves': 'Leave Requests',
+  '/admin/leave-types': 'Leave Types',
+  '/admin/wfh': 'WFH Requests',
+  '/admin/roles': 'Roles & Permissions',
+  '/admin/audit-logs': 'Audit Logs',
+  '/admin/office-networks': 'Office Networks',
+  '/admin/organizations': 'Organizations',
+  '/admin/departments': 'Departments',
+  '/admin/designations': 'Designations',
+  '/admin/branches': 'Branches',
+  '/admin/holidays': 'Holidays',
+  '/admin/shifts': 'Shifts',
 };
 
-export const Header: React.FC<HeaderProps> = ({ toggleSidebar, isSidebarOpen }) => {
-  const navigate = useNavigate();
-  const [user, setUser] = useState<AuthUser | null>(null);
+function getBreadcrumb(pathname: string): string {
+  // Exact match first
+  if (routeLabels[pathname]) return routeLabels[pathname];
+  // Prefix match (handles /admin/employees/:id etc.)
+  const match = Object.keys(routeLabels)
+    .filter(k => pathname.startsWith(k))
+    .sort((a, b) => b.length - a.length)[0];
+  return match ? routeLabels[match] : 'BEYONDSURE HRMS';
+}
 
-  useEffect(() => {
-    authService.getCurrentUser().then(setUser);
-  }, []);
+export const Header: React.FC<HeaderProps> = ({ toggleSidebar }) => {
+  const navigate = useNavigate();
+  const location = useLocation();
+  const { user, logout } = useAuth();
 
   const handleLogout = async () => {
-    await authService.logout();
+    await logout();
     navigate('/login');
   };
 
-  const getInitials = (firstName: string, lastName: string) => {
-    return `${firstName.charAt(0)}${lastName.charAt(0)}`.toUpperCase();
-  };
+  const getInitials = (firstName: string, lastName: string) =>
+    `${firstName?.charAt(0) || ''}${lastName?.charAt(0) || ''}`.toUpperCase() || '?';
+
+  const breadcrumb = getBreadcrumb(location.pathname);
 
   return (
-    <header style={styles.header(isSidebarOpen)}>
-      <div style={styles.leftSide}>
-        <button style={styles.toggleBtn} onClick={toggleSidebar}>
-          <Menu size={24} />
+    <header className="app-header">
+      {/* Left: toggle + breadcrumb */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '12px', minWidth: 0 }}>
+        <button
+          className="header-toggle"
+          onClick={toggleSidebar}
+          aria-label="Toggle sidebar"
+          type="button"
+        >
+          <Menu size={20} />
         </button>
-        <div style={styles.searchBox} className="desktop-only">
-          <Search size={20} color="var(--color-text-main)" />
-          <input 
-            type="text" 
-            placeholder="Search (Ctrl+/)" 
-            style={styles.searchInput}
-          />
+        <div
+          className="hide-on-mobile"
+          style={{ display: 'flex', alignItems: 'center', gap: '6px', minWidth: 0 }}
+        >
+          <span style={{ fontSize: 'var(--font-size-xs)', color: 'var(--color-primary)', fontWeight: 600, letterSpacing: '0.04em' }}>
+            BEYONDSURE HRMS
+          </span>
+          <ChevronRight size={12} color="var(--color-text-muted)" />
+          <span style={{ fontSize: 'var(--font-size-sm)', fontWeight: 600, color: 'var(--color-text-main)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {breadcrumb}
+          </span>
         </div>
       </div>
-      
-      <div style={styles.rightSide}>
-        <button style={styles.iconBtn}>
-          <Bell size={22} />
-          {/* <span style={styles.badge}>4</span> */}
-        </button>
-        
-        <div style={styles.userArea}>
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', marginRight: '8px' }}>
-            <span style={styles.userName}>{user ? `${user.firstName} ${user.lastName}` : 'Loading...'}</span>
-            <span style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>
-              {user ? user.email : ''}
-            </span>
-          </div>
-          <div style={styles.avatar}>
-            {user ? (
-              <span style={{ fontSize: '0.9rem', fontWeight: 600 }}>{getInitials(user.firstName, user.lastName)}</span>
-            ) : (
-              <User size={20} />
-            )}
-          </div>
-          <button style={{...styles.iconBtn, marginLeft: '4px'}} onClick={handleLogout} title="Logout">
-            <LogOut size={20} />
-          </button>
+
+      {/* Right: user info */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+        <div
+          className="hide-on-mobile"
+          style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}
+        >
+          <span style={{ fontSize: 'var(--font-size-sm)', fontWeight: 600, color: 'var(--color-text-main)', lineHeight: 1.3 }}>
+            {user ? `${user.firstName} ${user.lastName}`.trim() || user.email : '…'}
+          </span>
+          <span style={{ fontSize: 'var(--font-size-xs)', color: 'var(--color-text-muted)', lineHeight: 1.3 }}>
+            {user?.email}
+          </span>
         </div>
+
+        <button
+          onClick={() => navigate('/profile')}
+          title="My Profile"
+          type="button"
+          style={{
+            width: 36,
+            height: 36,
+            borderRadius: '50%',
+            background: 'linear-gradient(135deg, var(--color-primary) 0%, #8b5cf6 100%)',
+            color: '#ffffff',
+            border: 'none',
+            boxShadow: '0 2px 8px rgba(112, 38, 227, 0.28)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            fontWeight: 700,
+            fontSize: 'var(--font-size-xs)',
+            cursor: 'pointer',
+            flexShrink: 0,
+            transition: 'transform 0.15s ease, box-shadow 0.15s ease',
+          }}
+        >
+          {user ? getInitials(user.firstName, user.lastName) : <User size={16} />}
+        </button>
+
+        <button
+          className="header-toggle"
+          onClick={handleLogout}
+          title="Logout"
+          type="button"
+          aria-label="Logout"
+        >
+          <LogOut size={18} />
+        </button>
       </div>
     </header>
   );
