@@ -57,10 +57,12 @@ class LeaveAPITests(TestCase):
             self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
 
     def test_approve_leave_request(self):
+        from datetime import date
+        base_date = date(2026, 9, 7) # Monday
         request = LeaveRequest.objects.create(
             employee=self.employee, leave_type=self.leave_type,
-            start_date=timezone.now().date() + timedelta(days=1),
-            end_date=timezone.now().date() + timedelta(days=2),
+            start_date=base_date,
+            end_date=base_date + timedelta(days=1),
             reason='Testing approval'
         )
         self.client.force_authenticate(user=self.manager_user)
