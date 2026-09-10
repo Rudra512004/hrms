@@ -2,6 +2,7 @@ import React from 'react';
 import { Menu, User, LogOut, ChevronRight } from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import { NotificationBell } from './NotificationBell';
 
 interface HeaderProps {
   toggleSidebar: () => void;
@@ -31,6 +32,8 @@ const routeLabels: Record<string, string> = {
   '/admin/branches': 'Branches',
   '/admin/holidays': 'Holidays',
   '/admin/shifts': 'Shifts',
+  '/admin/assets': 'Assets',
+  '/notifications': 'Notifications',
 };
 
 function getBreadcrumb(pathname: string): string {
@@ -84,8 +87,8 @@ export const Header: React.FC<HeaderProps> = ({ toggleSidebar }) => {
         </div>
       </div>
 
-      {/* Right: user info */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+      {/* Right: actions + user info */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
         <div
           className="hide-on-mobile"
           style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}
@@ -97,6 +100,9 @@ export const Header: React.FC<HeaderProps> = ({ toggleSidebar }) => {
             {user?.email}
           </span>
         </div>
+
+        {/* Notification bell */}
+        <NotificationBell />
 
         <button
           onClick={() => navigate('/profile')}
