@@ -47,7 +47,8 @@ class AdminLeaveTypeViewSet(viewsets.ModelViewSet):
             # Fallback for superadmin without an employee profile
             org = Organization.objects.first()
         else:
-            org = self.request.user.employee.organization
+            emp = getattr(self.request.user, 'employee', None)
+            org = emp.organization if emp else None
 
         if not org:
             raise ValidationError({"organization": "User does not belong to an organization."})

@@ -25,6 +25,7 @@ from .serializers import (
     EmployeeExitSerializer,
     EmployeeDocumentSerializer,
     EmployeeDocumentUploadSerializer,
+    EmployeeSelfServiceSerializer,
 )
 
 
@@ -46,7 +47,7 @@ class EmployeeSelfServiceView(APIView):
         except Employee.DoesNotExist:
             return Response({'detail': 'Employee profile not found.'}, status=status.HTTP_404_NOT_FOUND)
 
-        serializer = EmployeeSerializer(employee, data=request.data, partial=True)
+        serializer = EmployeeSelfServiceSerializer(employee, data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
         serializer.save()
         AuditService.log(

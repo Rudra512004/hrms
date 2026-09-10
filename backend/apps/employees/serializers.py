@@ -304,3 +304,35 @@ class EmployeeDocumentUploadSerializer(serializers.Serializer):
             uploaded_by=self.context.get('request').user if self.context.get('request') else None,
         )
         return document
+
+class EmployeeSelfServiceSerializer(serializers.ModelSerializer):
+    """
+    Dedicated serializer for the /api/v1/employees/me/ endpoint to prevent mass-assignment
+    of HR-controlled organizational and identity fields by regular employees.
+    """
+    email = serializers.EmailField(source='user.email', read_only=True)
+    first_name = serializers.CharField(source='user.first_name', read_only=True)
+    last_name = serializers.CharField(source='user.last_name', read_only=True)
+    status = serializers.CharField(source='user.status', read_only=True)
+    branch_name = serializers.CharField(source='branch.name', read_only=True)
+    department_name = serializers.CharField(source='department.name', read_only=True)
+    designation_name = serializers.CharField(source='designation.name', read_only=True)
+
+    class Meta:
+        model = Employee
+        fields = (
+            'id', 'email', 'first_name', 'last_name', 'status', 'employee_code', 'personal_email',
+            'phone_number', 'address', 'emergency_contact_name', 'emergency_contact_phone',
+            'organization', 'branch', 'branch_name', 'department', 'department_name',
+            'designation', 'designation_name', 'reporting_manager',
+            'employment_status', 'joining_date', 'exit_date', 'resignation_date',
+            'exit_reason', 'notice_period_start', 'notice_period_end'
+        )
+        # All organizational/HR fields are read-only.
+        # Only genuinely employee-editable fields (phone, address, emergency contacts) are writable.
+        read_only_fields = (
+            'id', 'email', 'first_name', 'last_name', 'status', 'employee_code', 'personal_email',
+            'organization', 'branch', 'department', 'designation', 'reporting_manager',
+            'employment_status', 'joining_date', 'exit_date', 'resignation_date',
+            'exit_reason', 'notice_period_start', 'notice_period_end'
+        )
