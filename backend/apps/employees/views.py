@@ -13,6 +13,8 @@ from django.db import transaction
 from django.utils import timezone
 from apps.authorization.permissions import HasRequiredPermission, IsNetworkAllowed, require_permission
 from apps.authorization.services import AuthorizationService
+from apps.audit.services import AuditService
+from apps.notifications.services import NotificationService
 from .models import Employee, EmploymentStatus, EmployeeLifecycleEvent, WFHRequest, EmployeeDocument
 from .serializers import (
     EmployeeSerializer,
@@ -23,9 +25,9 @@ from .serializers import (
     EmployeeExitSerializer,
     EmployeeDocumentSerializer,
     EmployeeDocumentUploadSerializer,
+    EmployeeSelfServiceSerializer,
 )
-from apps.notifications.services import NotificationService
-from apps.audit.services import AuditService
+
 
 class EmployeeSelfServiceView(APIView):
     permission_classes = [IsAuthenticated, IsNetworkAllowed]
@@ -45,7 +47,7 @@ class EmployeeSelfServiceView(APIView):
         except Employee.DoesNotExist:
             return Response({'detail': 'Employee profile not found.'}, status=status.HTTP_404_NOT_FOUND)
 
-        serializer = EmployeeSerializer(employee, data=request.data, partial=True)
+        serializer = EmployeeSelfServiceSerializer(employee, data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
         serializer.save()
         AuditService.log(
@@ -313,6 +315,15 @@ class EmployeeManagementViewSet(viewsets.ModelViewSet):
                 created_by=request.user
             )
 
+            transaction.on_commit(lambda emp=employee, new_dept=employee.department, new_branch=employee.branch: NotificationService.create_in_app_notification(
+                recipient=emp.user,
+                organization=emp.organization,
+                notification_type='EMPLOYEE_TRANSFER',
+                title='Transfer Initiated',
+                message=f'You have been transferred to {new_dept.name if new_dept else "a new department"} at {new_branch.name if new_branch else "a new branch"}.',
+                reference_id=str(emp.id)
+            ))
+
             AuditService.log(
                 action='employee_transferred',
                 actor=request.user,
@@ -386,6 +397,15 @@ class EmployeeManagementViewSet(viewsets.ModelViewSet):
                 reason=reason,
                 created_by=request.user
             )
+
+            transaction.on_commit(lambda emp=employee, new_desig=employee.designation: NotificationService.create_in_app_notification(
+                recipient=emp.user,
+                organization=emp.organization,
+                notification_type='EMPLOYEE_PROMOTION',
+                title='Promotion',
+                message=f'You have been promoted to {new_desig.name}.',
+                reference_id=str(emp.id)
+            ))
 
             AuditService.log(
                 action='employee_promoted',

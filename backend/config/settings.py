@@ -32,6 +32,7 @@ INSTALLED_APPS = [
     'apps.audit',
     'apps.payroll',
     'apps.assets',
+    'apps.notifications',
 ]
 
 MIDDLEWARE = [

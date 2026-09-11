@@ -6,7 +6,9 @@ from rest_framework.permissions import IsAuthenticated
 from django.utils import timezone
 from django.db import transaction
 from apps.authorization.permissions import require_permission
+from apps.audit.services import AuditService
 from apps.authorization.services import AuthorizationService
+from apps.notifications.services import NotificationService
 from apps.organization.models import Organization
 from .models import LeaveType, LeaveBalance, LeaveRequest
 from .serializers import LeaveTypeSerializer, LeaveBalanceSerializer, LeaveRequestSerializer, LeaveRequestReviewSerializer
@@ -45,7 +47,8 @@ class AdminLeaveTypeViewSet(viewsets.ModelViewSet):
             # Fallback for superadmin without an employee profile
             org = Organization.objects.first()
         else:
-            org = self.request.user.employee.organization
+            emp = getattr(self.request.user, 'employee', None)
+            org = emp.organization if emp else None
 
         if not org:
             raise ValidationError({"organization": "User does not belong to an organization."})
@@ -217,6 +220,15 @@ class LeaveRequestViewSet(viewsets.ModelViewSet):
             leave.reviewer_comment = serializer.validated_data.get('reviewer_comment', '')
             leave.save()
 
+            transaction.on_commit(lambda l=leave: NotificationService.create_in_app_notification(
+                recipient=l.employee.user,
+                organization=l.employee.organization,
+                notification_type='LEAVE_APPROVED',
+                title='Leave Approved',
+                message=f'Your {l.leave_type.name} request from {l.start_date} to {l.end_date} has been approved.',
+                reference_id=str(l.id)
+            ))
+
         AuditService.log(
             action='leave_request_approved',
             actor=request.user,
@@ -248,6 +260,15 @@ class LeaveRequestViewSet(viewsets.ModelViewSet):
             leave.reviewer_comment = serializer.validated_data.get('reviewer_comment', '')
             leave.save()
 
+            transaction.on_commit(lambda l=leave: NotificationService.create_in_app_notification(
+                recipient=l.employee.user,
+                organization=l.employee.organization,
+                notification_type='LEAVE_REJECTED',
+                title='Leave Rejected',
+                message=f'Your {l.leave_type.name} request from {l.start_date} to {l.end_date} has been rejected.',
+                reference_id=str(l.id)
+            ))
+
         AuditService.log(
             action='leave_request_rejected',
             actor=request.user,
@@ -274,6 +295,16 @@ class LeaveRequestViewSet(viewsets.ModelViewSet):
 
             leave.status = 'cancelled'
             leave.save()
+
+            if leave.employee.user != request.user:
+                transaction.on_commit(lambda l=leave: NotificationService.create_in_app_notification(
+                    recipient=l.employee.user,
+                    organization=l.employee.organization,
+                    notification_type='LEAVE_CANCELLED',
+                    title='Leave Cancelled',
+                    message=f'Your {l.leave_type.name} request from {l.start_date} to {l.end_date} has been cancelled by an administrator.',
+                    reference_id=str(l.id)
+                ))
 
         AuditService.log(
             action='leave_request_cancelled',
