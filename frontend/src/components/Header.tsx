@@ -2,6 +2,7 @@ import React from 'react';
 import { Menu, User, LogOut, ChevronRight } from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import { NotificationBell } from './NotificationBell';
 
 interface HeaderProps {
   toggleSidebar: () => void;
@@ -97,6 +98,8 @@ export const Header: React.FC<HeaderProps> = ({ toggleSidebar }) => {
             {user?.email}
           </span>
         </div>
+
+        <NotificationBell />
 
         <button
           onClick={() => navigate('/profile')}
