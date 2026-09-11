@@ -8,8 +8,6 @@ export const NotificationBell: React.FC = () => {
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [page, setPage] = useState(1);
-  const [hasNext, setHasNext] = useState(false);
   
   const dropdownRef = useRef<HTMLDivElement>(null);
 
@@ -29,14 +27,9 @@ export const NotificationBell: React.FC = () => {
 
   useEffect(() => {
     if (isOpen) {
-      if (notifications.length === 0) {
-        fetchNotifications(1);
-      } else {
-        // Refresh silently
-        fetchUnreadCount();
-      }
+      fetchNotifications();
+      fetchUnreadCount();
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen]);
 
   const fetchUnreadCount = async () => {
@@ -48,28 +41,16 @@ export const NotificationBell: React.FC = () => {
     }
   };
 
-  const fetchNotifications = async (targetPage: number) => {
+  const fetchNotifications = async () => {
     try {
       setLoading(true);
       setError(null);
-      const data = await notificationService.getNotifications(targetPage);
-      if (targetPage === 1) {
-        setNotifications(data.results);
-      } else {
-        setNotifications(prev => [...prev, ...data.results]);
-      }
-      setHasNext(!!data.next);
-      setPage(targetPage);
+      const data = await notificationService.getNotifications();
+      setNotifications(Array.isArray(data) ? data : []);
     } catch {
       setError('Failed to load notifications.');
     } finally {
       setLoading(false);
-    }
-  };
-
-  const handleLoadMore = () => {
-    if (!loading && hasNext) {
-      fetchNotifications(page + 1);
     }
   };
 
@@ -190,7 +171,7 @@ export const NotificationBell: React.FC = () => {
 
           {/* Body */}
           <div style={{ flex: 1, overflowY: 'auto', padding: '0' }}>
-            {loading && page === 1 ? (
+            {loading && notifications.length === 0 ? (
               <div style={{ display: 'flex', justifyContent: 'center', padding: '40px' }}>
                 <RefreshCw size={24} color="var(--color-text-muted)" className="spin" />
               </div>
@@ -199,7 +180,7 @@ export const NotificationBell: React.FC = () => {
                 <AlertCircle size={32} style={{ marginBottom: '12px' }} />
                 <span style={{ fontSize: '0.9rem' }}>{error}</span>
                 <button 
-                  onClick={() => fetchNotifications(1)}
+                  onClick={fetchNotifications}
                   style={{ marginTop: '12px', background: 'none', border: '1px solid currentColor', borderRadius: '4px', padding: '4px 12px', color: 'inherit', cursor: 'pointer' }}
                 >
                   Retry
@@ -257,28 +238,6 @@ export const NotificationBell: React.FC = () => {
                     </span>
                   </div>
                 ))}
-                
-                {hasNext && (
-                  <button
-                    onClick={handleLoadMore}
-                    disabled={loading}
-                    style={{
-                      padding: '12px',
-                      background: '#f8fafc',
-                      border: 'none',
-                      borderTop: '1px solid var(--color-border)',
-                      color: 'var(--color-primary)',
-                      fontWeight: 600,
-                      cursor: loading ? 'not-allowed' : 'pointer',
-                      display: 'flex',
-                      justifyContent: 'center',
-                      alignItems: 'center',
-                      gap: '8px'
-                    }}
-                  >
-                    {loading ? <RefreshCw size={16} className="spin" /> : 'Load More'}
-                  </button>
-                )}
               </div>
             )}
           </div>

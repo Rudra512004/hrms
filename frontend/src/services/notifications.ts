@@ -8,13 +8,6 @@ export type Notification = {
   created_at: string;
 };
 
-export type PaginatedNotifications = {
-  count: number;
-  next: string | null;
-  previous: string | null;
-  results: Notification[];
-};
-
 const getHeaders = () => {
   const token = localStorage.getItem('auth_token');
   if (!token) throw new Error('No authentication token');
@@ -25,8 +18,8 @@ const getHeaders = () => {
 };
 
 export const notificationService = {
-  async getNotifications(page: number = 1): Promise<PaginatedNotifications> {
-    const response = await fetch(`/api/v1/notifications/?page=${page}`, {
+  async getNotifications(): Promise<Notification[]> {
+    const response = await fetch('/api/v1/notifications/', {
       headers: getHeaders()
     });
     if (!response.ok) throw new Error('Failed to fetch notifications');
