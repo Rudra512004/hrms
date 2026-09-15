@@ -1,5 +1,5 @@
 from decimal import Decimal
-from datetime import date
+from datetime import date, datetime, timezone as dt_timezone
 from django.test import TestCase
 from django.urls import reverse
 from rest_framework import status
@@ -531,8 +531,10 @@ class PayrollWorkflowRegressionTest(TestCase):
         self.assertGreater(float(record['gross_salary']), 0)
         self.assertEqual(record['gross_salary'], record['net_salary'])
 
-        # 5. Approve payroll
-        appr_resp = self.client.post(f'/api/v1/payroll/periods/{period_id}/approve/')
+        # 5. Approve payroll (mock time to after period close)
+        with patch('django.utils.timezone.now') as mock_now:
+            mock_now.return_value = datetime(2026, 10, 1, 12, 0, tzinfo=dt_timezone.utc)
+            appr_resp = self.client.post(f'/api/v1/payroll/periods/{period_id}/approve/')
         self.assertEqual(appr_resp.status_code, status.HTTP_200_OK)
         self.assertEqual(appr_resp.data['status'], 'approved')
 
@@ -630,8 +632,10 @@ class PayrollWorkflowRegressionTest(TestCase):
         self.assertEqual(Decimal(sep_record['effective_days']), Decimal('10.0'))
         self.assertGreater(Decimal(sep_record['net_salary']), Decimal('0.00'))
 
-        # Approve September and check payslip & locked period
-        appr_sep = self.client.post(f'/api/v1/payroll/periods/{sep_period_id}/approve/')
+        # Approve September and check payslip & locked period (mock time to after period close)
+        with patch('django.utils.timezone.now') as mock_now:
+            mock_now.return_value = datetime(2026, 10, 1, 12, 0, tzinfo=dt_timezone.utc)
+            appr_sep = self.client.post(f'/api/v1/payroll/periods/{sep_period_id}/approve/')
         self.assertEqual(appr_sep.status_code, status.HTTP_200_OK)
 
         # Re-generate locked period rejected

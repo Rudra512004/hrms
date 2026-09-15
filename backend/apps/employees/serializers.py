@@ -102,6 +102,26 @@ class ProvisionEmployeeSerializer(serializers.Serializer):
     def create(self, validated_data):
         from .utils import generate_next_employee_code
         from django.db import IntegrityError, transaction
+        from apps.organization.models import Organization
+
+        request = self.context.get('request')
+        org = None
+        if request and request.user.is_authenticated:
+            if hasattr(request.user, 'employee') and request.user.employee and request.user.employee.organization_id:
+                org = request.user.employee.organization
+            elif request.user.is_superuser:
+                org_id = self.initial_data.get('organization') if hasattr(self, 'initial_data') else None
+                if org_id:
+                    org = Organization.objects.filter(id=org_id).first()
+                if not org and hasattr(request.user, 'employee') and request.user.employee and request.user.employee.organization_id:
+                    org = request.user.employee.organization
+                if not org:
+                    org = Organization.objects.first()
+                if not org:
+                    org, _ = Organization.objects.get_or_create(name='Default Organization')
+
+        if not org:
+            raise serializers.ValidationError({'organization': 'Cannot provision employee without a valid organization.'})
 
         try:
             with transaction.atomic():
@@ -116,6 +136,7 @@ class ProvisionEmployeeSerializer(serializers.Serializer):
 
                 employee = Employee.objects.create(
                     user=user,
+                    organization=org,
                     employee_code=employee_code,
                     personal_email=validated_data.get('personal_email')
                 )
@@ -304,3 +325,35 @@ class EmployeeDocumentUploadSerializer(serializers.Serializer):
             uploaded_by=self.context.get('request').user if self.context.get('request') else None,
         )
         return document
+
+class EmployeeSelfServiceSerializer(serializers.ModelSerializer):
+    """
+    Dedicated serializer for the /api/v1/employees/me/ endpoint to prevent mass-assignment
+    of HR-controlled organizational and identity fields by regular employees.
+    """
+    email = serializers.EmailField(source='user.email', read_only=True)
+    first_name = serializers.CharField(source='user.first_name', read_only=True)
+    last_name = serializers.CharField(source='user.last_name', read_only=True)
+    status = serializers.CharField(source='user.status', read_only=True)
+    branch_name = serializers.CharField(source='branch.name', read_only=True)
+    department_name = serializers.CharField(source='department.name', read_only=True)
+    designation_name = serializers.CharField(source='designation.name', read_only=True)
+
+    class Meta:
+        model = Employee
+        fields = (
+            'id', 'email', 'first_name', 'last_name', 'status', 'employee_code', 'personal_email',
+            'phone_number', 'address', 'emergency_contact_name', 'emergency_contact_phone',
+            'organization', 'branch', 'branch_name', 'department', 'department_name',
+            'designation', 'designation_name', 'reporting_manager',
+            'employment_status', 'joining_date', 'exit_date', 'resignation_date',
+            'exit_reason', 'notice_period_start', 'notice_period_end'
+        )
+        # All organizational/HR fields are read-only.
+        # Only genuinely employee-editable fields (phone, address, emergency contacts) are writable.
+        read_only_fields = (
+            'id', 'email', 'first_name', 'last_name', 'status', 'employee_code', 'personal_email',
+            'organization', 'branch', 'department', 'designation', 'reporting_manager',
+            'employment_status', 'joining_date', 'exit_date', 'resignation_date',
+            'exit_reason', 'notice_period_start', 'notice_period_end'
+        )

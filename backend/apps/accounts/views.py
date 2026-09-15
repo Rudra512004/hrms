@@ -3,16 +3,26 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.authtoken.models import Token
+from rest_framework.throttling import AnonRateThrottle
 from .serializers import LoginSerializer, UserSerializer, ActivateSerializer
 from apps.authorization.permissions import IsNetworkAllowed
 from apps.audit.services import AuditService
 from rest_framework.exceptions import ValidationError
 
+
+class LoginRateThrottle(AnonRateThrottle):
+    rate = '10/minute'
+
+
+class ActivationThrottle(AnonRateThrottle):
+    rate = '10/minute'
+
+
 class LoginView(APIView):
     permission_classes = [AllowAny]
+    throttle_classes = [LoginRateThrottle]
 
     def post(self, request, *args, **kwargs):
-        print("DEBUG LOGIN REQUEST:", request.data)
         try:
             serializer = LoginSerializer(data=request.data, context={'request': request})
             serializer.is_valid(raise_exception=True)
@@ -62,6 +72,7 @@ class MeView(APIView):
 
 class ActivateView(APIView):
     permission_classes = [AllowAny]
+    throttle_classes = [ActivationThrottle]
 
     def post(self, request, *args, **kwargs):
         serializer = ActivateSerializer(data=request.data)

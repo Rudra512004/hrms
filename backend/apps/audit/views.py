@@ -13,8 +13,17 @@ class AuditLogViewSet(viewsets.ReadOnlyModelViewSet):
         return [IsAuthenticated(), IsNetworkAllowed(), require_permission('audit.view')()]
 
     def get_queryset(self):
-        queryset = super().get_queryset()
-        
+        user = self.request.user
+        if user.is_superuser:
+            queryset = AuditLog.objects.all()
+            org_id = self.request.query_params.get('organization')
+            if org_id:
+                queryset = queryset.filter(organization_id=org_id)
+        elif hasattr(user, 'employee') and user.employee.organization_id:
+            queryset = AuditLog.objects.filter(organization_id=user.employee.organization_id)
+        else:
+            return AuditLog.objects.none()
+
         actor = self.request.query_params.get('actor')
         if actor:
             queryset = queryset.filter(actor__email=actor)

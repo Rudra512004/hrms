@@ -1185,6 +1185,23 @@ textarea.input-field {
 }
 
 /* ═══════════════════════════════════════════
+   DASHBOARD GRID
+═══════════════════════════════════════════ */
+.dashboard-main-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.45fr) minmax(0, 1fr);
+  gap: var(--spacing-lg);
+  align-items: start;
+}
+
+@media (max-width: 1024px) {
+  .dashboard-main-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+
+/* ═══════════════════════════════════════════
    EMPTY STATE
 ═══════════════════════════════════════════ */
 .empty-state {
@@ -1379,4 +1396,17 @@ textarea.input-field {
     transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
   }
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.spin {
+  animation: spin 1s linear infinite;
 }

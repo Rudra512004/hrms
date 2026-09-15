@@ -10,10 +10,13 @@ from apps.employees.models import Employee
 from apps.authorization.models import Permission, Role, RolePermission, UserRole
 from apps.organization.models import Organization, OfficeNetwork
 
+from django.core.cache import cache
+
 User = get_user_model()
 
 class AuthenticationAPITests(TestCase):
     def setUp(self):
+        cache.clear()
         self.client = APIClient()
         self.active_user = User.objects.create_user(email='active@company.com', password='Password123!', status='active')
         self.active_employee = Employee.objects.create(user=self.active_user, employee_code='EMP001')
@@ -139,11 +142,12 @@ class EmployeeSelfServiceAPITests(TestCase):
 class ProvisioningAPITests(TestCase):
     def setUp(self):
         self.client = APIClient()
+        self.org = Organization.objects.create(name='Org')
         self.hr_user = User.objects.create_user(email='hr@company.com', password='Password123!', status='active')
+        self.hr_emp = Employee.objects.create(user=self.hr_user, organization=self.org, employee_code='HR_ADMIN_01')
         self.regular_user = User.objects.create_user(email='regular@company.com', password='Password123!', status='active')
         self.provision_url = reverse('employee-provision')
 
-        self.org = Organization.objects.create(name='Org')
         self.role = Role.objects.create(organization=self.org, name='HR Role')
         self.perm = Permission.objects.create(name='Create Employee', codename='employee.create', resource='employee', action='create')
         RolePermission.objects.create(role=self.role, permission=self.perm)

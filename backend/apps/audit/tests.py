@@ -10,12 +10,14 @@ User = get_user_model()
 
 class OnboardingAuditTestCase(TestCase):
     def setUp(self):
+        from apps.organization.models import Organization
         self.client = APIClient()
+        self.org = Organization.objects.create(name='Audit Org')
         self.super_user = User.objects.create_superuser(email='super@company.com', password='password123!')
-        self.super_employee = Employee.objects.create(user=self.super_user, employee_code='SUP001', personal_email='super.personal@test.com')
+        self.super_employee = Employee.objects.create(user=self.super_user, organization=self.org, employee_code='SUP001', personal_email='super.personal@test.com')
         
         self.normal_user = User.objects.create_user(email='normal@company.com', password='password123!')
-        self.normal_employee = Employee.objects.create(user=self.normal_user, employee_code='NORM001', personal_email='normal.personal@test.com')
+        self.normal_employee = Employee.objects.create(user=self.normal_user, organization=self.org, employee_code='NORM001', personal_email='normal.personal@test.com')
         self.normal_user.status = 'active'
         self.normal_user.save()
 

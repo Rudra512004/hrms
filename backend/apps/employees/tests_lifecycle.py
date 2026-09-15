@@ -63,16 +63,20 @@ class EmployeeLifecycleComprehensiveTests(TestCase):
             'employee.transfer', 'employee.promote', 'employee.exit', 'employee.lifecycle.view',
             'employee.view_sensitive', 'leave.request', 'leave.approve', 'payroll.view', 'payroll.view_sensitive'
         ]:
-            perm, _ = Permission.objects.get_or_create(
-                codename=codename,
-                defaults={'name': codename, 'resource': 'employee', 'action': codename.split('.')[1]}
-            )
-            RolePermission.objects.create(role=self.hr_role, permission=perm)
+            parts = codename.split('.')
+            res = parts[0]
+            act = parts[1]
+            perm = Permission.objects.filter(resource=res, action=act).first()
+            if not perm:
+                perm = Permission.objects.filter(codename=codename).first()
+            if not perm:
+                perm = Permission.objects.create(codename=codename, name=codename, resource=res, action=act)
+            RolePermission.objects.get_or_create(role=self.hr_role, permission=perm)
 
         self.emp_role = Role.objects.create(name='EmpRole', organization=self.org)
         UserRole.objects.create(user=self.emp_user, role=self.emp_role)
-        leave_perm = Permission.objects.get(codename='leave.request')
-        RolePermission.objects.create(role=self.emp_role, permission=leave_perm)
+        leave_perm = Permission.objects.filter(codename='leave.request').first() or Permission.objects.filter(resource='leave', action='request').first()
+        RolePermission.objects.get_or_create(role=self.emp_role, permission=leave_perm)
 
     # 1. Employee starts ACTIVE
     def test_employee_starts_active(self, mock_net):
@@ -401,7 +405,7 @@ class EmployeeLifecycleComprehensiveTests(TestCase):
         Employee.objects.create(user=other_user, employee_code='EXT001', organization=self.other_org)
         other_role = Role.objects.create(name='OtherHR', organization=self.other_org)
         UserRole.objects.create(user=other_user, role=other_role)
-        perm = Permission.objects.get(codename='employee.transfer')
+        perm = Permission.objects.filter(codename='employee.transfer').first() or Permission.objects.filter(resource='employee', action='transfer').first()
         RolePermission.objects.create(role=other_role, permission=perm)
 
         # Other org admin tries to transfer employee in self.org

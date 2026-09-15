@@ -61,3 +61,27 @@ class NotificationService:
         except Exception as e:
             logger.error(f"Failed to send password reset email to {email}: {str(e)}")
             return False
+
+    @staticmethod
+    def create_in_app_notification(recipient, organization, notification_type, title, message, reference_id=''):
+        from .models import Notification
+        
+        # Validation
+        if not recipient or not organization:
+            logger.error("Failed to create in-app notification: recipient and organization are required.")
+            return None
+            
+        try:
+            notification = Notification.objects.create(
+                recipient=recipient,
+                organization=organization,
+                notification_type=notification_type,
+                title=title,
+                message=message,
+                reference_id=reference_id
+            )
+            return notification
+        except Exception as e:
+            logger.error(f"Failed to create in-app notification for {getattr(recipient, 'email', 'Unknown')}: {str(e)}")
+            # Do not raise the exception so business flows are not interrupted
+            return None

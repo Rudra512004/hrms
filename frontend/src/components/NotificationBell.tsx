@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+﻿import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   Bell,
   BellOff,
@@ -9,7 +9,7 @@ import {
 } from 'lucide-react';
 import { notificationService, type Notification } from '../services/notifications';
 
-// ── Helpers ───────────────────────────────────────────────────────────────
+// GöÇGöÇ Helpers GöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇ
 
 /** Format ISO timestamp as compact relative string */
 function relativeTime(iso: string): string {
@@ -48,7 +48,7 @@ function accentForType(type: string): string {
   return TYPE_COLOR[type] ?? 'var(--color-primary)';
 }
 
-// ── Component ─────────────────────────────────────────────────────────────
+// GöÇGöÇ Component GöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇ
 
 /**
  * NotificationBell
@@ -81,15 +81,15 @@ export const NotificationBell: React.FC = () => {
   const buttonRef = useRef<HTMLButtonElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
 
-  // ── Data fetching ──────────────────────────────────────────────────────
+  // GöÇGöÇ Data fetching GöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇ
 
   const fetchNotifications = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const data = await notificationService.list();
-      setNotifications(data.results);
-      setUnreadCount(data.unread_count);
+      const data = await notificationService.getNotifications();
+      setNotifications(data);
+      setUnreadCount(data.filter((n: Notification) => !n.is_read).length);
     } catch (err: any) {
       const status: number = err?.status ?? 0;
       if (status === 404) {
@@ -113,7 +113,7 @@ export const NotificationBell: React.FC = () => {
     }
   }, [isOpen, fetchNotifications]);
 
-  // ── Keyboard & outside-click ───────────────────────────────────────────
+  // GöÇGöÇ Keyboard & outside-click GöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇ
 
   useEffect(() => {
     if (!isOpen) return;
@@ -143,20 +143,20 @@ export const NotificationBell: React.FC = () => {
     };
   }, [isOpen]);
 
-  // ── Actions ────────────────────────────────────────────────────────────
+  // GöÇGöÇ Actions GöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇ
 
   const handleMarkRead = async (notif: Notification) => {
     if (notif.is_read || markingId === notif.id) return;
     setMarkingId(notif.id);
     try {
-      await notificationService.markRead(notif.id);
+      await notificationService.markAsRead(notif.id);
       // Optimistic update
       setNotifications(prev =>
         prev.map(n => n.id === notif.id ? { ...n, is_read: true } : n)
       );
       setUnreadCount(prev => Math.max(0, prev - 1));
     } catch {
-      // Silent fail for individual mark-read — data reloads on next panel open
+      // Silent fail for individual mark-read GÇö data reloads on next panel open
     } finally {
       setMarkingId(null);
     }
@@ -166,7 +166,7 @@ export const NotificationBell: React.FC = () => {
     if (markingAll || unreadCount === 0) return;
     setMarkingAll(true);
     try {
-      await notificationService.markAllRead();
+      await notificationService.markAllAsRead();
       setNotifications(prev => prev.map(n => ({ ...n, is_read: true })));
       setUnreadCount(0);
     } catch {
@@ -176,19 +176,19 @@ export const NotificationBell: React.FC = () => {
     }
   };
 
-  // ── Derived display ────────────────────────────────────────────────────
+  // GöÇGöÇ Derived display GöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇ
 
   const badgeLabel = unreadCount > 99 ? '99+' : unreadCount > 9 ? '9+' : String(unreadCount);
   const ariaLabel = unreadCount > 0
     ? `Notifications, ${unreadCount} unread`
     : 'Notifications';
 
-  // ── Render ─────────────────────────────────────────────────────────────
+  // GöÇGöÇ Render GöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇ
 
   return (
     <div style={{ position: 'relative', flexShrink: 0 }}>
 
-      {/* ── Bell button ── */}
+      {/* GöÇGöÇ Bell button GöÇGöÇ */}
       <button
         ref={buttonRef}
         id="notification-bell-btn"
@@ -207,7 +207,7 @@ export const NotificationBell: React.FC = () => {
         )}
       </button>
 
-      {/* ── Dropdown panel ── */}
+      {/* GöÇGöÇ Dropdown panel GöÇGöÇ */}
       {isOpen && (
         <div
           ref={panelRef}
@@ -276,7 +276,7 @@ export const NotificationBell: React.FC = () => {
                   aria-hidden="true"
                 />
                 <span style={{ fontSize: 'var(--font-size-sm)', color: 'var(--color-text-muted)' }}>
-                  Loading notifications…
+                  Loading notificationsGÇª
                 </span>
               </div>
             )}

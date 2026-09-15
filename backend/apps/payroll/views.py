@@ -250,6 +250,12 @@ class PayrollPeriodViewSet(viewsets.ModelViewSet):
         if period.status == PayrollPeriod.STATUS_APPROVED:
             return Response({'detail': 'Period is already approved.'}, status=status.HTTP_400_BAD_REQUEST)
 
+        if period.end_date >= timezone.now().date():
+            return Response(
+                {'detail': 'Cannot approve an ongoing or future payroll period. The period end date has not passed.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
         if not period.records.exists():
             return Response({'detail': 'Generate payroll before approving.'}, status=status.HTTP_400_BAD_REQUEST)
 

@@ -1,4 +1,4 @@
-import React from 'react';
+﻿import React from 'react';
 import { Menu, User, LogOut, ChevronRight } from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
@@ -94,14 +94,13 @@ export const Header: React.FC<HeaderProps> = ({ toggleSidebar }) => {
           style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}
         >
           <span style={{ fontSize: 'var(--font-size-sm)', fontWeight: 600, color: 'var(--color-text-main)', lineHeight: 1.3 }}>
-            {user ? `${user.firstName} ${user.lastName}`.trim() || user.email : '…'}
+            {user ? `${user.firstName} ${user.lastName}`.trim() || user.email : 'â€¦'}
           </span>
           <span style={{ fontSize: 'var(--font-size-xs)', color: 'var(--color-text-muted)', lineHeight: 1.3 }}>
             {user?.email}
           </span>
         </div>
 
-        {/* Notification bell */}
         <NotificationBell />
 
         <button

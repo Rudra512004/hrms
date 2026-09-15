@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, useSearchParams, Link } from 'react-router-dom';
 import { authService } from '../services/auth';
 import { Eye, EyeOff, AlertCircle, CheckCircle, Loader2 } from 'lucide-react';
 
@@ -118,7 +118,10 @@ const styles = {
 };
 
 export const ResetPasswordPage: React.FC = () => {
-  const { uid, token } = useParams<{ uid: string; token: string }>();
+  const { uid: paramUid, token: paramToken } = useParams<{ uid?: string; token?: string }>();
+  const [searchParams] = useSearchParams();
+  const uid = paramUid || searchParams.get('uid') || '';
+  const token = paramToken || searchParams.get('token') || '';
   
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
