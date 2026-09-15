@@ -10,13 +10,6 @@ const styles = {
     padding: 'var(--spacing-lg)',
     margin: '0 auto',
   },
-  logo: {
-    textAlign: 'center' as const,
-    fontSize: '2rem',
-    fontWeight: 700,
-    color: 'var(--color-primary)',
-    marginBottom: 'var(--spacing-xl)',
-  },
   card: {
     backgroundColor: 'var(--color-bg-card)',
     padding: 'var(--spacing-xl)',
@@ -117,31 +110,31 @@ const styles = {
   }
 };
 
-export const ResetPasswordPage: React.FC = () => {
+export const ActivateAccountPage: React.FC = () => {
   const { uid: paramUid, token: paramToken } = useParams<{ uid?: string; token?: string }>();
   const [searchParams] = useSearchParams();
   const uid = paramUid || searchParams.get('uid') || '';
   const token = paramToken || searchParams.get('token') || '';
-  
-  const [newPassword, setNewPassword] = useState('');
+
+  const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
-  
+
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newPassword || !confirmPassword) return;
+    if (!password || !confirmPassword) return;
 
-    if (newPassword !== confirmPassword) {
+    if (password !== confirmPassword) {
       setError('Passwords do not match');
       return;
     }
 
     if (!uid || !token) {
-      setError('Invalid reset link. Missing token parameters.');
+      setError('Invalid activation link. Missing token parameters.');
       return;
     }
 
@@ -150,12 +143,12 @@ export const ResetPasswordPage: React.FC = () => {
     setSuccessMsg(null);
 
     try {
-      const msg = await authService.confirmPasswordReset(uid, token, newPassword, confirmPassword);
+      const msg = await authService.activateAccount(uid, token, password);
       setSuccessMsg(msg);
-      setNewPassword('');
+      setPassword('');
       setConfirmPassword('');
     } catch (err: any) {
-      setError(err.message || 'Failed to reset password. The link might be expired or invalid.');
+      setError(err.message || 'Failed to activate account. The link might be expired or already used.');
     } finally {
       setSubmitting(false);
     }
@@ -163,78 +156,96 @@ export const ResetPasswordPage: React.FC = () => {
 
   return (
     <div style={styles.container}>
-      <div style={styles.logo}>BEYONDSURE HRMS</div>
       <div style={styles.card}>
-        <h2 style={styles.title}>Reset Password</h2>
-        <p style={styles.subtitle}>Enter your new password below</p>
-        
+        <h2 style={styles.title}>Activate Your Account</h2>
+        <p style={styles.subtitle}>
+          Create a secure password to activate your HRMS account.
+        </p>
+
         {error && (
           <div style={styles.errorBox}>
-            <AlertCircle size={18} /> {error}
+            <AlertCircle size={18} />
+            <span>{error}</span>
           </div>
         )}
 
         {successMsg && (
           <div style={styles.successBox}>
-            <CheckCircle size={18} /> {successMsg}
+            <CheckCircle size={18} />
+            <span>{successMsg}</span>
           </div>
         )}
 
-        {!successMsg && (
+        {successMsg ? (
+          <div>
+            <Link to="/login" style={styles.button}>
+              Proceed to Login
+            </Link>
+          </div>
+        ) : (
           <form onSubmit={handleSubmit}>
             <div style={styles.formGroup}>
               <label style={styles.label}>New Password</label>
               <div style={styles.passwordWrapper}>
-                <input 
-                  type={showPassword ? 'text' : 'password'} 
-                  style={styles.input} 
-                  placeholder="********"
-                  value={newPassword}
-                  onChange={(e) => setNewPassword(e.target.value)}
+                <input
+                  type={showPassword ? 'text' : 'password'}
+                  style={styles.input}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="Enter your password"
                   required
+                  disabled={submitting}
                 />
-                <button 
-                  type="button" 
-                  style={styles.eyeButton} 
+                <button
+                  type="button"
+                  style={styles.eyeButton}
                   onClick={() => setShowPassword(!showPassword)}
-                  aria-label={showPassword ? "Hide password" : "Show password"}
+                  tabIndex={-1}
                 >
                   {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                 </button>
               </div>
             </div>
-            
+
             <div style={styles.formGroup}>
               <label style={styles.label}>Confirm Password</label>
               <div style={styles.passwordWrapper}>
-                <input 
-                  type={showPassword ? 'text' : 'password'} 
-                  style={styles.input} 
-                  placeholder="********"
+                <input
+                  type={showPassword ? 'text' : 'password'}
+                  style={styles.input}
                   value={confirmPassword}
                   onChange={(e) => setConfirmPassword(e.target.value)}
+                  placeholder="Confirm your password"
                   required
+                  disabled={submitting}
                 />
               </div>
             </div>
 
-            <button type="submit" style={styles.button} disabled={submitting}>
-              {submitting ? <Loader2 size={18} className="animate-spin" /> : 'Reset Password'}
+            <button
+              type="submit"
+              style={{
+                ...styles.button,
+                opacity: submitting ? 0.7 : 1,
+                cursor: submitting ? 'not-allowed' : 'pointer'
+              }}
+              disabled={submitting}
+            >
+              {submitting ? (
+                <>
+                  <Loader2 size={18} className="animate-spin" style={{ marginRight: '8px' }} />
+                  Activating...
+                </>
+              ) : (
+                'Activate Account'
+              )}
             </button>
           </form>
         )}
 
-        {successMsg && (
-          <Link to="/login" style={styles.button}>
-            Return to Login
-          </Link>
-        )}
-
-        {!successMsg && (
-          <Link to="/login" style={styles.footerLink}>
-            &lt; Back to Login
-          </Link>
-        )}
+        <Link to="/login" style={styles.footerLink}>
+          Back to Login
+        </Link>
       </div>
     </div>
   );

@@ -13,14 +13,14 @@ class WFHRequestTests(APITestCase):
         self.org = Organization.objects.create(name='Test Org')
 
         self.employee_user = User.objects.create_user(email='emp@example.com', password='Password123!', status='active')
-        self.employee = Employee.objects.create(user=self.employee_user, employee_code='EMP001')
+        self.employee = Employee.objects.create(user=self.employee_user, organization=self.org, employee_code='EMP001')
 
         self.manager_user = User.objects.create_user(email='mgr@example.com', password='Password123!', status='active')
-        self.manager_employee = Employee.objects.create(user=self.manager_user, employee_code='EMP002')
+        self.manager_employee = Employee.objects.create(user=self.manager_user, organization=self.org, employee_code='EMP002')
 
-        self.perm_req = Permission.objects.create(name='Request WFH', codename='wfh.request', resource='wfh', action='request')
-        self.perm_appr = Permission.objects.create(name='Approve WFH', codename='wfh.approve', resource='wfh', action='approve')
-        self.perm_view = Permission.objects.create(name='View WFH', codename='wfh.view', resource='wfh', action='view')
+        self.perm_req, _ = Permission.objects.get_or_create(resource='wfh', action='request', defaults={'name': 'Request WFH', 'codename': 'wfh.request'})
+        self.perm_appr, _ = Permission.objects.get_or_create(resource='wfh', action='approve', defaults={'name': 'Approve WFH', 'codename': 'wfh.approve'})
+        self.perm_view, _ = Permission.objects.get_or_create(resource='wfh', action='view', defaults={'name': 'View WFH', 'codename': 'wfh.view'})
 
         self.emp_role = Role.objects.create(organization=self.org, name='Employee')
         RolePermission.objects.create(role=self.emp_role, permission=self.perm_req)

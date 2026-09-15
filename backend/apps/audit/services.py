@@ -6,13 +6,29 @@ logger = logging.getLogger(__name__)
 
 class AuditService:
     @staticmethod
-    def log(action, actor=None, target_type='', target_id='', metadata=None, request=None):
+    def log(action, actor=None, target_type='', target_id='', metadata=None, request=None, organization=None):
         try:
             ip_address = None
             if request:
-                ip_address = request.META.get('REMOTE_ADDR')
+                x_forwarded_for = request.META.get('HTTP_X_FORWARDED_FOR')
+                if x_forwarded_for:
+                    ip_address = x_forwarded_for.split(',')[0].strip()
+                else:
+                    ip_address = request.META.get('REMOTE_ADDR')
             
+            org = organization
+            if org is None:
+                if request and hasattr(request, 'user') and getattr(request.user, 'is_authenticated', False):
+                    emp = getattr(request.user, 'employee', None)
+                    if emp and emp.organization_id:
+                        org = emp.organization
+                if org is None and actor and getattr(actor, 'is_authenticated', False):
+                    emp = getattr(actor, 'employee', None)
+                    if emp and emp.organization_id:
+                        org = emp.organization
+
             AuditLog.objects.create(
+                organization=org,
                 actor=actor,
                 action=action,
                 target_type=target_type,

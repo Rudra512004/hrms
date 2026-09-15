@@ -9,9 +9,22 @@ try:
 except ImportError:
     pass
 
-SECRET_KEY = os.environ.get('DJANGO_SECRET_KEY', 'django-insecure-s)ivcg=f_*g-g_2!-@kr%p33!zkk5o=phi(&!_j8vcb2p$$hhz')
+from django.core.exceptions import ImproperlyConfigured
+
 DEBUG = os.environ.get('DJANGO_DEBUG', 'True') == 'True'
-ALLOWED_HOSTS = os.environ.get('DJANGO_ALLOWED_HOSTS', '').split(',') if os.environ.get('DJANGO_ALLOWED_HOSTS') else []
+
+INSECURE_DEFAULT_KEY = 'django-insecure-s)ivcg=f_*g-g_2!-@kr%p33!zkk5o=phi(&!_j8vcb2p$$hhz'
+SECRET_KEY = os.environ.get('DJANGO_SECRET_KEY', INSECURE_DEFAULT_KEY)
+if not DEBUG and (not SECRET_KEY or SECRET_KEY == INSECURE_DEFAULT_KEY):
+    raise ImproperlyConfigured('DJANGO_SECRET_KEY must be securely configured in production (DEBUG=False).')
+
+raw_allowed_hosts = os.environ.get('DJANGO_ALLOWED_HOSTS', '')
+if raw_allowed_hosts:
+    ALLOWED_HOSTS = [h.strip() for h in raw_allowed_hosts.split(',') if h.strip()]
+elif DEBUG:
+    ALLOWED_HOSTS = ['*']
+else:
+    raise ImproperlyConfigured('DJANGO_ALLOWED_HOSTS must be set in production (DEBUG=False).')
 
 INSTALLED_APPS = [
     'django.contrib.admin',
@@ -33,6 +46,7 @@ INSTALLED_APPS = [
     'apps.payroll',
     'apps.assets',
     'apps.notifications',
+    'apps.dashboard',
 ]
 
 MIDDLEWARE = [
@@ -112,8 +126,14 @@ REST_FRAMEWORK = {
     ),
 }
 
-CORS_ALLOW_ALL_ORIGINS = True
+CORS_ALLOW_ALL_ORIGINS = DEBUG
 CORS_ALLOW_CREDENTIALS = True
+
+cors_origins_env = os.environ.get('DJANGO_CORS_ALLOWED_ORIGINS', '')
+if cors_origins_env:
+    CORS_ALLOWED_ORIGINS = [o.strip() for o in cors_origins_env.split(',') if o.strip()]
+else:
+    CORS_ALLOWED_ORIGINS = [FRONTEND_URL]
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 

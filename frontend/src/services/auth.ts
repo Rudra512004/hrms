@@ -159,5 +159,34 @@ export const authService = {
 
     const data = await response.json();
     return data.detail;
+  },
+
+  /**
+   * Activate account with token and password.
+   */
+  activateAccount: async (uid: string, token: string, password: string): Promise<string> => {
+    const response = await fetch('/api/v1/auth/activate/', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ uid, token, password })
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      if (errorData.non_field_errors) {
+        throw new Error(errorData.non_field_errors[0]);
+      }
+      if (errorData.detail) {
+        throw new Error(errorData.detail);
+      }
+      const firstErrorKey = Object.keys(errorData)[0];
+      if (firstErrorKey && Array.isArray(errorData[firstErrorKey])) {
+        throw new Error(errorData[firstErrorKey][0]);
+      }
+      throw new Error('Failed to activate account');
+    }
+
+    const data = await response.json();
+    return data.detail || 'Account successfully activated.';
   }
 };
