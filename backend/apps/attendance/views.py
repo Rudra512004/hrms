@@ -7,8 +7,8 @@ from django.utils import timezone
 from django.db import transaction, IntegrityError
 from datetime import timedelta
 from apps.authorization.permissions import IsNetworkAllowed, require_permission
-from .models import Attendance, AttendanceBreak, Holiday, Shift
-from .serializers import AttendanceSerializer, HolidaySerializer, ShiftSerializer
+from .models import Attendance, AttendanceBreak, Holiday, Shift, EmployeeShiftAssignment
+from .serializers import AttendanceSerializer, HolidaySerializer, ShiftSerializer, EmployeeShiftAssignmentSerializer
 
 from .utils import calculate_haversine_distance
 
@@ -320,3 +320,24 @@ class ShiftViewSet(viewsets.ModelViewSet):
         if not org:
             raise ValidationError({"organization": "User does not belong to an organization."})
         serializer.save(organization=org)
+
+
+class EmployeeShiftAssignmentViewSet(viewsets.ModelViewSet):
+    serializer_class = EmployeeShiftAssignmentSerializer
+
+    def get_queryset(self):
+        user = self.request.user
+        if user.is_superuser:
+            return EmployeeShiftAssignment.objects.all()
+        if hasattr(user, 'employee') and user.employee.organization_id:
+            return EmployeeShiftAssignment.objects.filter(
+                employee__organization_id=user.employee.organization_id
+            )
+        return EmployeeShiftAssignment.objects.none()
+
+    def get_permissions(self):
+        if self.action in ['list', 'retrieve']:
+            permission = require_permission('shift_assignment.view')
+        else:
+            permission = require_permission('shift_assignment.manage')
+        return [IsAuthenticated(), permission()]
