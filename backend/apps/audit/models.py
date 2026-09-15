@@ -2,6 +2,14 @@ from django.db import models
 from django.conf import settings
 
 class AuditLog(models.Model):
+    organization = models.ForeignKey(
+        'organization.Organization',
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='audit_logs',
+        db_index=True,
+    )
     actor = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name='audit_logs')
     action = models.CharField(max_length=150)
     target_type = models.CharField(max_length=150, blank=True)
@@ -12,6 +20,9 @@ class AuditLog(models.Model):
 
     class Meta:
         ordering = ['-timestamp']
+        indexes = [
+            models.Index(fields=['organization', '-timestamp']),
+        ]
 
     def __str__(self):
         return f"{self.actor} - {self.action} at {self.timestamp}"

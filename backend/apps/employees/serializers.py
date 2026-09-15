@@ -102,6 +102,26 @@ class ProvisionEmployeeSerializer(serializers.Serializer):
     def create(self, validated_data):
         from .utils import generate_next_employee_code
         from django.db import IntegrityError, transaction
+        from apps.organization.models import Organization
+
+        request = self.context.get('request')
+        org = None
+        if request and request.user.is_authenticated:
+            if hasattr(request.user, 'employee') and request.user.employee and request.user.employee.organization_id:
+                org = request.user.employee.organization
+            elif request.user.is_superuser:
+                org_id = self.initial_data.get('organization') if hasattr(self, 'initial_data') else None
+                if org_id:
+                    org = Organization.objects.filter(id=org_id).first()
+                if not org and hasattr(request.user, 'employee') and request.user.employee and request.user.employee.organization_id:
+                    org = request.user.employee.organization
+                if not org:
+                    org = Organization.objects.first()
+                if not org:
+                    org, _ = Organization.objects.get_or_create(name='Default Organization')
+
+        if not org:
+            raise serializers.ValidationError({'organization': 'Cannot provision employee without a valid organization.'})
 
         try:
             with transaction.atomic():
@@ -116,6 +136,7 @@ class ProvisionEmployeeSerializer(serializers.Serializer):
 
                 employee = Employee.objects.create(
                     user=user,
+                    organization=org,
                     employee_code=employee_code,
                     personal_email=validated_data.get('personal_email')
                 )

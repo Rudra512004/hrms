@@ -10,6 +10,7 @@ import { DashboardPage } from '../pages/DashboardPage';
 import { LoginPage } from '../pages/LoginPage';
 import { ForgotPasswordPage } from '../pages/ForgotPasswordPage';
 import { ResetPasswordPage } from '../pages/ResetPasswordPage';
+import { ActivateAccountPage } from '../pages/ActivateAccountPage';
 import { PendingActivationPage } from '../pages/PendingActivationPage';
 import { NotFoundPage } from '../pages/NotFoundPage';
 import { ProfilePage } from '../pages/ProfilePage';
@@ -48,7 +49,10 @@ export const AppRouter: React.FC = () => {
       <Route element={<AuthLayout />}>
         <Route path="/login" element={<LoginPage />} />
         <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+        <Route path="/reset-password" element={<ResetPasswordPage />} />
         <Route path="/reset-password/:uid/:token" element={<ResetPasswordPage />} />
+        <Route path="/activate" element={<ActivateAccountPage />} />
+        <Route path="/activate/:uid/:token" element={<ActivateAccountPage />} />
         <Route path="/pending-activation" element={<PendingActivationPage />} />
       </Route>
 

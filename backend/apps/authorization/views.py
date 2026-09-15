@@ -4,6 +4,9 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from django.utils import timezone
+from django.db import IntegrityError
+from rest_framework.exceptions import ValidationError
+from apps.organization.models import Organization
 from .models import Role, Permission, UserRole, UserPermissionGrant, RolePermission
 from .serializers import RoleSerializer, PermissionSerializer, UserRoleSerializer, UserPermissionGrantSerializer, RolePermissionSerializer
 from apps.authorization.permissions import require_permission
@@ -54,19 +57,40 @@ class RoleViewSet(viewsets.ModelViewSet):
         return permissions
 
     def get_queryset(self):
-        # ARCHITECTURAL LIMITATION: Employee model does not have an organization relationship.
-        # Returning all roles instead of attempting to scope by organization.
-        return Role.objects.all()
+        user = self.request.user
+        if user.is_superuser:
+            qs = Role.objects.all()
+            org_id = self.request.query_params.get('organization')
+            if org_id:
+                qs = qs.filter(organization_id=org_id)
+            return qs
+        if hasattr(user, 'employee') and user.employee.organization_id:
+            return Role.objects.filter(organization=user.employee.organization)
+        return Role.objects.none()
 
     def perform_create(self, serializer):
         user = self.request.user
-        org = None
-        if hasattr(user, 'employee') and user.employee.organization_id:
-            org = user.employee.organization
+        if user.is_superuser:
+            org_id = self.request.data.get('organization')
+            if org_id:
+                try:
+                    org = Organization.objects.get(id=org_id)
+                except Organization.DoesNotExist:
+                    raise ValidationError({'organization': 'Specified organization does not exist.'})
+            elif hasattr(user, 'employee') and user.employee.organization_id:
+                org = user.employee.organization
+            else:
+                org = Organization.objects.first()
         else:
-            from apps.organization.models import Organization
-            org = Organization.objects.first()
-        serializer.save(organization=org)
+            if hasattr(user, 'employee') and user.employee.organization_id:
+                org = user.employee.organization
+            else:
+                raise ValidationError({'organization': 'User does not belong to an organization.'})
+
+        try:
+            serializer.save(organization=org)
+        except IntegrityError:
+            raise ValidationError({'name': 'A role with this name already exists in this organization.'})
 
 
 class PermissionViewSet(viewsets.ReadOnlyModelViewSet):
@@ -97,11 +121,38 @@ class UserRoleViewSet(viewsets.ModelViewSet):
         return permissions
 
     def get_queryset(self):
-        # ARCHITECTURAL LIMITATION: Employee model does not have an organization relationship.
-        # Returning all user roles instead of attempting to scope by organization.
-        return UserRole.objects.filter(is_revoked=False)
+        user = self.request.user
+        if user.is_superuser:
+            qs = UserRole.objects.filter(is_revoked=False)
+            org_id = self.request.query_params.get('organization')
+            if org_id:
+                qs = qs.filter(role__organization_id=org_id)
+            return qs
+        if hasattr(user, 'employee') and user.employee.organization_id:
+            org = user.employee.organization
+            return UserRole.objects.filter(is_revoked=False, role__organization=org)
+        return UserRole.objects.none()
 
     def perform_create(self, serializer):
+        user = self.request.user
+        role = serializer.validated_data.get('role')
+        target_user = serializer.validated_data.get('user')
+
+        if not user.is_superuser:
+            if not hasattr(user, 'employee') or not user.employee.organization_id:
+                raise ValidationError({'detail': 'User does not belong to an organization.'})
+
+            user_org = user.employee.organization
+            if role.organization_id != user_org.id:
+                raise ValidationError({'role': 'Role does not belong to your organization.'})
+
+            if not hasattr(target_user, 'employee') or target_user.employee.organization_id != user_org.id:
+                raise ValidationError({'user': 'Target user does not belong to your organization.'})
+        else:
+            if hasattr(target_user, 'employee') and target_user.employee.organization_id:
+                if role.organization_id != target_user.employee.organization_id:
+                    raise ValidationError({'detail': 'Role organization must match target user organization.'})
+
         user_role = serializer.save(assigned_by=self.request.user)
         AuditService.log(
             action='role_assigned',
@@ -154,9 +205,33 @@ class UserPermissionGrantViewSet(viewsets.ModelViewSet):
         return permissions
 
     def get_queryset(self):
-        return UserPermissionGrant.objects.filter(is_revoked=False)
+        user = self.request.user
+        if user.is_superuser:
+            qs = UserPermissionGrant.objects.filter(is_revoked=False)
+            org_id = self.request.query_params.get('organization')
+            if org_id:
+                qs = qs.filter(user__employee__organization_id=org_id)
+            return qs
+        if hasattr(user, 'employee') and user.employee.organization_id:
+            org = user.employee.organization
+            return UserPermissionGrant.objects.filter(
+                is_revoked=False,
+                user__employee__organization=org
+            )
+        return UserPermissionGrant.objects.none()
 
     def perform_create(self, serializer):
+        user = self.request.user
+        target_user = serializer.validated_data.get('user')
+
+        if not user.is_superuser:
+            if not hasattr(user, 'employee') or not user.employee.organization_id:
+                raise ValidationError({'detail': 'User does not belong to an organization.'})
+
+            user_org = user.employee.organization
+            if not hasattr(target_user, 'employee') or target_user.employee.organization_id != user_org.id:
+                raise ValidationError({'user': 'Target user does not belong to your organization.'})
+
         user_permission = serializer.save(granted_by=self.request.user)
         AuditService.log(
             action='permission_granted',
@@ -166,6 +241,20 @@ class UserPermissionGrantViewSet(viewsets.ModelViewSet):
             metadata={'permission_id': user_permission.permission.id, 'codename': user_permission.permission.codename},
             request=self.request
         )
+
+    def perform_update(self, serializer):
+        user = self.request.user
+        target_user = serializer.validated_data.get('user')
+
+        if target_user and not user.is_superuser:
+            if not hasattr(user, 'employee') or not user.employee.organization_id:
+                raise ValidationError({'detail': 'User does not belong to an organization.'})
+
+            user_org = user.employee.organization
+            if not hasattr(target_user, 'employee') or target_user.employee.organization_id != user_org.id:
+                raise ValidationError({'user': 'Target user does not belong to your organization.'})
+
+        serializer.save()
 
     @action(detail=True, methods=['post'])
     def revoke(self, request, pk=None):
@@ -205,13 +294,28 @@ class RolePermissionViewSet(viewsets.ModelViewSet):
         return permissions
 
     def get_queryset(self):
-        queryset = RolePermission.objects.all()
+        user = self.request.user
+        if user.is_superuser:
+            queryset = RolePermission.objects.all()
+        elif hasattr(user, 'employee') and user.employee.organization_id:
+            queryset = RolePermission.objects.filter(role__organization_id=user.employee.organization_id)
+        else:
+            return RolePermission.objects.none()
+
         role_id = self.request.query_params.get('role', None)
         if role_id is not None:
             queryset = queryset.filter(role_id=role_id)
         return queryset
 
     def perform_create(self, serializer):
+        user = self.request.user
+        role = serializer.validated_data.get('role')
+        if not user.is_superuser:
+            if not hasattr(user, 'employee') or not user.employee.organization_id:
+                raise ValidationError({'detail': 'User does not belong to an organization.'})
+            if role.organization_id != user.employee.organization_id:
+                raise ValidationError({'role': 'Role does not belong to your organization.'})
+
         grant = serializer.save()
         AuditService.log(
             action='role_permission_granted',

@@ -168,7 +168,7 @@ class PayslipDetailSerializer(serializers.ModelSerializer):
             'name': f"{u.first_name} {u.last_name}".strip() or u.email,
             'email': u.email,
             'department': emp.department.name if emp.department else None,
-            'designation': emp.designation.title if emp.designation else None,
+            'designation': emp.designation.name if emp.designation else None,
         }
 
     def get_period(self, obj):

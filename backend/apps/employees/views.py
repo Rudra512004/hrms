@@ -64,7 +64,7 @@ class ProvisionEmployeeView(APIView):
     required_permission = 'employee.create'
 
     def post(self, request, *args, **kwargs):
-        serializer = ProvisionEmployeeSerializer(data=request.data)
+        serializer = ProvisionEmployeeSerializer(data=request.data, context={'request': request})
         serializer.is_valid(raise_exception=True)
         employee = serializer.save()
 
@@ -593,8 +593,17 @@ class WFHRequestViewSet(viewsets.ModelViewSet):
         user = self.request.user
         if not user.is_authenticated:
             return WFHRequest.objects.none()
+        if user.is_superuser:
+            qs = WFHRequest.objects.all()
+            org_id = self.request.query_params.get('organization')
+            if org_id:
+                qs = qs.filter(employee__organization_id=org_id)
+            return qs
         if AuthorizationService.has_permission(user, 'wfh.view'):
-            return WFHRequest.objects.all()
+            emp = getattr(user, 'employee', None)
+            if emp and emp.organization_id:
+                return WFHRequest.objects.filter(employee__organization=emp.organization)
+            return WFHRequest.objects.none()
         if hasattr(user, 'employee'):
             return WFHRequest.objects.filter(employee=user.employee)
         return WFHRequest.objects.none()
