@@ -41,7 +41,7 @@ class AdminLeaveTypeViewSet(viewsets.ModelViewSet):
     def perform_create(self, serializer):
         from django.db import IntegrityError
         from rest_framework.exceptions import ValidationError
-        
+
         # Enforce organization isolation
         if self.request.user.is_superuser and not hasattr(self.request.user, 'employee'):
             # Fallback for superadmin without an employee profile
@@ -68,7 +68,7 @@ class AdminLeaveTypeViewSet(viewsets.ModelViewSet):
     def perform_update(self, serializer):
         from django.db import IntegrityError
         from rest_framework.exceptions import ValidationError
-        
+
         try:
             leave_type = serializer.save()
             AuditService.log(
@@ -83,17 +83,17 @@ class AdminLeaveTypeViewSet(viewsets.ModelViewSet):
 
     def destroy(self, request, *args, **kwargs):
         leave_type = self.get_object()
-        
+
         # Safe deletion: check for requests or USED balances
         if leave_type.requests.exists() or leave_type.balances.filter(used__gt=0).exists():
             return Response(
                 {"detail": "Cannot delete leave type that is in use by requests or has consumed balances."},
                 status=status.HTTP_409_CONFLICT
             )
-            
+
         leave_type_id = leave_type.id
         leave_type.delete()
-        
+
         AuditService.log(
             action='leave_type_deleted',
             actor=request.user,
@@ -120,15 +120,25 @@ class LeaveRequestViewSet(viewsets.ModelViewSet):
         user = self.request.user
         if not user.is_authenticated:
             return LeaveRequest.objects.none()
+
+        qs = LeaveRequest.objects.all()
         if AuthorizationService.has_permission(user, 'leave.view'):
             if user.is_superuser:
-                return LeaveRequest.objects.all()
-            if hasattr(user, 'employee') and user.employee.organization_id:
-                return LeaveRequest.objects.filter(employee__organization_id=user.employee.organization_id)
+                pass
+            elif hasattr(user, 'employee'):
+                authorized_branches = AuthorizationService.get_authorized_branches(user, 'leave.view')
+                qs = qs.filter(employee__branch__in=authorized_branches)
+            else:
+                qs = LeaveRequest.objects.none()
+        elif hasattr(user, 'employee'):
+            qs = qs.filter(employee=user.employee)
+        else:
             return LeaveRequest.objects.none()
-        if hasattr(user, 'employee'):
-            return LeaveRequest.objects.filter(employee=user.employee)
-        return LeaveRequest.objects.none()
+
+        branch_id = self.request.query_params.get('branch_id')
+        if branch_id:
+            qs = qs.filter(employee__branch_id=branch_id)
+        return qs
 
     def get_permissions(self):
         permissions = [IsAuthenticated()]
@@ -177,7 +187,10 @@ class LeaveRequestViewSet(viewsets.ModelViewSet):
         with transaction.atomic():
             leave = LeaveRequest.objects.select_for_update().get(pk=self.get_object().pk)
             if not request.user.is_superuser:
-                if not hasattr(request.user, 'employee') or leave.employee.organization_id != request.user.employee.organization_id:
+                if not hasattr(request.user, 'employee'):
+                    return Response(status=status.HTTP_403_FORBIDDEN)
+                authorized_branches = AuthorizationService.get_authorized_branches(request.user, 'leave.approve')
+                if leave.employee.branch not in authorized_branches:
                     return Response(status=status.HTTP_403_FORBIDDEN)
 
             if leave.employee == getattr(request.user, 'employee', None):
@@ -246,7 +259,10 @@ class LeaveRequestViewSet(viewsets.ModelViewSet):
         with transaction.atomic():
             leave = LeaveRequest.objects.select_for_update().get(pk=self.get_object().pk)
             if not request.user.is_superuser:
-                if not hasattr(request.user, 'employee') or leave.employee.organization_id != request.user.employee.organization_id:
+                if not hasattr(request.user, 'employee'):
+                    return Response(status=status.HTTP_403_FORBIDDEN)
+                authorized_branches = AuthorizationService.get_authorized_branches(request.user, 'leave.reject')
+                if leave.employee.branch not in authorized_branches:
                     return Response(status=status.HTTP_403_FORBIDDEN)
 
             if leave.status != 'pending':
@@ -283,8 +299,12 @@ class LeaveRequestViewSet(viewsets.ModelViewSet):
         with transaction.atomic():
             leave = LeaveRequest.objects.select_for_update().get(pk=self.get_object().pk)
             if not request.user.is_superuser:
-                if not hasattr(request.user, 'employee') or leave.employee.organization_id != request.user.employee.organization_id:
+                if not hasattr(request.user, 'employee'):
                     return Response(status=status.HTTP_403_FORBIDDEN)
+                if leave.employee != request.user.employee:
+                    authorized_branches = AuthorizationService.get_authorized_branches(request.user, 'leave.cancel')
+                    if leave.employee.branch not in authorized_branches:
+                        return Response(status=status.HTTP_403_FORBIDDEN)
 
             if leave.employee != getattr(request.user, 'employee', None):
                 if not AuthorizationService.has_permission(request.user, 'leave.cancel'):

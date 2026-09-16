@@ -86,23 +86,23 @@ class AssetManagementComprehensiveTests(TestCase):
         self.org_a = Organization.objects.create(name='Org A Assets', status='active')
         self.org_b = Organization.objects.create(name='Org B Assets', status='active')
 
+        # Branches
+        self.branch_a = Branch.objects.create(organization=self.org_a, name='HQ Branch')
+        self.branch_b = Branch.objects.create(organization=self.org_b, name='Org B Branch')
+
         # Allow 127.0.0.0/8 so test client passes IsNetworkAllowed
         OfficeNetwork.objects.create(
-            organization=self.org_a,
+            branch=self.branch_a,
             name='Localhost A',
             network='127.0.0.0/8',
             is_active=True,
         )
         OfficeNetwork.objects.create(
-            organization=self.org_b,
+            branch=self.branch_b,
             name='Localhost B',
             network='127.0.0.0/8',
             is_active=True,
         )
-
-        # Branches
-        self.branch_a = Branch.objects.create(organization=self.org_a, name='HQ Branch')
-        self.branch_b = Branch.objects.create(organization=self.org_b, name='Org B Branch')
 
         # Admin User with full asset permissions in Org A
         self.admin_user = make_user('asset_admin@orga.com', 'Admin', 'User')

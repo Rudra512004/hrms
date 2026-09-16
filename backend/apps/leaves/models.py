@@ -66,14 +66,14 @@ class LeaveRequest(models.Model):
 
         holidays = set(
             Holiday.objects.filter(
-                organization=self.employee.organization,
+                branch=self.employee.branch,
                 date__range=[self.start_date, self.end_date],
                 is_active=True
             ).values_list('date', flat=True)
         )
 
         try:
-            work_days = self.employee.organization.working_calendar.get_work_days_list()
+            work_days = self.employee.branch.working_calendar.get_work_days_list()
         except Exception:
             work_days = [0, 1, 2, 3, 4]
 

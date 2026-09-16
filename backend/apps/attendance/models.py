@@ -50,7 +50,7 @@ class AttendanceBreak(models.Model):
 from apps.organization.models import Organization
 
 class Holiday(models.Model):
-    organization = models.ForeignKey(Organization, on_delete=models.CASCADE, related_name='holidays')
+    branch = models.ForeignKey('organization.Branch', on_delete=models.CASCADE, related_name='holidays')
     name = models.CharField(max_length=255)
     date = models.DateField()
     is_active = models.BooleanField(default=True)
@@ -58,14 +58,14 @@ class Holiday(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
-        unique_together = ('organization', 'date')
+        unique_together = ('branch', 'date')
         ordering = ['date']
 
     def __str__(self):
         return f"{self.name} - {self.date}"
 
 class Shift(models.Model):
-    organization = models.ForeignKey(Organization, on_delete=models.CASCADE, related_name='shifts')
+    branch = models.ForeignKey('organization.Branch', on_delete=models.CASCADE, related_name='shifts')
     name = models.CharField(max_length=255)
     start_time = models.TimeField()
     end_time = models.TimeField()
@@ -78,7 +78,7 @@ class Shift(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
-        unique_together = ('organization', 'name')
+        unique_together = ('branch', 'name')
         ordering = ['start_time']
 
     def __str__(self):
@@ -97,7 +97,7 @@ class EmployeeShiftAssignment(models.Model):
         ordering = ['-effective_from']
         constraints = [
             models.CheckConstraint(
-                check=models.Q(effective_to__gte=models.F('effective_from')) | models.Q(effective_to__isnull=True),
+                condition=models.Q(effective_to__gte=models.F('effective_from')) | models.Q(effective_to__isnull=True),
                 name='check_valid_effective_dates'
             )
         ]
@@ -110,8 +110,9 @@ class EmployeeShiftAssignment(models.Model):
         from django.core.exceptions import ValidationError
 
         if self.employee_id and self.shift_id:
-            if self.employee.organization_id != self.shift.organization_id:
-                raise ValidationError("Employee and Shift must belong to the same organization.")
+            if self.employee.branch_id and self.shift.branch_id:
+                if self.employee.branch_id != self.shift.branch_id:
+                    raise ValidationError("Employee and Shift must belong to the same branch.")
 
         # Overlap check
         if self.employee_id and self.effective_from:

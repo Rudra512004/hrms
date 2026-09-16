@@ -9,6 +9,8 @@ class OfficeNetworkTests(APITestCase):
     def setUp(self):
         self.user = User.objects.create_user(email='admin@example.com', password='Password123!', status='active')
         self.org = Organization.objects.create(name='Test Org')
+        from apps.organization.models import Branch
+        self.branch = Branch.objects.create(organization=self.org, name='HQ Branch')
 
         self.perm_view = Permission.objects.create(name='View Net', codename='office_network.view', resource='office_network', action='view')
         self.perm_create = Permission.objects.create(name='Create Net', codename='office_network.create', resource='office_network', action='create')
@@ -22,7 +24,7 @@ class OfficeNetworkTests(APITestCase):
 
     def test_create_office_network(self):
         data = {
-            'organization': self.org.id,
+            'branch': self.branch.id,
             'name': 'HQ',
             'network': '203.0.113.0/24'
         }
@@ -32,7 +34,7 @@ class OfficeNetworkTests(APITestCase):
 
     def test_invalid_cidr(self):
         data = {
-            'organization': self.org.id,
+            'branch': self.branch.id,
             'name': 'HQ',
             'network': 'invalid'
         }
@@ -44,7 +46,7 @@ class OfficeNetworkTests(APITestCase):
         other_user = User.objects.create_user(email='other@example.com', password='Password123!', status='active')
         self.client.force_authenticate(user=other_user)
         data = {
-            'organization': self.org.id,
+            'branch': self.branch.id,
             'name': 'HQ2',
             'network': '203.0.114.0/24'
         }

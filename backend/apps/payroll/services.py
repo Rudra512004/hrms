@@ -18,23 +18,27 @@ from apps.leaves.models import LeaveRequest
 from .models import CompensationHistory, PayrollPeriod, PayrollRecord, Payslip
 
 
-def _working_days_in_period(organization_id: int, start: date, end: date) -> int:
+def _working_days_in_period(branch_id: int, start: date, end: date) -> int:
     """
-    Count weekdays (Mon–Fri) within [start, end] that are NOT org holidays.
+    Count weekdays (Mon–Fri) within [start, end] that are NOT branch holidays.
     Mirrors the logic in LeaveRequest.duration_days for consistency.
     """
+    if not branch_id:
+        # Fallback if no branch is assigned
+        return 0
+
     holiday_dates = set(
         Holiday.objects.filter(
-            organization_id=organization_id,
+            branch_id=branch_id,
             date__range=[start, end],
             is_active=True,
         ).values_list('date', flat=True)
     )
 
-    from apps.organization.models import Organization
+    from apps.organization.models import Branch
     try:
-        org = Organization.objects.get(id=organization_id)
-        work_days = org.working_calendar.get_work_days_list()
+        branch = Branch.objects.get(id=branch_id)
+        work_days = branch.working_calendar.get_work_days_list()
     except Exception:
         work_days = [0, 1, 2, 3, 4]
 
@@ -130,7 +134,7 @@ def _approved_leave_days(employee, start: date, end: date, exclude_dates: set = 
     leave_dates = set()
     holiday_dates = set(
         Holiday.objects.filter(
-            organization=employee.organization,
+            branch=employee.branch,
             date__range=[start, end],
             is_active=True,
         ).values_list('date', flat=True)
@@ -170,13 +174,12 @@ def generate_payroll_for_period(period: PayrollPeriod, requesting_user=None) -> 
         Q(exit_date__isnull=True) | Q(exit_date__gte=period.start_date)
     ).select_related('organization', 'user')
 
-    working_days = _working_days_in_period(
-        period.organization_id, period.start_date, period.end_date
-    )
-
     records = []
 
     for emp in employees:
+        working_days = _working_days_in_period(
+            emp.branch_id, period.start_date, period.end_date
+        )
         basic_salary = _get_active_salary(emp, period.start_date, period.end_date)
         att = _attendance_summary(emp, period.start_date, period.end_date)
 

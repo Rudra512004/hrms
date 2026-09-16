@@ -17,16 +17,21 @@ class LeaveNotificationIntegrationTests(TransactionTestCase):
     def setUp(self):
         self.client = APIClient()
         self.org = Organization.objects.create(name='Test Org')
+        from apps.organization.models import Branch
+        self.branch = self.org.branches.first() or Branch.objects.create(organization=self.org, name='Main')
+
 
         self.user = User.objects.create_user(email='emp@example.com', password='Password123!', status='active')
-        self.employee = Employee.objects.create(user=self.user, employee_code='EMP01', organization=self.org)
+        self.employee = Employee.objects.create(user=self.user, employee_code='EMP01', organization=self.org, branch=self.branch)
 
         self.manager_user = User.objects.create_user(email='manager@example.com', password='Password123!', status='active', is_superuser=True)
 
         self.leave_type = LeaveType.objects.create(organization=self.org, name='Sick Leave', annual_allocation=10)
 
     @patch('apps.authorization.services.AuthorizationService.has_permission', return_value=True)
-    def test_leave_approved_notification(self, mock_perm):
+    @patch('apps.authorization.services.AuthorizationService.get_authorized_branches')
+    def test_leave_approved_notification(self, mock_auth_branches, mock_perm):
+        mock_auth_branches.return_value = [self.branch]
         base_date = timezone.now().date()
         leave = LeaveRequest.objects.create(
             employee=self.employee, leave_type=self.leave_type,
@@ -48,7 +53,9 @@ class LeaveNotificationIntegrationTests(TransactionTestCase):
         self.assertIn('approved', notif.message.lower())
 
     @patch('apps.authorization.services.AuthorizationService.has_permission', return_value=True)
-    def test_leave_rejected_notification(self, mock_perm):
+    @patch('apps.authorization.services.AuthorizationService.get_authorized_branches')
+    def test_leave_rejected_notification(self, mock_auth_branches, mock_perm):
+        mock_auth_branches.return_value = [self.branch]
         base_date = timezone.now().date()
         leave = LeaveRequest.objects.create(
             employee=self.employee, leave_type=self.leave_type,
@@ -65,7 +72,9 @@ class LeaveNotificationIntegrationTests(TransactionTestCase):
         self.assertEqual(notifs.first().notification_type, 'LEAVE_REJECTED')
 
     @patch('apps.authorization.services.AuthorizationService.has_permission', return_value=True)
-    def test_leave_cancelled_by_admin_notification(self, mock_perm):
+    @patch('apps.authorization.services.AuthorizationService.get_authorized_branches')
+    def test_leave_cancelled_by_admin_notification(self, mock_auth_branches, mock_perm):
+        mock_auth_branches.return_value = [self.branch]
         base_date = timezone.now().date()
         leave = LeaveRequest.objects.create(
             employee=self.employee, leave_type=self.leave_type,
@@ -80,9 +89,11 @@ class LeaveNotificationIntegrationTests(TransactionTestCase):
         notifs = Notification.objects.filter(recipient=self.user)
         self.assertEqual(notifs.count(), 1)
         self.assertEqual(notifs.first().notification_type, 'LEAVE_CANCELLED')
-        
+
     @patch('apps.authorization.services.AuthorizationService.has_permission', return_value=True)
-    def test_leave_cancelled_by_self_no_notification(self, mock_perm):
+    @patch('apps.authorization.services.AuthorizationService.get_authorized_branches')
+    def test_leave_cancelled_by_self_no_notification(self, mock_auth_branches, mock_perm):
+        mock_auth_branches.return_value = [self.branch]
         base_date = timezone.now().date()
         leave = LeaveRequest.objects.create(
             employee=self.employee, leave_type=self.leave_type,

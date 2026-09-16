@@ -58,6 +58,38 @@ class EmployeeManagementAPITests(TestCase):
         # Should see all 3 employees created in setUp
         self.assertEqual(len(response.data), 3)
 
+    def test_branch_isolation_employee_view(self):
+        from apps.organization.models import Branch
+        from apps.authorization.models import UserRole, Role, RolePermission
+
+        branch1 = Branch.objects.create(organization=self.org, name='Branch 1')
+        branch2 = Branch.objects.create(organization=self.org, name='Branch 2')
+
+        self.super_employee.branch = branch1
+        self.super_employee.save()
+
+        self.normal_employee.branch = branch1
+        self.normal_employee.save()
+
+        self.target_employee.branch = branch2
+        self.target_employee.save()
+
+        # Create a branch-scoped role
+        role = Role.objects.create(organization=self.org, name='Branch Manager')
+        RolePermission.objects.create(role=role, permission='employee.view')
+        UserRole.objects.create(user=self.normal_user, role=role, scope='branch', branch=branch1)
+
+        self.client.force_authenticate(user=self.normal_user)
+        response = self.client.get(reverse('employee-management-list'))
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        # Normal user should only see employees in branch1 (super_employee and normal_employee)
+        emp_codes = [emp['employee_code'] for emp in response.data]
+        self.assertEqual(len(emp_codes), 2)
+        self.assertIn('EMP_SUPER', emp_codes)
+        self.assertIn('EMP_NORMAL', emp_codes)
+        self.assertNotIn('EMP_TARGET', emp_codes)
+
     def test_employee_activation(self):
         self.target_user.status = 'inactive'
         self.target_user.save()
@@ -97,7 +129,7 @@ class EmployeeManagementAPITests(TestCase):
         # Should fail authentication since user is inactive
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
 
-        
+
 
     def test_last_superadmin_protection(self):
         # Case B: 1 active superuser -> deactivating that superuser is DENIED

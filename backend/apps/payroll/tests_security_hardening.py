@@ -18,7 +18,9 @@ class PayrollSecurityAndCorrectnessTests(TestCase):
         self.client = APIClient()
 
         self.org = Organization.objects.create(name='Payroll Org')
-        OfficeNetwork.objects.create(organization=self.org, name='Office', network='127.0.0.1/32', is_active=True)
+        from apps.organization.models import Branch
+        self.branch = Branch.objects.create(organization=self.org, name='Main Branch')
+        OfficeNetwork.objects.create(branch=self.branch, name='Office', network='127.0.0.1/32', is_active=True)
 
         self.dept = Department.objects.create(organization=self.org, name='Engineering')
         self.desig = Designation.objects.create(organization=self.org, name='Staff Architect')
@@ -28,6 +30,7 @@ class PayrollSecurityAndCorrectnessTests(TestCase):
         self.admin_emp = Employee.objects.create(
             user=self.admin_user,
             organization=self.org,
+            branch=self.branch,
             department=self.dept,
             designation=self.desig,
             employee_code='EMP-PAY-001',

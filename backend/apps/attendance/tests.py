@@ -15,13 +15,15 @@ class AttendanceAPITests(TestCase):
     def setUp(self):
         self.client = APIClient()
         self.org = Organization.objects.create(name='Test Org')
-        policy = self.org.attendance_policy
+        from apps.organization.models import Branch
+        self.branch = Branch.objects.create(organization=self.org, name='HQ')
+        policy = self.branch.attendance_policy
         policy.is_office_gps_enabled = False
         policy.is_office_ip_enabled = False
         policy.save()
         self.user = User.objects.create_user(email='emp@example.com', password='Password123!', status='active')
-        self.employee = Employee.objects.create(user=self.user, employee_code='EMP01', organization=self.org)
-        self.network = OfficeNetwork.objects.create(organization=self.org, name='HQ', network='203.0.113.0/24')
+        self.employee = Employee.objects.create(user=self.user, employee_code='EMP01', organization=self.org, branch=self.branch)
+        self.network = OfficeNetwork.objects.create(branch=self.branch, name='HQ', network='203.0.113.0/24')
         self.office_ip = '203.0.113.50'
         self.external_ip = '198.51.100.5'
 
@@ -252,3 +254,27 @@ class AttendanceAPITests(TestCase):
         att = Attendance.objects.get(employee=self.employee, date=timezone.now().date())
         self.assertIsNotNone(att.productive_work_duration)
         self.assertGreaterEqual(att.productive_work_duration, timedelta(0))
+
+    def test_branch_independent_holidays(self):
+        from apps.attendance.models import Holiday
+        from apps.organization.models import Branch
+        from apps.authorization.models import Role, Permission, RolePermission, UserRole
+
+        branch2 = Branch.objects.create(organization=self.org, name='Branch 2')
+        Holiday.objects.create(branch=self.branch, name='HQ Holiday', date='2026-01-01')
+        Holiday.objects.create(branch=branch2, name='Branch 2 Holiday', date='2026-01-02')
+
+        role = Role.objects.create(name='Holiday Admin', organization=self.org)
+        perm, _ = Permission.objects.get_or_create(codename='holiday.view', defaults={'name': 'View Holiday', 'resource': 'holiday', 'action': 'view'})
+        RolePermission.objects.create(role=role, permission=perm)
+        UserRole.objects.create(user=self.user, role=role, scope='branch', branch=self.branch)
+
+        self.client.force_authenticate(user=self.user)
+        response = self.client.get(reverse('holiday-list'))
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        # Should only see HQ Holiday
+        names = [h['name'] for h in response.data]
+        self.assertEqual(len(names), 1)
+        self.assertIn('HQ Holiday', names)
+        self.assertNotIn('Branch 2 Holiday', names)

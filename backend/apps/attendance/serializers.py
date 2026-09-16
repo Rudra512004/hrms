@@ -27,14 +27,14 @@ class AttendanceSerializer(serializers.ModelSerializer):
 class HolidaySerializer(serializers.ModelSerializer):
     class Meta:
         model = Holiday
-        fields = ['id', 'organization', 'name', 'date', 'is_active', 'created_at', 'updated_at']
-        read_only_fields = ['id', 'organization', 'created_at', 'updated_at']
+        fields = ['id', 'branch', 'name', 'date', 'is_active', 'created_at', 'updated_at']
+        read_only_fields = ['id', 'created_at', 'updated_at']
 
 class ShiftSerializer(serializers.ModelSerializer):
     class Meta:
         model = Shift
-        fields = ['id', 'organization', 'name', 'start_time', 'end_time', 'grace_period', 'full_day_hours', 'half_day_hours', 'work_days', 'is_active', 'created_at', 'updated_at']
-        read_only_fields = ['id', 'organization', 'created_at', 'updated_at']
+        fields = ['id', 'branch', 'name', 'start_time', 'end_time', 'grace_period', 'full_day_hours', 'half_day_hours', 'work_days', 'is_active', 'created_at', 'updated_at']
+        read_only_fields = ['id', 'created_at', 'updated_at']
 
     def validate_work_days(self, value):
         if value:
@@ -60,17 +60,17 @@ class EmployeeShiftAssignmentSerializer(serializers.ModelSerializer):
         shift = attrs.get('shift', getattr(self.instance, 'shift', None))
 
         # Verify cross-tenant
-        if employee and shift and employee.organization_id != shift.organization_id:
-            raise serializers.ValidationError({"employee": "Employee and Shift must belong to the same organization."})
+        if employee and shift and employee.branch_id and shift.branch_id and employee.branch_id != shift.branch_id:
+            raise serializers.ValidationError({"employee": "Employee and Shift must belong to the same branch."})
 
         # Ensure we do not allow assigning an employee from another tenant
         request = self.context.get('request')
         if request and hasattr(request.user, 'employee'):
-            org_id = request.user.employee.organization_id
-            if employee and employee.organization_id != org_id:
-                raise serializers.ValidationError({"employee": "Cannot assign employee from another organization."})
-            if shift and shift.organization_id != org_id:
-                raise serializers.ValidationError({"shift": "Cannot assign shift from another organization."})
+            branch_id = request.user.employee.branch_id
+            if employee and employee.branch_id != branch_id:
+                raise serializers.ValidationError({"employee": "Cannot assign employee from another branch."})
+            if shift and shift.branch_id != branch_id:
+                raise serializers.ValidationError({"shift": "Cannot assign shift from another branch."})
 
         effective_from = attrs.get('effective_from', getattr(self.instance, 'effective_from', None))
         effective_to = attrs.get('effective_to', getattr(self.instance, 'effective_to', None))

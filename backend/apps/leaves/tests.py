@@ -15,12 +15,15 @@ class LeaveAPITests(TestCase):
     def setUp(self):
         self.client = APIClient()
         self.org = Organization.objects.create(name='Test Org')
+        from apps.organization.models import Branch
+        self.branch = self.org.branches.first() or Branch.objects.create(organization=self.org, name='Main')
+
 
         self.user = User.objects.create_user(email='emp@example.com', password='Password123!', status='active')
-        self.employee = Employee.objects.create(user=self.user, employee_code='EMP01', organization=self.org)
+        self.employee = Employee.objects.create(user=self.user, employee_code='EMP01', organization=self.org, branch=self.branch)
 
         self.manager_user = User.objects.create_user(email='manager@example.com', password='Password123!', status='active')
-        self.manager_employee = Employee.objects.create(user=self.manager_user, employee_code='MGR01', organization=self.org)
+        self.manager_employee = Employee.objects.create(user=self.manager_user, employee_code='MGR01', organization=self.org, branch=self.branch)
 
         self.leave_type = LeaveType.objects.create(organization=self.org, name='Sick Leave', annual_allocation=10)
         self.balance = LeaveBalance.objects.get(employee=self.employee, leave_type=self.leave_type)
@@ -35,7 +38,8 @@ class LeaveAPITests(TestCase):
         # so let's bypass permission checks just for the sake of the test if needed, or rely on setup.
         # Actually, in this test environment, we might need to assign the permission or mock the service.
         from unittest.mock import patch
-        with patch('apps.authorization.services.AuthorizationService.has_permission', return_value=True):
+        with patch('apps.authorization.services.AuthorizationService.has_permission', return_value=True), \
+             patch('apps.authorization.services.AuthorizationService.get_authorized_branches', return_value=[self.branch]):
             response = self.client.post(reverse('leave-requests-list'), {
                 'leave_type': self.leave_type.id,
                 'start_date': (timezone.now().date() + timedelta(days=1)).isoformat(),
@@ -47,7 +51,8 @@ class LeaveAPITests(TestCase):
     def test_invalid_date_range(self):
         self.client.force_authenticate(user=self.user)
         from unittest.mock import patch
-        with patch('apps.authorization.services.AuthorizationService.has_permission', return_value=True):
+        with patch('apps.authorization.services.AuthorizationService.has_permission', return_value=True), \
+             patch('apps.authorization.services.AuthorizationService.get_authorized_branches', return_value=[self.branch]):
             response = self.client.post(reverse('leave-requests-list'), {
                 'leave_type': self.leave_type.id,
                 'start_date': (timezone.now().date() + timedelta(days=2)).isoformat(),
@@ -67,8 +72,11 @@ class LeaveAPITests(TestCase):
         )
         self.client.force_authenticate(user=self.manager_user)
         from unittest.mock import patch
-        with patch('apps.authorization.services.AuthorizationService.has_permission', return_value=True):
+        with patch('apps.authorization.services.AuthorizationService.has_permission', return_value=True), \
+             patch('apps.authorization.services.AuthorizationService.get_authorized_branches', return_value=[self.branch]):
             response = self.client.post(reverse('leave-requests-approve', kwargs={'pk': request.pk}))
+            if response.status_code != status.HTTP_200_OK:
+                print("DEBUG test_approve_leave_request:", response.data)
             self.assertEqual(response.status_code, status.HTTP_200_OK)
             self.balance.refresh_from_db()
             self.assertEqual(self.balance.used, 2)
@@ -83,7 +91,8 @@ class LeaveAPITests(TestCase):
         )
         self.client.force_authenticate(user=self.user)
         from unittest.mock import patch
-        with patch('apps.authorization.services.AuthorizationService.has_permission', return_value=True):
+        with patch('apps.authorization.services.AuthorizationService.has_permission', return_value=True), \
+             patch('apps.authorization.services.AuthorizationService.get_authorized_branches', return_value=[self.branch]):
             response = self.client.post(reverse('leave-requests-approve', kwargs={'pk': request.pk}))
             self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
@@ -96,7 +105,8 @@ class LeaveAPITests(TestCase):
         )
         self.client.force_authenticate(user=self.manager_user)
         from unittest.mock import patch
-        with patch('apps.authorization.services.AuthorizationService.has_permission', return_value=True):
+        with patch('apps.authorization.services.AuthorizationService.has_permission', return_value=True), \
+             patch('apps.authorization.services.AuthorizationService.get_authorized_branches', return_value=[self.branch]):
             response = self.client.post(reverse('leave-requests-approve', kwargs={'pk': request.pk}))
             self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
             self.balance.refresh_from_db()
@@ -111,7 +121,8 @@ class LeaveAPITests(TestCase):
         )
         self.client.force_authenticate(user=self.manager_user)
         from unittest.mock import patch
-        with patch('apps.authorization.services.AuthorizationService.has_permission', return_value=True):
+        with patch('apps.authorization.services.AuthorizationService.has_permission', return_value=True), \
+             patch('apps.authorization.services.AuthorizationService.get_authorized_branches', return_value=[self.branch]):
             response = self.client.post(reverse('leave-requests-reject', kwargs={'pk': request.pk}))
             self.assertEqual(response.status_code, status.HTTP_200_OK)
             self.balance.refresh_from_db()
@@ -121,20 +132,24 @@ class AdminLeaveTypeAPITests(TestCase):
     def setUp(self):
         self.client = APIClient()
         self.org = Organization.objects.create(name='Test Org 2')
-        
+        from apps.organization.models import Branch
+        self.branch = self.org.branches.first() or Branch.objects.create(organization=self.org, name='Main')
+
+
         self.superadmin = User.objects.create_user(email='super@example.com', password='Password123!', status='active', is_superuser=True)
         self.admin = User.objects.create_user(email='admin@example.com', password='Password123!', status='active')
-        self.admin_employee = Employee.objects.create(user=self.admin, employee_code='ADM01', organization=self.org)
-        
+        self.admin_employee = Employee.objects.create(user=self.admin, employee_code='ADM01', organization=self.org, branch=self.branch)
+
         self.employee = User.objects.create_user(email='emp2@example.com', password='Password123!', status='active')
-        self.emp_profile = Employee.objects.create(user=self.employee, employee_code='EMP02', organization=self.org)
-        
+        self.emp_profile = Employee.objects.create(user=self.employee, employee_code='EMP02', organization=self.org, branch=self.branch)
+
         self.leave_type = LeaveType.objects.create(organization=self.org, name='Initial Leave', annual_allocation=5)
 
     def test_superadmin_can_create(self):
         self.client.force_authenticate(user=self.superadmin)
         from unittest.mock import patch
-        with patch('apps.authorization.services.AuthorizationService.has_permission', return_value=True):
+        with patch('apps.authorization.services.AuthorizationService.has_permission', return_value=True), \
+             patch('apps.authorization.services.AuthorizationService.get_authorized_branches', return_value=[self.branch]):
             response = self.client.post(reverse('admin-leave-types-list'), {
                 'name': 'New Leave',
                 'description': 'Description',
@@ -147,7 +162,8 @@ class AdminLeaveTypeAPITests(TestCase):
     def test_authorized_admin_can_create(self):
         self.client.force_authenticate(user=self.admin)
         from unittest.mock import patch
-        with patch('apps.authorization.services.AuthorizationService.has_permission', return_value=True):
+        with patch('apps.authorization.services.AuthorizationService.has_permission', return_value=True), \
+             patch('apps.authorization.services.AuthorizationService.get_authorized_branches', return_value=[self.branch]):
             response = self.client.post(reverse('admin-leave-types-list'), {
                 'name': 'Admin Leave',
                 'annual_allocation': 10
@@ -174,7 +190,8 @@ class AdminLeaveTypeAPITests(TestCase):
     def test_duplicate_name_rejected(self):
         self.client.force_authenticate(user=self.superadmin)
         from unittest.mock import patch
-        with patch('apps.authorization.services.AuthorizationService.has_permission', return_value=True):
+        with patch('apps.authorization.services.AuthorizationService.has_permission', return_value=True), \
+             patch('apps.authorization.services.AuthorizationService.get_authorized_branches', return_value=[self.branch]):
             response = self.client.post(reverse('admin-leave-types-list'), {
                 'name': 'Initial Leave',
                 'annual_allocation': 10
@@ -184,7 +201,8 @@ class AdminLeaveTypeAPITests(TestCase):
     def test_invalid_allocation_rejected(self):
         self.client.force_authenticate(user=self.superadmin)
         from unittest.mock import patch
-        with patch('apps.authorization.services.AuthorizationService.has_permission', return_value=True):
+        with patch('apps.authorization.services.AuthorizationService.has_permission', return_value=True), \
+             patch('apps.authorization.services.AuthorizationService.get_authorized_branches', return_value=[self.branch]):
             response = self.client.post(reverse('admin-leave-types-list'), {
                 'name': 'Invalid Leave',
                 'annual_allocation': -5
@@ -194,7 +212,8 @@ class AdminLeaveTypeAPITests(TestCase):
     def test_update_works(self):
         self.client.force_authenticate(user=self.superadmin)
         from unittest.mock import patch
-        with patch('apps.authorization.services.AuthorizationService.has_permission', return_value=True):
+        with patch('apps.authorization.services.AuthorizationService.has_permission', return_value=True), \
+             patch('apps.authorization.services.AuthorizationService.get_authorized_branches', return_value=[self.branch]):
             response = self.client.patch(reverse('admin-leave-types-detail', kwargs={'pk': self.leave_type.id}), {
                 'name': 'Updated Leave'
             })
@@ -211,9 +230,10 @@ class AdminLeaveTypeAPITests(TestCase):
             end_date=timezone.now().date() + timedelta(days=2),
             reason='Testing'
         )
-        
+
         from unittest.mock import patch
-        with patch('apps.authorization.services.AuthorizationService.has_permission', return_value=True):
+        with patch('apps.authorization.services.AuthorizationService.has_permission', return_value=True), \
+             patch('apps.authorization.services.AuthorizationService.get_authorized_branches', return_value=[self.branch]):
             response = self.client.delete(reverse('admin-leave-types-detail', kwargs={'pk': self.leave_type.id}))
             self.assertEqual(response.status_code, status.HTTP_409_CONFLICT)
             self.assertEqual(LeaveType.objects.count(), 1)
@@ -221,7 +241,8 @@ class AdminLeaveTypeAPITests(TestCase):
     def test_unreferenced_leave_type_can_be_deleted(self):
         self.client.force_authenticate(user=self.superadmin)
         from unittest.mock import patch
-        with patch('apps.authorization.services.AuthorizationService.has_permission', return_value=True):
+        with patch('apps.authorization.services.AuthorizationService.has_permission', return_value=True), \
+             patch('apps.authorization.services.AuthorizationService.get_authorized_branches', return_value=[self.branch]):
             response = self.client.delete(reverse('admin-leave-types-detail', kwargs={'pk': self.leave_type.id}))
             self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
             self.assertEqual(LeaveType.objects.count(), 0)
@@ -239,7 +260,7 @@ class AdminLeaveTypeAPITests(TestCase):
         while start.weekday() != 0: # find a Monday
             start += timedelta(days=1)
         end = start + timedelta(days=7) # next Monday
-        
+
         request = LeaveRequest(
             employee=self.emp_profile, leave_type=self.leave_type,
             start_date=start, end_date=end, reason='Weekend test'
@@ -256,7 +277,8 @@ class AdminLeaveTypeAPITests(TestCase):
             status='approved'
         )
         from unittest.mock import patch
-        with patch('apps.authorization.services.AuthorizationService.has_permission', return_value=True):
+        with patch('apps.authorization.services.AuthorizationService.has_permission', return_value=True), \
+             patch('apps.authorization.services.AuthorizationService.get_authorized_branches', return_value=[self.branch]):
             response = self.client.patch(reverse('leave-requests-detail', kwargs={'pk': request.id}), {
                 'reason': 'Changed my mind'
             })
@@ -267,7 +289,7 @@ class AdminLeaveTypeAPITests(TestCase):
         balance = LeaveBalance.objects.get(employee=self.emp_profile, leave_type=self.leave_type)
         balance.used = 5
         balance.save()
-        
+
         request = LeaveRequest.objects.create(
             employee=self.emp_profile, leave_type=self.leave_type,
             start_date=timezone.now().date() + timedelta(days=1),
@@ -275,13 +297,13 @@ class AdminLeaveTypeAPITests(TestCase):
             reason='Testing delete',
             status='approved'
         )
-        
+
         # duration is roughly 2 days (assuming not weekend)
         duration = request.duration_days
-        
+
         # delete request
         request.delete()
-        
+
         balance.refresh_from_db()
         self.assertEqual(balance.used, 5 - duration)
 
@@ -320,7 +342,8 @@ class AdminLeaveTypeAPITests(TestCase):
             reason='Existing pending leave', status='pending'
         )
         from unittest.mock import patch
-        with patch('apps.authorization.services.AuthorizationService.has_permission', return_value=True):
+        with patch('apps.authorization.services.AuthorizationService.has_permission', return_value=True), \
+             patch('apps.authorization.services.AuthorizationService.get_authorized_branches', return_value=[self.branch]):
             response = self.client.post(reverse('leave-requests-list'), {
                 'leave_type': self.leave_type.id,
                 'start_date': (base_date + timedelta(days=2)).isoformat(),
@@ -339,7 +362,8 @@ class AdminLeaveTypeAPITests(TestCase):
             reason='Existing approved leave', status='approved'
         )
         from unittest.mock import patch
-        with patch('apps.authorization.services.AuthorizationService.has_permission', return_value=True):
+        with patch('apps.authorization.services.AuthorizationService.has_permission', return_value=True), \
+             patch('apps.authorization.services.AuthorizationService.get_authorized_branches', return_value=[self.branch]):
             response = self.client.post(reverse('leave-requests-list'), {
                 'leave_type': self.leave_type.id,
                 'start_date': (base_date + timedelta(days=1)).isoformat(),
@@ -358,7 +382,8 @@ class AdminLeaveTypeAPITests(TestCase):
             reason='Rejected request', status='rejected'
         )
         from unittest.mock import patch
-        with patch('apps.authorization.services.AuthorizationService.has_permission', return_value=True):
+        with patch('apps.authorization.services.AuthorizationService.has_permission', return_value=True), \
+             patch('apps.authorization.services.AuthorizationService.get_authorized_branches', return_value=[self.branch]):
             response = self.client.post(reverse('leave-requests-list'), {
                 'leave_type': self.leave_type.id,
                 'start_date': base_date.isoformat(),
@@ -376,7 +401,8 @@ class AdminLeaveTypeAPITests(TestCase):
             reason='Initial reason', status='pending'
         )
         from unittest.mock import patch
-        with patch('apps.authorization.services.AuthorizationService.has_permission', return_value=True):
+        with patch('apps.authorization.services.AuthorizationService.has_permission', return_value=True), \
+             patch('apps.authorization.services.AuthorizationService.get_authorized_branches', return_value=[self.branch]):
             response = self.client.patch(reverse('leave-requests-detail', kwargs={'pk': req.id}), {
                 'reason': 'Updated reason'
             })
@@ -386,7 +412,7 @@ class AdminLeaveTypeAPITests(TestCase):
 
     def test_cannot_edit_other_employee_pending_leave(self):
         other_user = User.objects.create_user(email='other@example.com', password='Password123!', status='active')
-        other_emp = Employee.objects.create(user=other_user, employee_code='EMP99', organization=self.org)
+        other_emp = Employee.objects.create(user=other_user, employee_code='EMP99', organization=self.org, branch=self.branch)
         req = LeaveRequest.objects.create(
             employee=other_emp, leave_type=self.leave_type,
             start_date=timezone.now().date() + timedelta(days=60),
@@ -395,7 +421,8 @@ class AdminLeaveTypeAPITests(TestCase):
         )
         self.client.force_authenticate(user=self.employee)
         from unittest.mock import patch
-        with patch('apps.authorization.services.AuthorizationService.has_permission', return_value=True):
+        with patch('apps.authorization.services.AuthorizationService.has_permission', return_value=True), \
+             patch('apps.authorization.services.AuthorizationService.get_authorized_branches', return_value=[self.branch]):
             response = self.client.patch(reverse('leave-requests-detail', kwargs={'pk': req.id}), {
                 'reason': 'Malicious modification'
             })
@@ -403,7 +430,7 @@ class AdminLeaveTypeAPITests(TestCase):
 
     def test_cannot_delete_other_employee_pending_leave(self):
         other_user = User.objects.create_user(email='other2@example.com', password='Password123!', status='active')
-        other_emp = Employee.objects.create(user=other_user, employee_code='EMP98', organization=self.org)
+        other_emp = Employee.objects.create(user=other_user, employee_code='EMP98', organization=self.org, branch=self.branch)
         req = LeaveRequest.objects.create(
             employee=other_emp, leave_type=self.leave_type,
             start_date=timezone.now().date() + timedelta(days=70),
@@ -412,7 +439,8 @@ class AdminLeaveTypeAPITests(TestCase):
         )
         self.client.force_authenticate(user=self.employee)
         from unittest.mock import patch
-        with patch('apps.authorization.services.AuthorizationService.has_permission', return_value=True):
+        with patch('apps.authorization.services.AuthorizationService.has_permission', return_value=True), \
+             patch('apps.authorization.services.AuthorizationService.get_authorized_branches', return_value=[self.branch]):
             response = self.client.delete(reverse('leave-requests-detail', kwargs={'pk': req.id}))
             self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
             self.assertTrue(LeaveRequest.objects.filter(id=req.id).exists())
@@ -433,7 +461,8 @@ class AdminLeaveTypeAPITests(TestCase):
         )
         self.client.force_authenticate(user=self.admin)
         from unittest.mock import patch
-        with patch('apps.authorization.services.AuthorizationService.has_permission', return_value=True):
+        with patch('apps.authorization.services.AuthorizationService.has_permission', return_value=True), \
+             patch('apps.authorization.services.AuthorizationService.get_authorized_branches', return_value=[self.branch]):
             response = self.client.post(reverse('leave-requests-approve', kwargs={'pk': req2.id}))
             self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
             self.assertIn('overlapping', str(response.data).lower())

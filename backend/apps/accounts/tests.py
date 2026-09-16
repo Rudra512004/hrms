@@ -8,7 +8,7 @@ from django.utils.encoding import force_bytes
 from django.contrib.auth.tokens import default_token_generator
 from apps.employees.models import Employee
 from apps.authorization.models import Permission, Role, RolePermission, UserRole
-from apps.organization.models import Organization, OfficeNetwork
+from apps.organization.models import Organization, OfficeNetwork, Branch
 
 from django.core.cache import cache
 
@@ -93,7 +93,8 @@ class EmployeeSelfServiceAPITests(TestCase):
     def setUp(self):
         self.client = APIClient()
         org = Organization.objects.create(name='Org')
-        policy = org.attendance_policy
+        branch = Branch.objects.create(organization=org, name='HQ')
+        policy = branch.attendance_policy
         policy.is_office_gps_enabled = False
         policy.is_office_ip_enabled = False
         policy.save()
@@ -106,7 +107,7 @@ class EmployeeSelfServiceAPITests(TestCase):
         self.client.force_authenticate(user=self.user)
         self.me_url = reverse('employee-me')
 
-        OfficeNetwork.objects.create(organization=org, name='TestNet', network='127.0.0.0/8', is_active=True)
+        OfficeNetwork.objects.create(branch=branch, name='TestNet', network='127.0.0.0/8', is_active=True)
 
     def test_can_modify_self_service_fields(self):
         response = self.client.patch(self.me_url, {
@@ -152,11 +153,12 @@ class ProvisioningAPITests(TestCase):
         self.regular_user = User.objects.create_user(email='regular@company.com', password='Password123!', status='active')
         self.provision_url = reverse('employee-provision')
 
+        self.branch = Branch.objects.create(organization=self.org, name='HQ')
         self.role = Role.objects.create(organization=self.org, name='HR Role')
         self.perm = Permission.objects.create(name='Create Employee', codename='employee.create', resource='employee', action='create')
         RolePermission.objects.create(role=self.role, permission=self.perm)
         UserRole.objects.create(user=self.hr_user, role=self.role)
-        OfficeNetwork.objects.create(organization=self.org, name='TestNet', network='127.0.0.0/8', is_active=True)
+        OfficeNetwork.objects.create(branch=self.branch, name='TestNet', network='127.0.0.0/8', is_active=True)
 
     def test_unauthenticated_user_cannot_provision(self):
         response = self.client.post(self.provision_url, {
@@ -209,7 +211,8 @@ class HTTPStatusMatrixTests(TestCase):
         self.client = APIClient()
         from apps.organization.models import Organization, OfficeNetwork
         org = Organization.objects.create(name='MatrixOrg')
-        policy = org.attendance_policy
+        branch = Branch.objects.create(organization=org, name='MatrixHQ')
+        policy = branch.attendance_policy
         policy.is_office_gps_enabled = False
         policy.is_office_ip_enabled = False
         policy.save()
@@ -222,7 +225,7 @@ class HTTPStatusMatrixTests(TestCase):
         self.superadmin = User.objects.create_user(email='matrix_super@company.com', password='Password123!', status='active', is_superuser=True)
         self.super_employee = Employee.objects.create(user=self.superadmin, employee_code='MAT003', organization=org)
 
-        OfficeNetwork.objects.create(organization=org, name='MatrixNet', network='127.0.0.0/8', is_active=True)
+        OfficeNetwork.objects.create(branch=branch, name='MatrixNet', network='127.0.0.0/8', is_active=True)
 
     def get_token(self, user):
         from rest_framework.authtoken.models import Token
@@ -285,11 +288,11 @@ class HTTPStatusMatrixTests(TestCase):
         # Should be 401 while deactivated
         response = self.client.get(reverse('employee-me'))
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
-        
+
         # Reactivate
         self.deactivated_user.status = 'active'
         self.deactivated_user.save()
-        
+
         # In order for this not to fail with 403 due to network, we can give them WFH or make them superadmin, or just run it without external IP
         # Default test client has no REMOTE_ADDR unless specified, which means it evaluates as local/office by default!
         response = self.client.get(reverse('employee-me'))

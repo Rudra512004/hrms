@@ -30,19 +30,22 @@ User = get_user_model()
 # Helpers
 # --------------------------------------------------------------------------- #
 
+from apps.organization.models import Organization, OfficeNetwork, Branch
+
 def make_org():
     org, _ = Organization.objects.get_or_create(name='TestOrg', defaults={})
-    policy = org.attendance_policy
+    branch, _ = Branch.objects.get_or_create(organization=org, name='HQ')
+    policy = branch.attendance_policy
     policy.is_office_gps_enabled = False
     policy.is_office_ip_enabled = False
     policy.save()
-    return org
+    return org, branch
 
 
-def make_office_network(org):
+def make_office_network(branch):
     """Allow 127.0.0.0/8 so test client (127.0.0.1) passes IsNetworkAllowed."""
     net, _ = OfficeNetwork.objects.get_or_create(
-        organization=org, name='Localhost',
+        branch=branch, name='Localhost',
         defaults={'network': '127.0.0.0/8', 'is_active': True}
     )
     return net
@@ -70,10 +73,10 @@ def grant(user, codename):
 class OnboardingEmailSecurityTests(TestCase):
     def setUp(self):
         self.client = APIClient()
-        org = make_org()
-        make_office_network(org)
+        org, branch = make_org()
+        make_office_network(branch)
         self.admin = User.objects.create_superuser(email='admin@co.com', password='Admin1234!')
-        Employee.objects.create(user=self.admin, employee_code='ADM001', personal_email='admin.personal@ext.com', organization=org)
+        Employee.objects.create(user=self.admin, employee_code='ADM001', personal_email='admin.personal@ext.com', organization=org, branch=branch)
         grant(self.admin, 'employee.create')
 
     def test_personal_email_persisted(self):
@@ -153,10 +156,10 @@ class OnboardingEmailSecurityTests(TestCase):
 class ActivationLoginFlowTests(TestCase):
     def setUp(self):
         self.client = APIClient()
-        org = make_org()
-        make_office_network(org)
+        org, branch = make_org()
+        make_office_network(branch)
         self.admin = User.objects.create_superuser(email='admin2@co.com', password='Admin1234!')
-        Employee.objects.create(user=self.admin, employee_code='ADM002', personal_email='admin2.personal@ext.com', organization=org)
+        Employee.objects.create(user=self.admin, employee_code='ADM002', personal_email='admin2.personal@ext.com', organization=org, branch=branch)
         grant(self.admin, 'employee.create')
 
     def _provision_and_get_activation_params(self, email, personal_email, code):
@@ -223,15 +226,15 @@ class ActivationLoginFlowTests(TestCase):
 class AuditCoverageTests(TestCase):
     def setUp(self):
         self.client = APIClient()
-        self.org = make_org()
-        make_office_network(self.org)
+        self.org, self.branch = make_org()
+        make_office_network(self.branch)
 
         self.admin = User.objects.create_superuser(email='admin3@co.com', password='Admin3Pass!')
-        Employee.objects.create(user=self.admin, employee_code='ADM003', personal_email='admin3.personal@ext.com', organization=self.org)
+        Employee.objects.create(user=self.admin, employee_code='ADM003', personal_email='admin3.personal@ext.com', organization=self.org, branch=self.branch)
 
         # Second user for WFH approve (can't approve own request)
         self.approver = User.objects.create_superuser(email='approver@co.com', password='Approver123!')
-        Employee.objects.create(user=self.approver, employee_code='APR001', personal_email='approver.personal@ext.com', organization=self.org)
+        Employee.objects.create(user=self.approver, employee_code='APR001', personal_email='approver.personal@ext.com', organization=self.org, branch=self.branch)
 
         for codename in [
             'employee.create', 'employee.status',
@@ -439,24 +442,24 @@ class AuditCoverageTests(TestCase):
 class AuditAPIPermissionTests(TestCase):
     def setUp(self):
         self.client = APIClient()
-        org = make_org()
-        make_office_network(org)
+        self.org, self.branch = make_org()
+        make_office_network(self.branch)
 
         # Superadmin
         self.super_user = User.objects.create_superuser(email='super@co.com', password='Super1234!')
-        Employee.objects.create(user=self.super_user, employee_code='SUPER01', personal_email='super.personal@ext.com', organization=org)
+        Employee.objects.create(user=self.super_user, employee_code='SUPER01', personal_email='super.personal@ext.com', organization=self.org, branch=self.branch)
         grant(self.super_user, 'audit.view')
 
         # Authorized user
         self.auth_user = User.objects.create_user(email='authuser@co.com', password='Auth1234!')
-        Employee.objects.create(user=self.auth_user, employee_code='AUTH01', personal_email='authuser.personal@ext.com', organization=org)
+        Employee.objects.create(user=self.auth_user, employee_code='AUTH01', personal_email='authuser.personal@ext.com', organization=self.org, branch=self.branch)
         self.auth_user.status = 'active'
         self.auth_user.save()
         grant(self.auth_user, 'audit.view')
 
         # Normal user — no audit.view
         self.normal_user = User.objects.create_user(email='normal@co.com', password='Normal1234!')
-        Employee.objects.create(user=self.normal_user, employee_code='NORM01', personal_email='normal.personal@ext.com')
+        Employee.objects.create(user=self.normal_user, employee_code='NORM01', personal_email='normal.personal@ext.com', organization=self.org, branch=self.branch)
         self.normal_user.status = 'active'
         self.normal_user.save()
 

@@ -19,10 +19,13 @@ class AttendanceViewSet(viewsets.GenericViewSet):
     def _validate_location(self, request, employee):
         from apps.authorization.network import NetworkAccessService
 
+        if getattr(request.user, 'is_superuser', False):
+            return None # Superusers bypass location restrictions
+
         # Determine Attendance Policy
-        # Using getattr to safely handle case where org lacks a policy (fallback to strict defaults)
-        org = employee.organization
-        policy = getattr(org, 'attendance_policy', None)
+        # Using getattr to safely handle case where branch lacks a policy (fallback to strict defaults)
+        branch = employee.branch
+        policy = getattr(branch, 'attendance_policy', None)
 
         is_gps_enabled = policy.is_office_gps_enabled if policy else True
         is_ip_enabled = policy.is_office_ip_enabled if policy else False
@@ -55,7 +58,7 @@ class AttendanceViewSet(viewsets.GenericViewSet):
         # 2. IP Enforcement
         if is_ip_enabled:
             ip = NetworkAccessService.get_client_ip(request)
-            if not NetworkAccessService.is_office_network_allowed(ip, org):
+            if not NetworkAccessService.is_office_network_allowed(ip, employee.organization):
                 return Response({'detail': 'ATTENDANCE_OUTSIDE_OFFICE_NETWORK'}, status=status.HTTP_403_FORBIDDEN)
 
         # 3. GPS Enforcement
@@ -270,11 +273,20 @@ class AttendanceManagementViewSet(viewsets.GenericViewSet):
 
     def get_queryset(self):
         user = self.request.user
+        qs = Attendance.objects.all()
         if user.is_superuser:
-            return Attendance.objects.all()
-        if hasattr(user, 'employee') and user.employee.organization_id:
-            return Attendance.objects.filter(employee__organization_id=user.employee.organization_id)
-        return Attendance.objects.none()
+            pass
+        elif hasattr(user, 'employee'):
+            from apps.authorization.services import AuthorizationService
+            authorized_branches = AuthorizationService.get_authorized_branches(user, 'attendance.view_all')
+            qs = qs.filter(employee__branch__in=authorized_branches)
+        else:
+            return Attendance.objects.none()
+
+        branch_id = self.request.query_params.get('branch_id')
+        if branch_id:
+            qs = qs.filter(employee__branch_id=branch_id)
+        return qs
 
     def list(self, request):
         queryset = self.get_queryset()
@@ -286,11 +298,22 @@ class HolidayViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         user = self.request.user
+        qs = Holiday.objects.all()
         if user.is_superuser:
-            return Holiday.objects.all()
-        if hasattr(user, 'employee') and user.employee.organization_id:
-            return Holiday.objects.filter(organization_id=user.employee.organization_id)
-        return Holiday.objects.none()
+            pass
+        elif hasattr(user, 'employee'):
+            from apps.authorization.services import AuthorizationService
+            # We use 'holiday.view' to list holidays, or 'holiday.manage' if you want. We just use the action.
+            perm = 'holiday.view' if self.action in ['list', 'retrieve'] else 'holiday.manage'
+            authorized_branches = AuthorizationService.get_authorized_branches(user, perm)
+            qs = qs.filter(branch__in=authorized_branches)
+        else:
+            return Holiday.objects.none()
+
+        branch_id = self.request.query_params.get('branch_id')
+        if branch_id:
+            qs = qs.filter(branch_id=branch_id)
+        return qs
 
     def get_permissions(self):
         if self.action in ['list', 'retrieve']:
@@ -301,25 +324,34 @@ class HolidayViewSet(viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         from rest_framework.exceptions import ValidationError
-        if self.request.user.is_superuser and not hasattr(self.request.user, 'employee'):
-            from apps.organization.models import Organization
-            org = Organization.objects.first()
-        else:
-            org = self.request.user.employee.organization
-        if not org:
-            raise ValidationError({"organization": "User does not belong to an organization."})
-        serializer.save(organization=org)
+        branch = serializer.validated_data.get('branch')
+        if not branch:
+            raise ValidationError({"branch": "Branch is required."})
+        from apps.authorization.services import AuthorizationService
+        if not AuthorizationService.has_permission(self.request.user, 'holiday.manage', branch.id):
+            raise ValidationError({"branch": "You do not have permission to manage holidays for this branch."})
+        serializer.save()
 
 class ShiftViewSet(viewsets.ModelViewSet):
     serializer_class = ShiftSerializer
 
     def get_queryset(self):
         user = self.request.user
+        qs = Shift.objects.all()
         if user.is_superuser:
-            return Shift.objects.all()
-        if hasattr(user, 'employee') and user.employee.organization_id:
-            return Shift.objects.filter(organization_id=user.employee.organization_id)
-        return Shift.objects.none()
+            pass
+        elif hasattr(user, 'employee'):
+            from apps.authorization.services import AuthorizationService
+            perm = 'shift.view' if self.action in ['list', 'retrieve'] else 'shift.manage'
+            authorized_branches = AuthorizationService.get_authorized_branches(user, perm)
+            qs = qs.filter(branch__in=authorized_branches)
+        else:
+            return Shift.objects.none()
+
+        branch_id = self.request.query_params.get('branch_id')
+        if branch_id:
+            qs = qs.filter(branch_id=branch_id)
+        return qs
 
     def get_permissions(self):
         if self.action in ['list', 'retrieve']:
@@ -330,14 +362,13 @@ class ShiftViewSet(viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         from rest_framework.exceptions import ValidationError
-        if self.request.user.is_superuser and not hasattr(self.request.user, 'employee'):
-            from apps.organization.models import Organization
-            org = Organization.objects.first()
-        else:
-            org = self.request.user.employee.organization
-        if not org:
-            raise ValidationError({"organization": "User does not belong to an organization."})
-        serializer.save(organization=org)
+        branch = serializer.validated_data.get('branch')
+        if not branch:
+            raise ValidationError({"branch": "Branch is required."})
+        from apps.authorization.services import AuthorizationService
+        if not AuthorizationService.has_permission(self.request.user, 'shift.manage', branch.id):
+            raise ValidationError({"branch": "You do not have permission to manage shifts for this branch."})
+        serializer.save()
 
 
 class EmployeeShiftAssignmentViewSet(viewsets.ModelViewSet):
@@ -345,13 +376,21 @@ class EmployeeShiftAssignmentViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         user = self.request.user
+        qs = EmployeeShiftAssignment.objects.all()
         if user.is_superuser:
-            return EmployeeShiftAssignment.objects.all()
-        if hasattr(user, 'employee') and user.employee.organization_id:
-            return EmployeeShiftAssignment.objects.filter(
-                employee__organization_id=user.employee.organization_id
-            )
-        return EmployeeShiftAssignment.objects.none()
+            pass
+        elif hasattr(user, 'employee'):
+            from apps.authorization.services import AuthorizationService
+            perm = 'shift_assignment.view' if self.action in ['list', 'retrieve'] else 'shift_assignment.manage'
+            authorized_branches = AuthorizationService.get_authorized_branches(user, perm)
+            qs = qs.filter(employee__branch__in=authorized_branches)
+        else:
+            return EmployeeShiftAssignment.objects.none()
+
+        branch_id = self.request.query_params.get('branch_id')
+        if branch_id:
+            qs = qs.filter(employee__branch_id=branch_id)
+        return qs
 
     def get_permissions(self):
         if self.action in ['list', 'retrieve']:

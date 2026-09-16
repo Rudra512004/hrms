@@ -19,7 +19,7 @@ class NetworkAccessService:
         except ValueError:
             return False
 
-        qs = OfficeNetwork.objects.filter(is_active=True, organization=organization)
+        qs = OfficeNetwork.objects.filter(is_active=True, branch__organization=organization)
 
         for office_net in qs:
             try:

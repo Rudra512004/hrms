@@ -41,20 +41,19 @@ class WorkingCalendarViewSet(viewsets.ModelViewSet):
         user = self.request.user
         if getattr(user, 'is_superuser', False):
             return WorkingCalendar.objects.all()
-        employee = getattr(user, 'employee', None)
-        if employee:
-            return WorkingCalendar.objects.filter(organization=employee.organization)
-        return WorkingCalendar.objects.none()
+
+        from apps.authorization.services import AuthorizationService
+        authorized_branches = AuthorizationService.get_authorized_branches(user, 'organization.update')
+        return WorkingCalendar.objects.filter(branch__in=authorized_branches)
 
     def perform_create(self, serializer):
         user = self.request.user
         if getattr(user, 'is_superuser', False):
-            # Admin can create for any org, handled by serializer?
-            # Actually we usually don't allow explicit creation since it's OneToOne and auto-created.
             pass
-        employee = getattr(user, 'employee', None)
-        if employee:
-            serializer.save(organization=employee.organization)
+        else:
+            # Creation is typically via signals, but if explicit, we would need a branch_id.
+            # Usually handled automatically or via BranchViewSet.
+            pass
 
 class OrganizationViewSet(viewsets.ModelViewSet):
     serializer_class = OrganizationSerializer
@@ -187,14 +186,18 @@ class OfficeNetworkViewSet(viewsets.ModelViewSet):
         user = self.request.user
         if user.is_superuser:
             qs = OfficeNetwork.objects.all()
-            org_id = self.request.query_params.get('organization')
-            if org_id:
-                qs = qs.filter(organization_id=org_id)
+            branch_id = self.request.query_params.get('branch')
+            if branch_id:
+                qs = qs.filter(branch_id=branch_id)
             return qs
-        org = _get_request_user_org(self.request)
-        if org:
-            return OfficeNetwork.objects.filter(organization_id=org.id)
-        return OfficeNetwork.objects.none()
+
+        from apps.authorization.services import AuthorizationService
+        if self.action in ['list', 'retrieve']:
+            authorized_branches = AuthorizationService.get_authorized_branches(user, 'office_network.view')
+        else:
+            authorized_branches = AuthorizationService.get_authorized_branches(user, 'office_network.manage')
+
+        return OfficeNetwork.objects.filter(branch__in=authorized_branches)
 
     def get_permissions(self):
         if self.action in ['list', 'retrieve']:
@@ -211,31 +214,26 @@ class OfficeNetworkViewSet(viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         user = self.request.user
-        if user.is_superuser:
-            org_id = self.request.data.get('organization')
-            if org_id:
-                try:
-                    org = Organization.objects.get(id=org_id)
-                except Organization.DoesNotExist:
-                    raise ValidationError({"organization": "Specified organization does not exist."})
-            else:
-                org = _get_request_user_org(self.request) or Organization.objects.first()
-        else:
-            org = _get_request_user_org(self.request)
-            if not org:
-                raise ValidationError({"organization": "User does not belong to an organization."})
-            req_org_id = self.request.data.get('organization')
-            if req_org_id:
-                try:
-                    if int(req_org_id) != org.id:
-                        raise ValidationError({"organization": "Cannot create resources for another organization."})
-                except (ValueError, TypeError):
-                    raise ValidationError({"organization": "Invalid organization ID."})
+        branch_id = self.request.data.get('branch')
+
+        if not branch_id:
+            raise ValidationError({"branch": "Branch ID is required."})
 
         try:
-            serializer.save(organization=org)
+            branch = Branch.objects.get(id=branch_id)
+        except Branch.DoesNotExist:
+            raise ValidationError({"branch": "Specified branch does not exist."})
+
+        if not user.is_superuser:
+            from apps.authorization.services import AuthorizationService
+            authorized_branches = AuthorizationService.get_authorized_branches(user, 'office_network.create')
+            if branch not in authorized_branches:
+                raise ValidationError({"branch": "Cannot create resources for a branch you do not have permission for."})
+
+        try:
+            serializer.save(branch=branch)
         except IntegrityError:
-            raise ValidationError({"network": "This network is already configured for this organization."})
+            raise ValidationError({"network": "This network is already configured for this branch."})
 
 
 class BranchViewSet(viewsets.ModelViewSet):

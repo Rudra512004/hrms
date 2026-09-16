@@ -88,8 +88,9 @@ class EmployeeDocumentTests(TestCase):
         self.org_b = Organization.objects.create(name='Org B Doc', status='active')
 
         # Allow 127.0.0.0/8 so test client passes IsNetworkAllowed
-        OfficeNetwork.objects.create(
-            organization=self.org_a,
+        from apps.organization.models import Branch
+        self.branch_a = Branch.objects.create(organization=self.org_a, name='Branch A Doc')
+        OfficeNetwork.objects.create(branch=self.branch_a,
             name='Localhost',
             network='127.0.0.0/8',
             is_active=True
@@ -324,4 +325,4 @@ class EmployeeDocumentTests(TestCase):
         )
         client = auth_client(self.emp_user)  # emp_user does not own other_doc and has no employee.document.view
         response = client.get(DOWNLOAD_URL(other_doc.id))
-        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)

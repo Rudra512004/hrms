@@ -3,7 +3,7 @@ from django.contrib.auth import get_user_model
 from rest_framework.test import APIClient
 from rest_framework import status
 
-from apps.organization.models import Organization, Department, Designation, OfficeNetwork
+from apps.organization.models import Organization, Department, Designation, OfficeNetwork, Branch
 from apps.employees.models import Employee, EmploymentStatus
 from apps.authorization.models import Role, Permission, UserRole, RolePermission
 from apps.audit.models import AuditLog
@@ -100,8 +100,10 @@ class MultiTenantIsolationSecurityTests(TestCase):
         self.desig_a = Designation.objects.create(organization=self.org_a, name='Developer Alpha')
         self.desig_b = Designation.objects.create(organization=self.org_b, name='Developer Beta')
 
-        self.net_a = OfficeNetwork.objects.create(organization=self.org_a, name='Net Alpha', network='127.0.0.1/32')
-        self.net_b = OfficeNetwork.objects.create(organization=self.org_b, name='Net Beta', network='172.16.0.0/16')
+        self.branch_a = Branch.objects.create(organization=self.org_a, name='HQ Alpha')
+        self.branch_b = Branch.objects.create(organization=self.org_b, name='HQ Beta')
+        self.net_a = OfficeNetwork.objects.create(branch=self.branch_a, name='Net Alpha', network='127.0.0.1/32')
+        self.net_b = OfficeNetwork.objects.create(branch=self.branch_b, name='Net Beta', network='172.16.0.0/16')
 
         # 8. Create Audit Logs
         self.audit_a = AuditLog.objects.create(

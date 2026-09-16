@@ -62,7 +62,7 @@ class EndToEndHRMSWorkflowTests(TestCase):
 
         # 4. Shift Setup
         self.shift = Shift.objects.create(
-            organization=self.org,
+            branch=self.branch,
             name='General Shift',
             start_time='09:00:00',
             end_time='18:00:00',
@@ -72,7 +72,7 @@ class EndToEndHRMSWorkflowTests(TestCase):
 
         # 5. Holiday Setup (e.g. New Year's Day)
         self.holiday = Holiday.objects.create(
-            organization=self.org,
+            branch=self.branch,
             name="New Year's Day",
             date=date(2025, 1, 1),
             is_active=True,
@@ -137,10 +137,19 @@ class EndToEndHRMSWorkflowTests(TestCase):
     def _auth_as(self, user, permissions=None):
         self.client.force_authenticate(user=user)
         perms = set(permissions or [])
-        return patch(
+        from contextlib import ExitStack
+        stack = ExitStack()
+        stack.enter_context(patch(
             'apps.authorization.services.AuthorizationService.has_permission',
             side_effect=lambda u, p: (p in perms) if u == user else False
-        )
+        ))
+        # When the user is the test subject with any permissions, expose all org branches
+        all_branches = list(Branch.objects.filter(organization=self.org))
+        stack.enter_context(patch(
+            'apps.authorization.services.AuthorizationService.get_authorized_branches',
+            side_effect=lambda u, p: all_branches if (u == user and bool(perms)) else []
+        ))
+        return stack
 
     # ─── Full Lifecycle Test ──────────────────────────────────────────────────
 

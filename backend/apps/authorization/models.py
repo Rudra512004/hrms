@@ -43,6 +43,10 @@ class RolePermission(models.Model):
     def __str__(self):
         return f"{self.role.name} -> {self.permission.codename}"
 
+class ScopeChoices(models.TextChoices):
+    ORGANIZATION = 'organization', 'Organization'
+    BRANCH = 'branch', 'Branch'
+
 class UserRole(models.Model):
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='user_roles')
     role = models.ForeignKey(Role, on_delete=models.CASCADE, related_name='user_roles')
@@ -51,6 +55,20 @@ class UserRole(models.Model):
     expires_at = models.DateTimeField(null=True, blank=True)
     is_revoked = models.BooleanField(default=False)
     revoked_at = models.DateTimeField(null=True, blank=True)
+    scope = models.CharField(max_length=20, choices=ScopeChoices.choices, default=ScopeChoices.ORGANIZATION)
+    branch = models.ForeignKey('organization.Branch', on_delete=models.CASCADE, null=True, blank=True, related_name='+')
+
+    def clean(self):
+        super().clean()
+        from django.core.exceptions import ValidationError
+        if self.scope == ScopeChoices.ORGANIZATION and self.branch_id is not None:
+            raise ValidationError({'branch': 'Branch must be null when scope is organization.'})
+        if self.scope == ScopeChoices.BRANCH and self.branch_id is None:
+            raise ValidationError({'branch': 'Branch must be set when scope is branch.'})
+
+    def save(self, *args, **kwargs):
+        self.clean()
+        super().save(*args, **kwargs)
 
     def __str__(self):
         return f"{self.user.email} - {self.role.name}"
@@ -63,6 +81,20 @@ class UserPermissionGrant(models.Model):
     expires_at = models.DateTimeField(null=True, blank=True)
     is_revoked = models.BooleanField(default=False)
     revoked_at = models.DateTimeField(null=True, blank=True)
+    scope = models.CharField(max_length=20, choices=ScopeChoices.choices, default=ScopeChoices.ORGANIZATION)
+    branch = models.ForeignKey('organization.Branch', on_delete=models.CASCADE, null=True, blank=True, related_name='+')
+
+    def clean(self):
+        super().clean()
+        from django.core.exceptions import ValidationError
+        if self.scope == ScopeChoices.ORGANIZATION and self.branch_id is not None:
+            raise ValidationError({'branch': 'Branch must be null when scope is organization.'})
+        if self.scope == ScopeChoices.BRANCH and self.branch_id is None:
+            raise ValidationError({'branch': 'Branch must be set when scope is branch.'})
+
+    def save(self, *args, **kwargs):
+        self.clean()
+        super().save(*args, **kwargs)
 
     def __str__(self):
         return f"{self.user.email} - {self.permission.codename}"

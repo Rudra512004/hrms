@@ -14,7 +14,7 @@ class Organization(models.Model):
         return self.name
 
 class WorkingCalendar(models.Model):
-    organization = models.OneToOneField(Organization, on_delete=models.CASCADE, related_name='working_calendar')
+    branch = models.OneToOneField('organization.Branch', on_delete=models.CASCADE, related_name='working_calendar')
     work_days = models.CharField(
         max_length=50,
         default='0,1,2,3,4',
@@ -22,7 +22,7 @@ class WorkingCalendar(models.Model):
     )
 
     def __str__(self):
-        return f"{self.organization.name} Calendar"
+        return f"{self.branch.name} Calendar"
 
     def get_work_days_list(self):
         try:
@@ -41,7 +41,7 @@ def validate_network(value):
         raise ValidationError("Invalid CIDR network")
 
 class OfficeNetwork(models.Model):
-    organization = models.ForeignKey(Organization, on_delete=models.CASCADE, related_name='office_networks')
+    branch = models.ForeignKey('organization.Branch', on_delete=models.CASCADE, related_name='office_networks')
     name = models.CharField(max_length=255)
     network = models.CharField(max_length=45, validators=[validate_network], help_text="e.g., 203.0.113.0/24")
     description = models.TextField(blank=True)
@@ -50,7 +50,7 @@ class OfficeNetwork(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
-        unique_together = ('organization', 'network')
+        unique_together = ('branch', 'network')
 
     def __str__(self):
         return f"{self.name} ({self.network})"
@@ -110,7 +110,7 @@ class Branch(models.Model):
         return f"{self.name} ({self.organization.name})"
 
 class AttendancePolicy(models.Model):
-    organization = models.OneToOneField(Organization, on_delete=models.CASCADE, related_name='attendance_policy')
+    branch = models.OneToOneField('organization.Branch', on_delete=models.CASCADE, related_name='attendance_policy')
     is_office_gps_enabled = models.BooleanField(default=True)
     is_office_ip_enabled = models.BooleanField(default=False)
     is_wfh_enabled = models.BooleanField(default=False)
@@ -119,13 +119,13 @@ class AttendancePolicy(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     def __str__(self):
-        return f"Attendance Policy ({self.organization.name})"
+        return f"Attendance Policy ({self.branch.name})"
 
 from django.db.models.signals import post_save
 from django.dispatch import receiver
 
-@receiver(post_save, sender=Organization)
-def auto_provision_organization_configs(sender, instance, created, **kwargs):
+@receiver(post_save, sender=Branch)
+def auto_provision_branch_configs(sender, instance, created, **kwargs):
     if created:
-        AttendancePolicy.objects.get_or_create(organization=instance)
-        WorkingCalendar.objects.get_or_create(organization=instance)
+        AttendancePolicy.objects.get_or_create(branch=instance)
+        WorkingCalendar.objects.get_or_create(branch=instance)

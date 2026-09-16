@@ -1,4 +1,4 @@
-﻿from django.test import TestCase
+from django.test import TestCase
 from django.urls import reverse
 from rest_framework import status
 from rest_framework.test import APIClient
@@ -13,32 +13,36 @@ User = get_user_model()
 class ShiftAndAssignmentAPITests(TestCase):
     def setUp(self):
         self.client = APIClient()
-        
+
+        from apps.organization.models import Branch
+
         # Org 1
         self.org1 = Organization.objects.create(name='Org 1')
+        self.branch1 = Branch.objects.create(organization=self.org1, name='HQ 1')
         self.user1 = User.objects.create_user(email='emp1@example.com', password='Password123!', status='active')
-        self.emp1 = Employee.objects.create(user=self.user1, employee_code='E1', organization=self.org1)
-        
+        self.emp1 = Employee.objects.create(user=self.user1, employee_code='E1', organization=self.org1, branch=self.branch1)
+
         # Superuser with permission seed
         self.super_user = User.objects.create_user(email='super@example.com', password='Password123!', status='active', is_superuser=True)
-        self.super_emp = Employee.objects.create(user=self.super_user, employee_code='SUPER', organization=self.org1)
-        
+        self.super_emp = Employee.objects.create(user=self.super_user, employee_code='SUPER', organization=self.org1, branch=self.branch1)
+
         # Org 2
         self.org2 = Organization.objects.create(name='Org 2')
+        self.branch2 = Branch.objects.create(organization=self.org2, name='HQ 2')
         self.user2 = User.objects.create_user(email='emp2@example.com', password='Password123!', status='active')
-        self.emp2 = Employee.objects.create(user=self.user2, employee_code='E2', organization=self.org2)
+        self.emp2 = Employee.objects.create(user=self.user2, employee_code='E2', organization=self.org2, branch=self.branch2)
 
         # Base shift in Org 1
         self.shift1 = Shift.objects.create(
-            organization=self.org1,
+            branch=self.branch1,
             name='Day Shift',
             start_time=time(9, 0),
             end_time=time(17, 0)
         )
-        
+
         # Base shift in Org 2
         self.shift2 = Shift.objects.create(
-            organization=self.org2,
+            branch=self.branch2,
             name='Night Shift Org 2',
             start_time=time(22, 0),
             end_time=time(6, 0)
@@ -47,10 +51,10 @@ class ShiftAndAssignmentAPITests(TestCase):
     def test_shift_create_and_tenant_isolation(self):
         self.client.force_authenticate(user=self.super_user)
         url = reverse('shift-list')
-        
+
         # Create
         data = {
-            'organization': self.org1.id,
+            'branch': self.branch1.id,
             'name': 'Overnight',
             'start_time': '22:00:00',
             'end_time': '06:00:00',
@@ -59,7 +63,7 @@ class ShiftAndAssignmentAPITests(TestCase):
         res = self.client.post(url, data)
         self.assertEqual(res.status_code, status.HTTP_201_CREATED)
         self.assertEqual(res.data['name'], 'Overnight')
-        
+
         # List Isolation
         res = self.client.get(url)
         self.assertEqual(res.status_code, status.HTTP_200_OK)
@@ -68,10 +72,10 @@ class ShiftAndAssignmentAPITests(TestCase):
     def test_shift_work_days_validation(self):
         self.client.force_authenticate(user=self.super_user)
         url = reverse('shift-list')
-        
+
         # Duplicate days
         data = {
-            'organization': self.org1.id,
+            'branch': self.branch1.id,
             'name': 'Duplicate',
             'start_time': '10:00:00',
             'end_time': '18:00:00',
@@ -99,7 +103,7 @@ class ShiftAndAssignmentAPITests(TestCase):
     def test_shift_assignment_overlap_rejection(self):
         self.client.force_authenticate(user=self.super_user)
         url = reverse('shift-assignment-list')
-        
+
         # Valid assignment 1
         res1 = self.client.post(url, {
             'employee': self.emp1.id,
@@ -145,11 +149,11 @@ class ShiftAndAssignmentAPITests(TestCase):
             'effective_to': ''
         })
         self.assertEqual(res5.status_code, status.HTTP_400_BAD_REQUEST)
-        
+
     def test_assignment_cross_tenant_rejection(self):
         self.client.force_authenticate(user=self.super_user)
         url = reverse('shift-assignment-list')
-        
+
         # Shift in Org 2, Employee in Org 1
         res = self.client.post(url, {
             'employee': self.emp1.id,
@@ -157,11 +161,11 @@ class ShiftAndAssignmentAPITests(TestCase):
             'effective_from': '2023-01-01'
         })
         self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
-        
+
     def test_invalid_effective_dates(self):
         self.client.force_authenticate(user=self.super_user)
         url = reverse('shift-assignment-list')
-        
+
         # End before start
         res = self.client.post(url, {
             'employee': self.emp1.id,

@@ -14,30 +14,34 @@ class B0AttendanceSecurityTests(APITestCase):
         self.org_a = Organization.objects.create(name="Org A")
         self.org_b = Organization.objects.create(name="Org B")
 
+        # Create Branches
+        self.branch_a = Branch.objects.create(
+            organization=self.org_a, name="HQ A",
+            latitude='12.971600', longitude='77.594600', radius=100.0
+        )
+        self.branch_b = Branch.objects.create(
+            organization=self.org_b, name="HQ B",
+            latitude='12.971600', longitude='77.594600', radius=100.0
+        )
+
         # Create Attendance Policies
-        self.policy_a = self.org_a.attendance_policy
+        self.policy_a = self.branch_a.attendance_policy
         self.policy_a.is_office_gps_enabled = True
         self.policy_a.is_office_ip_enabled = True
         self.policy_a.is_wfh_enabled = True
         self.policy_a.wfh_bypasses_office_restrictions = True
         self.policy_a.save()
 
-        self.policy_b = self.org_b.attendance_policy
+        self.policy_b = self.branch_b.attendance_policy
         self.policy_b.is_office_gps_enabled = True
         self.policy_b.is_office_ip_enabled = True
         self.policy_b.is_wfh_enabled = True
         self.policy_b.wfh_bypasses_office_restrictions = True
         self.policy_b.save()
 
-        # Create Branches
-        self.branch_a = Branch.objects.create(
-            organization=self.org_a, name="HQ A",
-            latitude='12.971600', longitude='77.594600', radius=100.0
-        )
-
         # Create Networks
-        self.net_a = OfficeNetwork.objects.create(organization=self.org_a, name="Net A", network="192.168.1.0/24")
-        self.net_b = OfficeNetwork.objects.create(organization=self.org_b, name="Net B", network="10.0.0.0/8")
+        self.net_a = OfficeNetwork.objects.create(branch=self.branch_a, name="Net A", network="192.168.1.0/24")
+        self.net_b = OfficeNetwork.objects.create(branch=self.branch_b, name="Net B", network="10.0.0.0/8")
 
         # Create User & Employee for Org A
         self.user_a = User.objects.create_user(email="emp_a@orga.com", password="pwd", first_name="Emp", last_name="A")

@@ -119,11 +119,27 @@ class EmployeeManagementViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         user = self.request.user
+        qs = Employee.objects.all()
         if user.is_superuser:
-            return Employee.objects.all()
-        if hasattr(user, 'employee') and user.employee.organization_id:
-            return Employee.objects.filter(organization_id=user.employee.organization_id)
-        return Employee.objects.none()
+            pass
+        elif hasattr(user, 'employee'):
+            from django.db.models import Q
+            authorized_branches = AuthorizationService.get_authorized_branches(user, 'employee.view')
+            if AuthorizationService.has_permission(user, 'employee.view', branch_id=None):
+                qs = qs.filter(
+                    Q(branch__in=authorized_branches) |
+                    Q(branch__isnull=True, organization=user.employee.organization)
+                )
+            else:
+                qs = qs.filter(branch__in=authorized_branches)
+        else:
+            return Employee.objects.none()
+
+        branch_id = self.request.query_params.get('branch_id')
+        if branch_id:
+            qs = qs.filter(branch_id=branch_id)
+
+        return qs
 
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
@@ -703,25 +719,26 @@ class EmployeeDocumentViewSet(viewsets.GenericViewSet):
     Organization isolation (IDOR protection) is enforced in get_queryset().
     """
 
-    def _get_employee_org(self, user):
-        """Return org_id for the requesting user, or None for superusers."""
-        if user.is_superuser:
-            return None
-        if hasattr(user, 'employee') and user.employee.organization_id:
-            return user.employee.organization_id
-        return -1  # sentinel: force empty queryset for users without employee
-
     def get_queryset(self):
         user = self.request.user
-        org_id = self._get_employee_org(user)
-        if org_id is None:
-            qs = EmployeeDocument.objects.all()
-        elif org_id == -1:
-            return EmployeeDocument.objects.none()
-        else:
-            qs = EmployeeDocument.objects.filter(employee__organization_id=org_id)
+        qs = EmployeeDocument.objects.all()
 
-        # Optional ?employee=<id> filter
+        if user.is_superuser:
+            pass
+        elif hasattr(user, 'employee'):
+            from django.db.models import Q
+            authorized_branches = AuthorizationService.get_authorized_branches(user, 'employee.document.view')
+            if AuthorizationService.has_permission(user, 'employee.document.view', branch_id=None):
+                qs = qs.filter(
+                    Q(employee=user.employee) |
+                    Q(employee__branch__in=authorized_branches) |
+                    Q(employee__branch__isnull=True, employee__organization=user.employee.organization)
+                )
+            else:
+                qs = qs.filter(Q(employee=user.employee) | Q(employee__branch__in=authorized_branches))
+        else:
+            return EmployeeDocument.objects.none()
+
         employee_id = self.request.query_params.get('employee')
         if employee_id:
             qs = qs.filter(employee_id=employee_id)
@@ -772,13 +789,25 @@ class EmployeeDocumentViewSet(viewsets.GenericViewSet):
         serializer = EmployeeDocumentUploadSerializer(data=request.data, context={'request': request})
         serializer.is_valid(raise_exception=True)
 
-        # Org isolation: ensure the target employee belongs to the same org
+        # Branch isolation: ensure the target employee belongs to an authorized branch
         target_employee = serializer.validated_data['employee']
-        org_id = self._get_employee_org(request.user)
-        if org_id is not None and org_id != -1:
-            if target_employee.organization_id != org_id:
+
+        if not request.user.is_superuser:
+            if not hasattr(request.user, 'employee'):
+                return Response(status=status.HTTP_403_FORBIDDEN)
+
+            authorized_branches = AuthorizationService.get_authorized_branches(request.user, 'employee.document.upload')
+
+            can_upload = False
+            if target_employee.branch in authorized_branches:
+                can_upload = True
+            elif target_employee.branch is None and target_employee.organization == request.user.employee.organization:
+                if AuthorizationService.has_permission(request.user, 'employee.document.upload', branch_id=None):
+                    can_upload = True
+
+            if not can_upload:
                 return Response(
-                    {'detail': 'Cannot upload documents for an employee in a different organization.'},
+                    {'detail': 'Cannot upload documents for an employee in this branch.'},
                     status=status.HTTP_403_FORBIDDEN
                 )
 
