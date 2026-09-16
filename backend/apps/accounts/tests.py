@@ -92,16 +92,20 @@ class AuthenticationAPITests(TestCase):
 class EmployeeSelfServiceAPITests(TestCase):
     def setUp(self):
         self.client = APIClient()
+        org = Organization.objects.create(name='Org')
+        policy = org.attendance_policy
+        policy.is_office_gps_enabled = False
+        policy.is_office_ip_enabled = False
+        policy.save()
         self.user = User.objects.create_user(email='employee@company.com', password='Password123!', status='active')
-        self.employee = Employee.objects.create(user=self.user, employee_code='EMP001', phone_number='12345')
+        self.employee = Employee.objects.create(user=self.user, employee_code='EMP001', phone_number='12345', organization=org)
 
         self.other_user = User.objects.create_user(email='other@company.com', password='Password123!', status='active')
-        self.other_employee = Employee.objects.create(user=self.other_user, employee_code='EMP002')
+        self.other_employee = Employee.objects.create(user=self.other_user, employee_code='EMP002', organization=org)
 
         self.client.force_authenticate(user=self.user)
         self.me_url = reverse('employee-me')
 
-        org = Organization.objects.create(name='Org')
         OfficeNetwork.objects.create(organization=org, name='TestNet', network='127.0.0.0/8', is_active=True)
 
     def test_can_modify_self_service_fields(self):
@@ -203,17 +207,21 @@ class HTTPStatusMatrixTests(TestCase):
     def setUp(self):
         from rest_framework.test import APIClient
         self.client = APIClient()
-        self.active_user = User.objects.create_user(email='matrix_active@company.com', password='Password123!', status='active')
-        self.employee = Employee.objects.create(user=self.active_user, employee_code='MAT001')
-
-        self.deactivated_user = User.objects.create_user(email='matrix_deact@company.com', password='Password123!', status='inactive')
-        self.deactivated_employee = Employee.objects.create(user=self.deactivated_user, employee_code='MAT002')
-
-        self.superadmin = User.objects.create_user(email='matrix_super@company.com', password='Password123!', status='active', is_superuser=True)
-        self.super_employee = Employee.objects.create(user=self.superadmin, employee_code='MAT003')
-
         from apps.organization.models import Organization, OfficeNetwork
         org = Organization.objects.create(name='MatrixOrg')
+        policy = org.attendance_policy
+        policy.is_office_gps_enabled = False
+        policy.is_office_ip_enabled = False
+        policy.save()
+        self.active_user = User.objects.create_user(email='matrix_active@company.com', password='Password123!', status='active')
+        self.employee = Employee.objects.create(user=self.active_user, employee_code='MAT001', organization=org)
+
+        self.deactivated_user = User.objects.create_user(email='matrix_deact@company.com', password='Password123!', status='inactive')
+        self.deactivated_employee = Employee.objects.create(user=self.deactivated_user, employee_code='MAT002', organization=org)
+
+        self.superadmin = User.objects.create_user(email='matrix_super@company.com', password='Password123!', status='active', is_superuser=True)
+        self.super_employee = Employee.objects.create(user=self.superadmin, employee_code='MAT003', organization=org)
+
         OfficeNetwork.objects.create(organization=org, name='MatrixNet', network='127.0.0.0/8', is_active=True)
 
     def get_token(self, user):

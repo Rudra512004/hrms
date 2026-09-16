@@ -18,11 +18,11 @@ class GeofenceTests(TestCase):
         
         self.branch1 = Branch.objects.create(
             organization=self.org1, name='HQ', 
-            latitude=19.0760, longitude=72.8777, radius=100.0
+            latitude='19.0760', longitude='72.8777', radius='100.0'
         )
         self.branch2 = Branch.objects.create(
             organization=self.org2, name='Remote', 
-            latitude=28.7041, longitude=77.1025, radius=100.0
+            latitude='28.7041', longitude='77.1025', radius='100.0'
         )
         
         self.user1 = User.objects.create_user(email='emp1@test.com', password='Password123!', status='active')

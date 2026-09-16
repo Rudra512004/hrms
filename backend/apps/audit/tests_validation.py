@@ -32,6 +32,10 @@ User = get_user_model()
 
 def make_org():
     org, _ = Organization.objects.get_or_create(name='TestOrg', defaults={})
+    policy = org.attendance_policy
+    policy.is_office_gps_enabled = False
+    policy.is_office_ip_enabled = False
+    policy.save()
     return org
 
 
@@ -69,7 +73,7 @@ class OnboardingEmailSecurityTests(TestCase):
         org = make_org()
         make_office_network(org)
         self.admin = User.objects.create_superuser(email='admin@co.com', password='Admin1234!')
-        Employee.objects.create(user=self.admin, employee_code='ADM001', personal_email='admin.personal@ext.com')
+        Employee.objects.create(user=self.admin, employee_code='ADM001', personal_email='admin.personal@ext.com', organization=org)
         grant(self.admin, 'employee.create')
 
     def test_personal_email_persisted(self):
@@ -152,7 +156,7 @@ class ActivationLoginFlowTests(TestCase):
         org = make_org()
         make_office_network(org)
         self.admin = User.objects.create_superuser(email='admin2@co.com', password='Admin1234!')
-        Employee.objects.create(user=self.admin, employee_code='ADM002', personal_email='admin2.personal@ext.com')
+        Employee.objects.create(user=self.admin, employee_code='ADM002', personal_email='admin2.personal@ext.com', organization=org)
         grant(self.admin, 'employee.create')
 
     def _provision_and_get_activation_params(self, email, personal_email, code):
@@ -223,11 +227,11 @@ class AuditCoverageTests(TestCase):
         make_office_network(self.org)
 
         self.admin = User.objects.create_superuser(email='admin3@co.com', password='Admin3Pass!')
-        Employee.objects.create(user=self.admin, employee_code='ADM003', personal_email='admin3.personal@ext.com')
+        Employee.objects.create(user=self.admin, employee_code='ADM003', personal_email='admin3.personal@ext.com', organization=self.org)
 
         # Second user for WFH approve (can't approve own request)
         self.approver = User.objects.create_superuser(email='approver@co.com', password='Approver123!')
-        Employee.objects.create(user=self.approver, employee_code='APR001', personal_email='approver.personal@ext.com')
+        Employee.objects.create(user=self.approver, employee_code='APR001', personal_email='approver.personal@ext.com', organization=self.org)
 
         for codename in [
             'employee.create', 'employee.status',
@@ -382,12 +386,6 @@ class AuditCoverageTests(TestCase):
             annual_allocation=20,
             is_active=True
         )
-        LeaveBalance.objects.create(
-            employee=self.admin.employee, leave_type=lt, allocated=20, used=0
-        )
-        LeaveBalance.objects.create(
-            employee=self.approver.employee, leave_type=lt, allocated=20, used=0
-        )
         today = datetime.date.today()
 
         def ds(delta):
@@ -446,12 +444,12 @@ class AuditAPIPermissionTests(TestCase):
 
         # Superadmin
         self.super_user = User.objects.create_superuser(email='super@co.com', password='Super1234!')
-        Employee.objects.create(user=self.super_user, employee_code='SUPER01', personal_email='super.personal@ext.com')
+        Employee.objects.create(user=self.super_user, employee_code='SUPER01', personal_email='super.personal@ext.com', organization=org)
         grant(self.super_user, 'audit.view')
 
         # Authorized user
         self.auth_user = User.objects.create_user(email='authuser@co.com', password='Auth1234!')
-        Employee.objects.create(user=self.auth_user, employee_code='AUTH01', personal_email='authuser.personal@ext.com')
+        Employee.objects.create(user=self.auth_user, employee_code='AUTH01', personal_email='authuser.personal@ext.com', organization=org)
         self.auth_user.status = 'active'
         self.auth_user.save()
         grant(self.auth_user, 'audit.view')

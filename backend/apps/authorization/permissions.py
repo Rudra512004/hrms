@@ -20,6 +20,13 @@ def require_permission(permission_codename):
 
 from .network import NetworkAccessService
 
+class IsSuperAdmin(permissions.BasePermission):
+    """
+    Enforces that the user is a superuser. Used for organization creation and global settings.
+    """
+    def has_permission(self, request, view):
+        return bool(request.user and request.user.is_authenticated and request.user.is_superuser)
+
 class IsNetworkAllowed(permissions.BasePermission):
     message = "Network access denied. You must be on an office network or have an active WFH request."
 

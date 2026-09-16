@@ -48,8 +48,8 @@ class EndToEndHRMSWorkflowTests(TestCase):
             organization=self.org,
             name='Bangalore HQ',
             address='123 Tech Park',
-            latitude=12.9716,
-            longitude=77.5946,
+            latitude='12.9716',
+            longitude='77.5946',
             radius=500.0,
             is_active=True,
         )

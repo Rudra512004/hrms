@@ -2,7 +2,7 @@ from rest_framework import viewsets
 from django.db import IntegrityError
 from rest_framework.exceptions import ValidationError
 from .models import OfficeNetwork, Organization, Department, Designation, Branch
-from .serializers import OfficeNetworkSerializer, OrganizationSerializer, DepartmentSerializer, DesignationSerializer, BranchSerializer
+from .serializers import OfficeNetworkSerializer, OrganizationSerializer, DepartmentSerializer, DesignationSerializer, BranchSerializer, WorkingCalendarSerializer, OrganizationSetupSerializer
 from apps.authorization.permissions import require_permission, IsNetworkAllowed
 from rest_framework.permissions import IsAuthenticated
 
@@ -26,6 +26,35 @@ def _get_request_user_org(request):
         return user_role.role.organization
     return None
 
+
+class OrganizationSetupViewSet(viewsets.ModelViewSet):
+    serializer_class = OrganizationSetupSerializer
+    from apps.authorization.permissions import IsSuperAdmin
+    permission_classes = [IsAuthenticated, IsSuperAdmin]
+    queryset = Organization.objects.all()
+
+class WorkingCalendarViewSet(viewsets.ModelViewSet):
+    serializer_class = WorkingCalendarSerializer
+    permission_classes = [IsAuthenticated, IsNetworkAllowed, require_permission('organization.update')]
+
+    def get_queryset(self):
+        user = self.request.user
+        if getattr(user, 'is_superuser', False):
+            return WorkingCalendar.objects.all()
+        employee = getattr(user, 'employee', None)
+        if employee:
+            return WorkingCalendar.objects.filter(organization=employee.organization)
+        return WorkingCalendar.objects.none()
+
+    def perform_create(self, serializer):
+        user = self.request.user
+        if getattr(user, 'is_superuser', False):
+            # Admin can create for any org, handled by serializer?
+            # Actually we usually don't allow explicit creation since it's OneToOne and auto-created.
+            pass
+        employee = getattr(user, 'employee', None)
+        if employee:
+            serializer.save(organization=employee.organization)
 
 class OrganizationViewSet(viewsets.ModelViewSet):
     serializer_class = OrganizationSerializer

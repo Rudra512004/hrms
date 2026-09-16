@@ -31,10 +31,17 @@ def _working_days_in_period(organization_id: int, start: date, end: date) -> int
         ).values_list('date', flat=True)
     )
 
+    from apps.organization.models import Organization
+    try:
+        org = Organization.objects.get(id=organization_id)
+        work_days = org.working_calendar.get_work_days_list()
+    except Exception:
+        work_days = [0, 1, 2, 3, 4]
+
     days = 0
     current = start
     while current <= end:
-        if current.weekday() < 5 and current not in holiday_dates:
+        if current.weekday() in work_days and current not in holiday_dates:
             days += 1
         current += timedelta(days=1)
     return days

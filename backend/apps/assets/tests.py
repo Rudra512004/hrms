@@ -93,6 +93,12 @@ class AssetManagementComprehensiveTests(TestCase):
             network='127.0.0.0/8',
             is_active=True,
         )
+        OfficeNetwork.objects.create(
+            organization=self.org_b,
+            name='Localhost B',
+            network='127.0.0.0/8',
+            is_active=True,
+        )
 
         # Branches
         self.branch_a = Branch.objects.create(organization=self.org_a, name='HQ Branch')

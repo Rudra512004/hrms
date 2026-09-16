@@ -11,17 +11,15 @@ class NetworkAccessService:
         return request.META.get('REMOTE_ADDR')
 
     @staticmethod
-    def is_office_network_allowed(ip_address, organization=None):
-        if not ip_address:
+    def is_office_network_allowed(ip_address, organization):
+        if not ip_address or not organization:
             return False
         try:
             client_ip = ipaddress.ip_address(ip_address)
         except ValueError:
             return False
 
-        qs = OfficeNetwork.objects.filter(is_active=True)
-        if organization:
-            qs = qs.filter(organization=organization)
+        qs = OfficeNetwork.objects.filter(is_active=True, organization=organization)
 
         for office_net in qs:
             try:
@@ -54,11 +52,10 @@ class NetworkAccessService:
 
         ip = NetworkAccessService.get_client_ip(request)
         employee = getattr(user, 'employee', None)
+        if not employee:
+            return False
 
-        if NetworkAccessService.is_office_network_allowed(ip):
+        if NetworkAccessService.is_wfh_active(employee):
             return True
 
-        if employee and NetworkAccessService.is_wfh_active(employee):
-            return True
-
-        return False
+        return NetworkAccessService.is_office_network_allowed(ip, employee.organization)
