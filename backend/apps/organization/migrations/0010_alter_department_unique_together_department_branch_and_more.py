@@ -4,6 +4,31 @@ import django.db.models.deletion
 from django.db import migrations, models
 
 
+def assign_departments_to_branch(apps, schema_editor):
+    Department = apps.get_model('organization', 'Department')
+    Branch = apps.get_model('organization', 'Branch')
+
+    for dept in Department.objects.all():
+        branches = Branch.objects.filter(organization_id=dept.organization_id)
+        count = branches.count()
+        if count == 0:
+            raise Exception(
+                f"Cannot map Department '{dept.name}' (ID {dept.id}): "
+                f"Organization {dept.organization_id} has no branches."
+            )
+        elif count == 1:
+            dept.branch = branches.first()
+            dept.save()
+        else:
+            raise Exception(
+                f"Cannot deterministically map Department '{dept.name}' (ID {dept.id}): "
+                f"Organization {dept.organization_id} has multiple branches ({count})."
+            )
+
+def reverse_assign_departments(apps, schema_editor):
+    pass
+
+
 class Migration(migrations.Migration):
 
     dependencies = [
@@ -19,7 +44,16 @@ class Migration(migrations.Migration):
         migrations.AddField(
             model_name='department',
             name='branch',
-            field=models.ForeignKey(default=1, on_delete=django.db.models.deletion.CASCADE, related_name='departments', to='organization.branch'),
+            field=models.ForeignKey(null=True, on_delete=django.db.models.deletion.CASCADE, related_name='departments', to='organization.branch'),
+        ),
+        migrations.RunPython(
+            assign_departments_to_branch,
+            reverse_code=reverse_assign_departments
+        ),
+        migrations.AlterField(
+            model_name='department',
+            name='branch',
+            field=models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='departments', to='organization.branch'),
             preserve_default=False,
         ),
         migrations.RemoveField(

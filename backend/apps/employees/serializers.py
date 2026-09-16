@@ -4,7 +4,7 @@ from rest_framework import serializers
 from django.contrib.auth import get_user_model
 from django.utils.crypto import get_random_string
 from django.conf import settings
-from apps.organization.models import Branch, Department, Designation
+from apps.organization.models import Branch, Department, Designation, Team
 from .models import Employee, EmploymentStatus, EmployeeLifecycleEvent, EmployeeDocument, DocumentType, DocumentStatus
 
 User = get_user_model()
@@ -16,6 +16,7 @@ class EmployeeSerializer(serializers.ModelSerializer):
     status = serializers.CharField(source='user.status', read_only=True)
     branch_name = serializers.CharField(source='branch.name', read_only=True)
     department_name = serializers.CharField(source='department.name', read_only=True)
+    team_name = serializers.CharField(source='team.name', read_only=True)
     designation_name = serializers.CharField(source='designation.name', read_only=True)
 
     class Meta:
@@ -24,6 +25,7 @@ class EmployeeSerializer(serializers.ModelSerializer):
             'id', 'email', 'first_name', 'last_name', 'status', 'employee_code', 'personal_email',
             'phone_number', 'address', 'emergency_contact_name', 'emergency_contact_phone',
             'organization', 'branch', 'branch_name', 'department', 'department_name',
+            'team', 'team_name',
             'designation', 'designation_name', 'reporting_manager',
             'employment_status', 'joining_date', 'exit_date', 'resignation_date',
             'exit_reason', 'notice_period_start', 'notice_period_end'
@@ -40,16 +42,33 @@ class EmployeeSerializer(serializers.ModelSerializer):
         desig = attrs.get('designation', getattr(self.instance, 'designation', None))
         manager = attrs.get('reporting_manager', getattr(self.instance, 'reporting_manager', None))
 
+        team = attrs.get('team', getattr(self.instance, 'team', None))
+
         if org:
             if branch and branch.organization_id != org.id:
                 raise serializers.ValidationError({'branch': 'Branch must belong to the same organization.'})
             if dept and dept.branch.organization_id != org.id:
                 raise serializers.ValidationError({'department': 'Department must belong to the same organization.'})
+            if branch and dept and dept.branch_id != branch.id:
+                raise serializers.ValidationError({'department': 'Department must belong to the same branch as the employee.'})
+            if team and team.department_id != getattr(dept, 'id', None):
+                raise serializers.ValidationError({'team': 'Team must belong to the same department as the employee.'})
+            if team and not team.is_active and getattr(self.instance, 'employment_status', EmploymentStatus.ACTIVE) not in [EmploymentStatus.INACTIVE, EmploymentStatus.EXITED]:
+                raise serializers.ValidationError({'team': 'Cannot assign an inactive team to an active employee.'})
             if desig and desig.organization_id != org.id:
                 raise serializers.ValidationError({'designation': 'Designation must belong to the same organization.'})
         else:
-            if branch or dept or desig:
-                raise serializers.ValidationError('Cannot assign branch, department, or designation without an organization.')
+            if branch or dept or team or desig:
+                raise serializers.ValidationError('Cannot assign branch, department, team, or designation without an organization.')
+
+        if self.instance:
+            if branch and getattr(self.instance, 'branch', None) and branch != self.instance.branch:
+                raise serializers.ValidationError({'branch': 'Branch transfer must be done through the dedicated transfer workflow.'})
+            if dept and getattr(self.instance, 'department', None) and dept != self.instance.department:
+                raise serializers.ValidationError({'department': 'Department transfer must be done through the dedicated transfer workflow.'})
+            # Prevent team changes that cross department boundaries
+            if team and getattr(self.instance, 'department', None) and team.department != self.instance.department:
+                raise serializers.ValidationError({'team': 'Cross-department team assignment must be done through the dedicated transfer workflow.'})
 
         if manager:
             if self.instance and manager.id == self.instance.id:
@@ -82,6 +101,13 @@ class ProvisionEmployeeSerializer(serializers.Serializer):
     last_name = serializers.CharField(max_length=150)
     employee_code = serializers.CharField(max_length=50, required=False, allow_blank=True)
     personal_email = serializers.EmailField(required=False, allow_null=True, allow_blank=True)
+    
+    team = serializers.PrimaryKeyRelatedField(queryset=Team.objects.all(), required=False, allow_null=True)
+    department = serializers.PrimaryKeyRelatedField(queryset=Department.objects.all(), required=False, allow_null=True)
+    branch = serializers.PrimaryKeyRelatedField(queryset=Branch.objects.all(), required=False, allow_null=True)
+    designation = serializers.PrimaryKeyRelatedField(queryset=Designation.objects.all(), required=False, allow_null=True)
+    reporting_manager = serializers.PrimaryKeyRelatedField(queryset=Employee.objects.all(), required=False, allow_null=True)
+    role = serializers.IntegerField(required=False, allow_null=True)
 
     def validate_email(self, value):
         value = User.objects.normalize_email(value)
@@ -134,12 +160,71 @@ class ProvisionEmployeeSerializer(serializers.Serializer):
                     last_name=validated_data['last_name'],
                 )
 
+                team = validated_data.get('team')
+                department = validated_data.get('department')
+                branch = validated_data.get('branch')
+                designation = validated_data.get('designation')
+                reporting_manager = validated_data.get('reporting_manager')
+
+                if team:
+                    department = team.department
+                    branch = department.branch
+                    if branch.organization_id != org.id:
+                        raise serializers.ValidationError({'team': 'Team belongs to a different organization.'})
+
+                # If no team is provided, we can fallback to department/branch if it's a valid temporary state
+                # but ensure they belong to the correct org
+                if branch and branch.organization_id != org.id:
+                    raise serializers.ValidationError({'branch': 'Branch must belong to the same organization.'})
+                if department and department.branch.organization_id != org.id:
+                    raise serializers.ValidationError({'department': 'Department must belong to the same organization.'})
+                if branch and department and department.branch_id != branch.id:
+                    raise serializers.ValidationError({'department': 'Department must belong to the specified branch.'})
+                
+                # Verify branch scope authorization
+                if branch and not request.user.is_superuser:
+                    from apps.authorization.services import AuthorizationService
+                    authorized_branches = AuthorizationService.get_authorized_branches(request.user, 'employee.create')
+                    if branch not in authorized_branches:
+                        raise serializers.ValidationError({'branch': 'You do not have permission to provision employees in this branch.'})
+                        
+                if designation and designation.organization_id != org.id:
+                    raise serializers.ValidationError({'designation': 'Designation must belong to the same organization.'})
+                if reporting_manager and reporting_manager.organization_id != org.id:
+                    raise serializers.ValidationError({'reporting_manager': 'Reporting manager must belong to the same organization.'})
+                
+                if team and not team.is_active:
+                    raise serializers.ValidationError({'team': 'Cannot assign an inactive team.'})
+
                 employee = Employee.objects.create(
                     user=user,
                     organization=org,
+                    branch=branch,
+                    department=department,
+                    team=team,
+                    designation=designation,
+                    reporting_manager=reporting_manager,
                     employee_code=employee_code,
                     personal_email=validated_data.get('personal_email')
                 )
+                
+                # Handle Role assignment
+                role_id = validated_data.get('role')
+                if role_id:
+                    from apps.authorization.models import Role, UserRole
+                    role = Role.objects.filter(id=role_id, organization=org).first()
+                    if not role:
+                        raise serializers.ValidationError({'role': 'Role does not exist in this organization.'})
+                    if role.name == 'Super Admin' and not request.user.is_superuser:
+                        raise serializers.ValidationError({'role': 'Cannot assign Super Admin role.'})
+                    # We check if requester can manage roles, but here we assume provisioning implies they have employee.create
+                    # We should also ensure they have 'role.assign' or similar if that's a requirement, but for now we assign it
+                    # based on their ability to provision. Wait, user said: "Verify: requester can assign the role".
+                    from apps.authorization.services import AuthorizationService
+                    if not AuthorizationService.has_permission(request.user, 'role.manage') and not request.user.is_superuser:
+                         raise serializers.ValidationError({'role': 'You do not have permission to assign roles.'})
+                    UserRole.objects.create(user=user, role=role)
+
                 return employee
         except IntegrityError as e:
             raise serializers.ValidationError(f"Failed to create employee due to database constraint: {str(e)}")

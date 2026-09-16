@@ -1,4 +1,5 @@
-from rest_framework import viewsets
+from rest_framework import viewsets, status
+from rest_framework.response import Response
 from django.db import IntegrityError
 from rest_framework.exceptions import ValidationError
 from .models import OfficeNetwork, Organization, Department, Designation, Branch, Team
@@ -87,15 +88,17 @@ class DepartmentViewSet(viewsets.ModelViewSet):
                 qs = qs.filter(branch_id=branch_id)
             return qs
 
-        # Determine accessible branches via authorization service, or fallback to org-wide branches if no branch scopes yet
-        org = _get_request_user_org(self.request)
-        if org:
-            qs = Department.objects.filter(branch__organization_id=org.id)
-            branch_id = self.request.query_params.get('branch')
-            if branch_id:
-                qs = qs.filter(branch_id=branch_id)
-            return qs
-        return Department.objects.none()
+        from apps.authorization.services import AuthorizationService
+        
+        # Determine accessible branches via authorization service
+        permission = 'department.view' if self.action in ['list', 'retrieve'] else 'department.manage'
+        authorized_branches = AuthorizationService.get_authorized_branches(user, permission)
+        
+        qs = Department.objects.filter(branch__in=authorized_branches)
+        branch_id = self.request.query_params.get('branch')
+        if branch_id:
+            qs = qs.filter(branch_id=branch_id)
+        return qs
 
     def get_permissions(self):
         if self.action in ['list', 'retrieve']:
@@ -115,12 +118,11 @@ class DepartmentViewSet(viewsets.ModelViewSet):
         except Branch.DoesNotExist:
             raise ValidationError({"branch": "Specified branch does not exist."})
 
+        from apps.authorization.services import AuthorizationService
         if not user.is_superuser:
-            org = _get_request_user_org(self.request)
-            if not org:
-                raise ValidationError({"organization": "User does not belong to an organization."})
-            if branch.organization_id != org.id:
-                raise ValidationError({"branch": "Cannot create resources for a branch in another organization."})
+            authorized_branches = AuthorizationService.get_authorized_branches(user, 'department.manage')
+            if branch not in authorized_branches:
+                raise ValidationError({"branch": "You do not have permission to create a department in this branch."})
 
         try:
             serializer.save(branch=branch)
@@ -138,14 +140,25 @@ class TeamViewSet(viewsets.ModelViewSet):
             if dept_id:
                 qs = qs.filter(department_id=dept_id)
             return qs
-        org = _get_request_user_org(self.request)
-        if org:
-            qs = Team.objects.filter(department__branch__organization_id=org.id)
-            dept_id = self.request.query_params.get('department')
-            if dept_id:
-                qs = qs.filter(department_id=dept_id)
-            return qs
-        return Team.objects.none()
+        from apps.authorization.services import AuthorizationService
+        permission = 'team.view' if self.action in ['list', 'retrieve'] else 'team.manage'
+        authorized_branches = AuthorizationService.get_authorized_branches(user, permission)
+        
+        qs = Team.objects.filter(department__branch__in=authorized_branches)
+        dept_id = self.request.query_params.get('department')
+        if dept_id:
+            qs = qs.filter(department_id=dept_id)
+        return qs
+
+    def destroy(self, request, *args, **kwargs):
+        team = self.get_object()
+        active_employees = team.employees.exclude(employment_status__in=['inactive', 'exited'])
+        if active_employees.exists():
+            return Response(
+                {"detail": "Cannot delete team while active employees are assigned to it."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        return super().destroy(request, *args, **kwargs)
 
     def get_permissions(self):
         if self.action in ['list', 'retrieve']:
@@ -165,12 +178,11 @@ class TeamViewSet(viewsets.ModelViewSet):
         except Department.DoesNotExist:
             raise ValidationError({"department": "Specified department does not exist."})
 
+        from apps.authorization.services import AuthorizationService
         if not user.is_superuser:
-            org = _get_request_user_org(self.request)
-            if not org:
-                raise ValidationError({"organization": "User does not belong to an organization."})
-            if dept.branch.organization_id != org.id:
-                raise ValidationError({"department": "Cannot create resources for a department in another organization."})
+            authorized_branches = AuthorizationService.get_authorized_branches(user, 'team.manage')
+            if dept.branch not in authorized_branches:
+                raise ValidationError({"department": "You do not have permission to create a team in this department's branch."})
 
         try:
             serializer.save(department=dept)

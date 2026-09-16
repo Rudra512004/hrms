@@ -87,6 +87,32 @@ class OrganizationAPITests(TestCase):
         with self.assertRaises(ValidationError):
             team.clean()
 
+    def test_team_manager_validation_api(self):
+        from apps.organization.models import Branch, Team
+        from apps.employees.models import Employee, EmploymentStatus
+        branch1 = Branch.objects.create(organization=self.org, name='Branch 1', radius=100)
+        branch2 = Branch.objects.create(organization=self.org, name='Branch 2', radius=100)
+        department = Department.objects.create(branch=branch1, name='Engineering')
+        
+        user_emp = User.objects.create_user(email='emp_manager@example.com', password='password123')
+        manager = Employee.objects.create(
+            user=user_emp, employee_code='E02', organization=self.org,
+            branch=branch2, employment_status=EmploymentStatus.ACTIVE
+        )
+
+        self.client.force_authenticate(user=self.user)
+        # Test POST
+        payload = {'department': department.id, 'name': 'Backend', 'manager': manager.id}
+        response = self.client.post(reverse('team-list'), payload)
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('manager', response.data)
+
+        # Test PATCH
+        team = Team.objects.create(department=department, name='DevOps')
+        response = self.client.patch(reverse('team-detail', args=[team.id]), {'manager': manager.id})
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('manager', response.data)
+
     def test_team_uniqueness_per_department(self):
         from apps.organization.models import Branch, Team
         from django.db import IntegrityError
@@ -96,3 +122,27 @@ class OrganizationAPITests(TestCase):
 
         with self.assertRaises(IntegrityError):
             Team.objects.create(department=department, name='DevOps')
+
+    def test_team_deletion_with_active_employees_fails(self):
+        from apps.organization.models import Branch, Team
+        from apps.employees.models import Employee, EmploymentStatus
+        branch = Branch.objects.create(organization=self.org, name='Main Branch', radius=100)
+        department = Department.objects.create(branch=branch, name='Engineering')
+        team = Team.objects.create(department=department, name='DevOps')
+        
+        from django.contrib.auth import get_user_model
+        User = get_user_model()
+        emp_user = User.objects.create_user(email='emp_team_del@example.com', status='active')
+        Employee.objects.create(user=emp_user, employee_code='EMP01', organization=self.org, branch=branch, department=department, team=team, employment_status=EmploymentStatus.ACTIVE)
+        
+        from unittest.mock import patch
+        with patch('apps.authorization.permissions.IsNetworkAllowed.has_permission', return_value=True):
+            self.client.force_authenticate(user=self.user)
+            # Test API deletion
+            response = self.client.delete(reverse('team-detail', args=[team.id]))
+            
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('active employees', response.data['detail'].lower())
+        
+        # Team should still exist
+        self.assertTrue(Team.objects.filter(id=team.id).exists())

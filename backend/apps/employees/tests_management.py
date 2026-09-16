@@ -3,8 +3,10 @@ from django.urls import reverse
 from rest_framework import status
 from rest_framework.test import APIClient
 from django.contrib.auth import get_user_model
+from apps.authorization.models import Permission, Role, RolePermission, UserRole
+from apps.organization.models import Organization, Department, Designation, Branch, Team
 from apps.employees.models import Employee
-from apps.organization.models import Organization
+from unittest.mock import patch
 
 User = get_user_model()
 
@@ -182,6 +184,214 @@ class EmployeeManagementAPITests(TestCase):
         # Wait, if super4 is an INACTIVE superadmin, they can't login!
         # So it's actually IMPOSSIBLE for the last active superadmin to be deactivated by anyone!
         pass
+
+class EmployeeIDGenerationTests(TestCase):
+    def setUp(self):
+        from apps.employees.models import EmployeeIDSequence
+        EmployeeIDSequence.objects.all().delete()
+        Employee.objects.all().delete()
+        User.objects.all().delete()
+
+        self.client = APIClient()
+        self.super_user = User.objects.create_user(email='super@example.com', is_superuser=True, status='active')
+        self.super_employee = Employee.objects.create(user=self.super_user, employee_code='EMPBS000')
+        self.client.force_authenticate(user=self.super_user)
+
+    def test_first_employee_generation(self):
+        response = self.client.post(reverse('employee-management-list'), {
+            'email': 'emp1@company.com',
+            'first_name': 'A',
+            'last_name': 'B'
+        })
+        if response.status_code != 201:
+            print("ERROR FIRST EMP:", getattr(response, 'data', response.content))
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(Employee.objects.get(user__email='emp1@company.com').employee_code, 'EMPBS001')
+
+    def test_second_employee_generation(self):
+        Employee.objects.create(user=User.objects.create_user(email='e1@c.com'), employee_code='EMPBS001')
+        from apps.employees.models import EmployeeIDSequence
+        EmployeeIDSequence.objects.create(id=1, last_generated=5)
+
+        response = self.client.post(reverse('employee-management-list'), {
+            'email': 'e6@company.com',
+            'first_name': 'A',
+            'last_name': 'B'
+        })
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(Employee.objects.get(user__email='e6@company.com').employee_code, 'EMPBS006')
+
+class EmployeeTeamProvisioningTests(TestCase):
+    def setUp(self):
+        self.patcher = patch('apps.authorization.permissions.IsNetworkAllowed.has_permission', return_value=True)
+        self.patcher.start()
+        
+        self.client = APIClient()
+        self.org1 = Organization.objects.create(name='Org 1')
+        self.org2 = Organization.objects.create(name='Org 2')
+        self.branch1 = Branch.objects.create(organization=self.org1, name='Branch 1', radius=100)
+        self.dept1 = Department.objects.create(branch=self.branch1, name='Dept 1')
+        self.team1 = Team.objects.create(department=self.dept1, name='Team 1')
+        
+        self.branch2 = Branch.objects.create(organization=self.org1, name='Branch 2', radius=100)
+        self.dept2 = Department.objects.create(branch=self.branch2, name='Dept 2')
+        self.team2 = Team.objects.create(department=self.dept2, name='Team 2')
+        
+        self.branch_org2 = Branch.objects.create(organization=self.org2, name='Branch Org2', radius=100)
+        self.dept_org2 = Department.objects.create(branch=self.branch_org2, name='Dept Org2')
+        self.team_org2 = Team.objects.create(department=self.dept_org2, name='Team Org2')
+        
+        self.team_inactive = Team.objects.create(department=self.dept1, name='Team Inactive', is_active=False)
+        
+        self.super_user = User.objects.create_user(email='super@org1.com', is_superuser=True, status='active')
+        self.super_employee = Employee.objects.create(user=self.super_user, employee_code='SUP01', organization=self.org1)
+        
+        self.hr_role = Role.objects.create(name='HR', organization=self.org1)
+        self.super_admin_role = Role.objects.create(name='Super Admin', organization=self.org1)
+        
+        self.client.force_authenticate(user=self.super_user)
+
+    def test_provision_with_team(self):
+        response = self.client.post(reverse('employee-management-list'), {
+            'email': 'new_emp@org1.com',
+            'first_name': 'New',
+            'last_name': 'Emp',
+            'team': self.team1.id,
+            'role': self.hr_role.id
+        })
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        emp = Employee.objects.get(user__email='new_emp@org1.com')
+        self.assertEqual(emp.team, self.team1)
+        self.assertEqual(emp.department, self.dept1)
+        self.assertEqual(emp.branch, self.branch1)
+        self.assertEqual(emp.organization, self.org1)
+        self.assertTrue(emp.user.user_roles.filter(role=self.hr_role).exists())
+
+    def test_provision_with_inactive_team_fails(self):
+        response = self.client.post(reverse('employee-management-list'), {
+            'email': 'new_emp2@org1.com',
+            'first_name': 'New',
+            'last_name': 'Emp',
+            'team': self.team_inactive.id
+        })
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_provision_with_cross_org_team_fails(self):
+        response = self.client.post(reverse('employee-management-list'), {
+            'email': 'new_emp3@org1.com',
+            'first_name': 'New',
+            'last_name': 'Emp',
+            'team': self.team_org2.id
+        })
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('team', response.data)
+
+    def test_provision_with_inconsistent_branch_department_team(self):
+        response = self.client.post(reverse('employee-management-list'), {
+            'email': 'new_emp4@org1.com',
+            'first_name': 'New',
+            'last_name': 'Emp',
+            'branch': self.branch2.id,
+            'department': self.dept1.id,
+        })
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        
+    def test_provision_prevent_superadmin_role_assignment(self):
+        normal_user = User.objects.create_user(email='normal@org1.com', status='active')
+        Employee.objects.create(user=normal_user, employee_code='NORM01', organization=self.org1)
+        perm = Permission.objects.create(codename='employee.create', resource='employee', action='create')
+        hr_role = Role.objects.create(name='HR2', organization=self.org1)
+        RolePermission.objects.create(role=hr_role, permission=perm)
+        UserRole.objects.create(user=normal_user, role=hr_role)
+        
+        self.client.force_authenticate(user=normal_user)
+        response = self.client.post(reverse('employee-management-list'), {
+            'email': 'new_emp5@org1.com',
+            'first_name': 'New',
+            'last_name': 'Emp',
+            'role': self.super_admin_role.id
+        })
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST, response.data)
+        self.assertIn('role', response.data)
+
+    def test_same_department_team_reassignment(self):
+        emp = Employee.objects.create(user=User.objects.create_user(email='reassign@org1.com'), 
+                                      employee_code='REASS01', 
+                                      organization=self.org1, 
+                                      branch=self.branch1, 
+                                      department=self.dept1, 
+                                      team=self.team1)
+        team1_b = Team.objects.create(department=self.dept1, name='Team 1B')
+        
+        self.client.force_authenticate(user=self.super_user)
+        response = self.client.patch(reverse('employee-management-detail', kwargs={'pk': emp.pk}), {
+            'team': team1_b.id
+        })
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        emp.refresh_from_db()
+        self.assertEqual(emp.team, team1_b)
+
+    def test_branch_scoped_user_cannot_assign_unauthorized_team(self):
+        branch_admin = User.objects.create_user(email='badmin@org1.com', status='active')
+        Employee.objects.create(user=branch_admin, employee_code='BADMIN', organization=self.org1)
+        
+        perm = Permission.objects.create(codename='employee.create', resource='employee', action='create')
+        badmin_role = Role.objects.create(name='BAdmin Role', organization=self.org1)
+        RolePermission.objects.create(role=badmin_role, permission=perm)
+        UserRole.objects.create(user=branch_admin, role=badmin_role, scope='branch', branch=self.branch1)
+        
+        self.client.force_authenticate(user=branch_admin)
+        
+        from apps.authorization.services import AuthorizationService
+        print("PERMS BADMIN:", AuthorizationService.get_effective_permissions(branch_admin))
+        
+        response = self.client.post(reverse('employee-management-list'), {
+            'email': 'hacked@org1.com',
+            'first_name': 'Hacked',
+            'last_name': 'User',
+            'team': self.team2.id
+        })
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST, response.data)
+
+    def tearDown(self):
+        self.patcher.stop()
+
+    def test_update_transfer_bypass_protection(self):
+        # Prevent PATCH from changing branch or department
+        branch2 = Branch.objects.create(organization=self.org1, name='Branch X2', radius=100)
+        dept2 = Department.objects.create(branch=branch2, name='Dept 2')
+        
+        emp_user = User.objects.create_user(email='emp_bypass@example.com', status='active')
+        emp1 = Employee.objects.create(user=emp_user, employee_code='BYP01', organization=self.org1, branch=self.branch1, department=self.dept1, team=self.team1)
+        
+        self.client.force_authenticate(user=self.super_user)
+        
+        # Test cross-department team assignment
+        team_other_dept = Team.objects.create(department=dept2, name='Other Team')
+        
+        # Test updating branch
+        response = self.client.patch(reverse('employee-management-detail', args=[emp1.id]), {
+            'branch': branch2.id,
+            'department': dept2.id,
+            'team': team_other_dept.id
+        })
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('branch', response.data)
+        
+        # Test updating department
+        response = self.client.patch(reverse('employee-management-detail', args=[emp1.id]), {
+            'department': dept2.id,
+            'team': team_other_dept.id
+        })
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('department', response.data)
+        
+        # Test cross-department team assignment only
+        response = self.client.patch(reverse('employee-management-detail', args=[emp1.id]), {
+            'team': team_other_dept.id
+        })
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('team', response.data)
 
 class EmployeeIDGenerationTests(TestCase):
     def setUp(self):

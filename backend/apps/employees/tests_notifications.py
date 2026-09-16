@@ -29,6 +29,7 @@ class EmployeeNotificationIntegrationTests(TransactionTestCase):
     def test_employee_transfer_notification(self, mock_perm):
         self.client.force_authenticate(user=self.admin_user)
         response = self.client.post(f'/api/v1/employees/management/{self.employee.pk}/transfer/', {
+            'branch': self.branch.id,
             'department': self.department.id,
             'effective_date': timezone.now().date().isoformat(),
             'reason': 'Team restructuring'

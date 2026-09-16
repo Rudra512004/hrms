@@ -306,6 +306,13 @@ class EmployeeManagementViewSet(viewsets.ModelViewSet):
             return Response({'department': 'Department must belong to the same organization.'}, status=status.HTTP_400_BAD_REQUEST)
         if branch and branch.organization_id != employee.organization_id:
             return Response({'branch': 'Branch must belong to the same organization.'}, status=status.HTTP_400_BAD_REQUEST)
+            
+        if dept and branch and dept.branch_id != branch.id:
+            return Response({'department': 'Department must belong to the same branch as the employee.'}, status=status.HTTP_400_BAD_REQUEST)
+        elif dept and not branch and dept.branch_id != employee.branch_id:
+            return Response({'department': 'Department must belong to the same branch as the employee.'}, status=status.HTTP_400_BAD_REQUEST)
+        elif branch and not dept and employee.department_id and employee.department.branch_id != branch.id:
+            return Response({'branch': 'Branch must match the employee\'s current department branch.'}, status=status.HTTP_400_BAD_REQUEST)
 
         old_dept = employee.department
         old_branch = employee.branch

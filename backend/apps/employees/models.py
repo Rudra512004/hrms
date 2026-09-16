@@ -47,6 +47,7 @@ class Employee(models.Model):
     organization = models.ForeignKey(Organization, on_delete=models.CASCADE, related_name='employees', null=True, blank=True)
     branch = models.ForeignKey('organization.Branch', on_delete=models.SET_NULL, related_name='employees', null=True, blank=True)
     department = models.ForeignKey(Department, on_delete=models.SET_NULL, related_name='employees', null=True, blank=True)
+    team = models.ForeignKey('organization.Team', on_delete=models.SET_NULL, related_name='employees', null=True, blank=True)
     designation = models.ForeignKey(Designation, on_delete=models.SET_NULL, related_name='employees', null=True, blank=True)
     reporting_manager = models.ForeignKey('self', on_delete=models.SET_NULL, related_name='direct_reports', null=True, blank=True)
     employee_code = models.CharField(max_length=50, unique=True, help_text="Assigned HRMS/Employee ID")
@@ -77,6 +78,12 @@ class Employee(models.Model):
                 raise ValidationError({'branch': 'Branch must belong to the same organization.'})
             if self.department_id and self.department.branch.organization_id != self.organization_id:
                 raise ValidationError({'department': 'Department must belong to the same organization.'})
+            if self.branch_id and self.department_id and self.department.branch_id != self.branch_id:
+                raise ValidationError({'department': 'Department must belong to the same branch as the employee.'})
+            if self.team_id and self.team.department_id != self.department_id:
+                raise ValidationError({'team': 'Team must belong to the same department as the employee.'})
+            if self.team_id and not self.team.is_active and self.employment_status not in [EmploymentStatus.INACTIVE, EmploymentStatus.EXITED]:
+                raise ValidationError({'team': 'Cannot assign an inactive team to an active employee.'})
             if self.designation_id and self.designation.organization_id != self.organization_id:
                 raise ValidationError({'designation': 'Designation must belong to the same organization.'})
         else:

@@ -108,6 +108,36 @@ class TeamSerializer(serializers.ModelSerializer):
         fields = ['id', 'department', 'name', 'description', 'is_active', 'manager', 'created_at', 'updated_at']
         read_only_fields = ['id', 'department', 'created_at', 'updated_at']
 
+    def validate(self, attrs):
+        manager = attrs.get('manager')
+        # During creation, department is set by perform_create, so it's not in attrs.
+        # But during update it might be. The instance has department.
+        department = self.instance.department if self.instance else self.context.get('view').kwargs.get('department_pk') or getattr(self, '_department_context', None)
+        
+        # We need department from the view for creation.
+        # Actually, if we get department from the URL or view... Wait, perform_create sets it.
+        # Let's just check if manager and department are available.
+        if not department and self.context.get('view') and hasattr(self.context['view'], 'kwargs'):
+            pass # We handle this by fetching department from view context if needed, but wait! perform_create validates serializer first.
+            
+        # The best way is to let the model clean or just validate manager if we have enough context.
+        # But the user asked to: "Fix TeamSerializer to raise serializers.ValidationError instead of unhandled Django ValidationError for invalid manager context."
+        
+        # Let's extract department from instance or perform_create data.
+        # In perform_create: `serializer.save(department=dept)` happens AFTER `serializer.is_valid()`.
+        # So we can't reliably check department in serializer validation during POST unless it's in initial_data or kwargs.
+        request = self.context.get('request')
+        if request and request.method == 'POST':
+            dept_id = request.data.get('department')
+            if dept_id:
+                from apps.organization.models import Department
+                department = Department.objects.filter(id=dept_id).first()
+
+        if manager and department:
+            if manager.branch_id != department.branch_id:
+                raise serializers.ValidationError({"manager": "Team manager must belong to the same branch as the team's department."})
+        return attrs
+
 class DesignationSerializer(serializers.ModelSerializer):
     class Meta:
         model = Designation

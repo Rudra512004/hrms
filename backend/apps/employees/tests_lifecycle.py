@@ -411,6 +411,7 @@ class EmployeeLifecycleComprehensiveTests(TestCase):
         # Other org admin tries to transfer employee in self.org
         self.client.force_authenticate(user=other_user)
         response = self.client.post(reverse('employee-management-transfer', args=[self.employee.id]), {
+            'branch': self.other_branch.id,
             'department': self.other_dept.id,
             'effective_date': '2026-06-01'
         })
@@ -422,6 +423,7 @@ class EmployeeLifecycleComprehensiveTests(TestCase):
         self.client.force_authenticate(user=self.admin_user)
 
         res_trans = self.client.post(reverse('employee-management-transfer', args=[self.employee.id]), {
+            'branch': self.branch2.id,
             'department': self.dept2.id,
             'effective_date': '2026-06-01'
         })
@@ -443,6 +445,7 @@ class EmployeeLifecycleComprehensiveTests(TestCase):
         self.client.force_authenticate(user=self.admin_user)
 
         self.client.post(reverse('employee-management-transfer', args=[self.employee.id]), {
+            'branch': self.branch2.id,
             'department': self.dept2.id,
             'effective_date': '2026-06-01'
         })

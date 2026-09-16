@@ -65,6 +65,8 @@ class Command(BaseCommand):
             {'codename': 'organization.manage', 'resource': 'organization', 'action': 'manage', 'name': 'Manage Organizations'},
             {'codename': 'department.view', 'resource': 'department', 'action': 'view', 'name': 'View Departments'},
             {'codename': 'department.manage', 'resource': 'department', 'action': 'manage', 'name': 'Manage Departments'},
+            {'codename': 'team.view', 'resource': 'team', 'action': 'view', 'name': 'View Teams'},
+            {'codename': 'team.manage', 'resource': 'team', 'action': 'manage', 'name': 'Manage Teams'},
             {'codename': 'designation.view', 'resource': 'designation', 'action': 'view', 'name': 'View Designations'},
             {'codename': 'designation.manage', 'resource': 'designation', 'action': 'manage', 'name': 'Manage Designations'},
             {'codename': 'hierarchy.manage', 'resource': 'hierarchy', 'action': 'manage', 'name': 'Manage Reporting Hierarchy'},

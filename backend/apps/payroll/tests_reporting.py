@@ -27,7 +27,7 @@ class PayrollReportingTests(TestCase):
         self.branch1 = Branch.objects.create(organization=self.org1, name='HQ Branch', radius=100)
         self.branch2 = Branch.objects.create(organization=self.org1, name='East Branch', radius=100)
         self.dept1 = Department.objects.create(branch=self.branch1, name='Engineering')
-        self.dept2 = Department.objects.create(branch=self.branch1, name='Marketing')
+        self.dept2 = Department.objects.create(branch=self.branch2, name='Marketing')
 
         # Branch in Org 2
         self.branch_org2 = Branch.objects.create(organization=self.org2, name='Other Branch', radius=100)
