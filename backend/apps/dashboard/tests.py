@@ -27,13 +27,13 @@ class DashboardOverviewTests(TestCase):
         from apps.organization.models import Branch
         self.branch1 = Branch.objects.create(organization=self.org1, name="Headquarters", radius=100.0)
         OfficeNetwork.objects.create(branch=self.branch1, name="Primary Net", network="127.0.0.0/8", is_active=True)
-        self.dept1 = Department.objects.create(organization=self.org1, name="Engineering")
+        self.dept1 = Department.objects.create(branch=self.branch1, name="Engineering")
 
         # Organization 2 (Isolated)
         self.org2 = Organization.objects.create(name="Secondary Corp")
         self.branch2 = Branch.objects.create(organization=self.org2, name="Secondary HQ", radius=100.0)
         OfficeNetwork.objects.create(branch=self.branch2, name="Secondary Net", network="10.0.0.0/8", is_active=True)
-        self.dept2 = Department.objects.create(organization=self.org2, name="Marketing")
+        self.dept2 = Department.objects.create(branch=self.branch2, name="Marketing")
 
         # Standard Permissions
         self.perm_emp_view, _ = Permission.objects.get_or_create(
@@ -528,7 +528,7 @@ class DashboardTrendsTests(TestCase):
         from apps.organization.models import Branch
         self.branch1 = Branch.objects.create(organization=self.org1, name="Trends HQ", radius=100.0)
         OfficeNetwork.objects.create(branch=self.branch1, name="Primary Net", network="127.0.0.0/8", is_active=True)
-        self.dept1 = Department.objects.create(organization=self.org1, name="Engineering")
+        self.dept1 = Department.objects.create(branch=self.branch1, name="Engineering")
 
         # Organization 2 (Isolated)
         self.org2 = Organization.objects.create(name="Trends Secondary Corp")

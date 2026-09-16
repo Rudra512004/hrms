@@ -15,15 +15,15 @@ class EmployeeManagementAPITests(TestCase):
 
         # Superadmin
         self.super_user = User.objects.create_user(email='super@example.com', password='Password123!', status='active', is_superuser=True)
-        self.super_employee = Employee.objects.create(user=self.super_user, employee_code='EMP_SUPER')
+        self.super_employee = Employee.objects.create(user=self.super_user, employee_code='EMP_SUPER', organization=self.org)
 
         # Normal Employee (No management permissions)
         self.normal_user = User.objects.create_user(email='normal@example.com', password='Password123!', status='active')
-        self.normal_employee = Employee.objects.create(user=self.normal_user, employee_code='EMP_NORMAL')
+        self.normal_employee = Employee.objects.create(user=self.normal_user, employee_code='EMP_NORMAL', organization=self.org)
 
         # Another employee to manipulate
         self.target_user = User.objects.create_user(email='target@example.com', password='Password123!', status='active')
-        self.target_employee = Employee.objects.create(user=self.target_user, employee_code='EMP_TARGET')
+        self.target_employee = Employee.objects.create(user=self.target_user, employee_code='EMP_TARGET', organization=self.org)
 
     def test_employee_creation_superadmin(self):
         self.client.force_authenticate(user=self.super_user)
@@ -76,11 +76,18 @@ class EmployeeManagementAPITests(TestCase):
 
         # Create a branch-scoped role
         role = Role.objects.create(organization=self.org, name='Branch Manager')
-        RolePermission.objects.create(role=role, permission='employee.view')
+        from apps.authorization.models import Permission
+        perm_emp_view, _ = Permission.objects.get_or_create(
+            codename='employee.view',
+            defaults={'name': 'View Employee', 'resource': 'employee', 'action': 'view'}
+        )
+        RolePermission.objects.create(role=role, permission=perm_emp_view)
         UserRole.objects.create(user=self.normal_user, role=role, scope='branch', branch=branch1)
 
+        from unittest.mock import patch
         self.client.force_authenticate(user=self.normal_user)
-        response = self.client.get(reverse('employee-management-list'))
+        with patch('apps.authorization.permissions.IsNetworkAllowed.has_permission', return_value=True):
+            response = self.client.get(reverse('employee-management-list'))
         self.assertEqual(response.status_code, status.HTTP_200_OK)
 
         # Normal user should only see employees in branch1 (super_employee and normal_employee)

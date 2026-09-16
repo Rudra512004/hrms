@@ -56,7 +56,7 @@ class EndToEndHRMSWorkflowTests(TestCase):
 
         # 3. Department Setup
         self.dept = Department.objects.create(
-            organization=self.org,
+            branch=self.branch,
             name='Engineering',
         )
 
@@ -225,7 +225,7 @@ class EndToEndHRMSWorkflowTests(TestCase):
         self.assertEqual(record.effective_days, Decimal('7.00'))
 
         # Jan 2025 working days: 23 weekdays - 1 holiday (Jan 1) = 22 working days
-        working_days = _working_days_in_period(self.org.id, date(2025, 1, 1), date(2025, 1, 31))
+        working_days = _working_days_in_period(self.branch.id, date(2025, 1, 1), date(2025, 1, 31))
         self.assertEqual(working_days, 22)
         self.assertEqual(record.working_days, 22)
         self.assertEqual(record.absent_days, 15)  # 22 - 7 = 15

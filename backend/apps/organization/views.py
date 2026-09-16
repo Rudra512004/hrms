@@ -1,8 +1,8 @@
 from rest_framework import viewsets
 from django.db import IntegrityError
 from rest_framework.exceptions import ValidationError
-from .models import OfficeNetwork, Organization, Department, Designation, Branch
-from .serializers import OfficeNetworkSerializer, OrganizationSerializer, DepartmentSerializer, DesignationSerializer, BranchSerializer, WorkingCalendarSerializer, OrganizationSetupSerializer
+from .models import OfficeNetwork, Organization, Department, Designation, Branch, Team
+from .serializers import OfficeNetworkSerializer, OrganizationSerializer, DepartmentSerializer, DesignationSerializer, BranchSerializer, WorkingCalendarSerializer, OrganizationSetupSerializer, TeamSerializer
 from apps.authorization.permissions import require_permission, IsNetworkAllowed
 from rest_framework.permissions import IsAuthenticated
 
@@ -82,13 +82,19 @@ class DepartmentViewSet(viewsets.ModelViewSet):
         user = self.request.user
         if user.is_superuser:
             qs = Department.objects.all()
-            org_id = self.request.query_params.get('organization')
-            if org_id:
-                qs = qs.filter(organization_id=org_id)
+            branch_id = self.request.query_params.get('branch')
+            if branch_id:
+                qs = qs.filter(branch_id=branch_id)
             return qs
+
+        # Determine accessible branches via authorization service, or fallback to org-wide branches if no branch scopes yet
         org = _get_request_user_org(self.request)
         if org:
-            return Department.objects.filter(organization_id=org.id)
+            qs = Department.objects.filter(branch__organization_id=org.id)
+            branch_id = self.request.query_params.get('branch')
+            if branch_id:
+                qs = qs.filter(branch_id=branch_id)
+            return qs
         return Department.objects.none()
 
     def get_permissions(self):
@@ -100,31 +106,76 @@ class DepartmentViewSet(viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         user = self.request.user
-        if user.is_superuser:
-            org_id = self.request.data.get('organization')
-            if org_id:
-                try:
-                    org = Organization.objects.get(id=org_id)
-                except Organization.DoesNotExist:
-                    raise ValidationError({"organization": "Specified organization does not exist."})
-            else:
-                org = _get_request_user_org(self.request) or Organization.objects.first()
-        else:
+        branch_id = self.request.data.get('branch')
+        if not branch_id:
+            raise ValidationError({"branch": "Branch ID is required."})
+
+        try:
+            branch = Branch.objects.get(id=branch_id)
+        except Branch.DoesNotExist:
+            raise ValidationError({"branch": "Specified branch does not exist."})
+
+        if not user.is_superuser:
             org = _get_request_user_org(self.request)
             if not org:
                 raise ValidationError({"organization": "User does not belong to an organization."})
-            req_org_id = self.request.data.get('organization')
-            if req_org_id:
-                try:
-                    if int(req_org_id) != org.id:
-                        raise ValidationError({"organization": "Cannot create resources for another organization."})
-                except (ValueError, TypeError):
-                    raise ValidationError({"organization": "Invalid organization ID."})
+            if branch.organization_id != org.id:
+                raise ValidationError({"branch": "Cannot create resources for a branch in another organization."})
 
         try:
-            serializer.save(organization=org)
+            serializer.save(branch=branch)
         except IntegrityError:
-            raise ValidationError({"name": "A department with this name already exists in this organization."})
+            raise ValidationError({"name": "A department with this name already exists in this branch."})
+
+class TeamViewSet(viewsets.ModelViewSet):
+    serializer_class = TeamSerializer
+
+    def get_queryset(self):
+        user = self.request.user
+        if user.is_superuser:
+            qs = Team.objects.all()
+            dept_id = self.request.query_params.get('department')
+            if dept_id:
+                qs = qs.filter(department_id=dept_id)
+            return qs
+        org = _get_request_user_org(self.request)
+        if org:
+            qs = Team.objects.filter(department__branch__organization_id=org.id)
+            dept_id = self.request.query_params.get('department')
+            if dept_id:
+                qs = qs.filter(department_id=dept_id)
+            return qs
+        return Team.objects.none()
+
+    def get_permissions(self):
+        if self.action in ['list', 'retrieve']:
+            permission = require_permission('team.view')
+        else:
+            permission = require_permission('team.manage')
+        return [IsAuthenticated(), permission()]
+
+    def perform_create(self, serializer):
+        user = self.request.user
+        dept_id = self.request.data.get('department')
+        if not dept_id:
+            raise ValidationError({"department": "Department ID is required."})
+
+        try:
+            dept = Department.objects.get(id=dept_id)
+        except Department.DoesNotExist:
+            raise ValidationError({"department": "Specified department does not exist."})
+
+        if not user.is_superuser:
+            org = _get_request_user_org(self.request)
+            if not org:
+                raise ValidationError({"organization": "User does not belong to an organization."})
+            if dept.branch.organization_id != org.id:
+                raise ValidationError({"department": "Cannot create resources for a department in another organization."})
+
+        try:
+            serializer.save(department=dept)
+        except IntegrityError:
+            raise ValidationError({"name": "A team with this name already exists in this department."})
 
 
 class DesignationViewSet(viewsets.ModelViewSet):

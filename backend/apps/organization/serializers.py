@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import OfficeNetwork, Organization, Department, Designation, Branch, WorkingCalendar
+from .models import OfficeNetwork, Organization, Department, Designation, Branch, WorkingCalendar, Team
 
 class WorkingCalendarSerializer(serializers.ModelSerializer):
     class Meta:
@@ -99,8 +99,14 @@ class OrganizationSerializer(serializers.ModelSerializer):
 class DepartmentSerializer(serializers.ModelSerializer):
     class Meta:
         model = Department
-        fields = ['id', 'organization', 'name', 'description', 'is_active', 'created_at', 'updated_at']
-        read_only_fields = ['id', 'organization', 'created_at', 'updated_at']
+        fields = ['id', 'branch', 'name', 'description', 'is_active', 'created_at', 'updated_at']
+        read_only_fields = ['id', 'branch', 'created_at', 'updated_at']
+
+class TeamSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Team
+        fields = ['id', 'department', 'name', 'description', 'is_active', 'manager', 'created_at', 'updated_at']
+        read_only_fields = ['id', 'department', 'created_at', 'updated_at']
 
 class DesignationSerializer(serializers.ModelSerializer):
     class Meta:

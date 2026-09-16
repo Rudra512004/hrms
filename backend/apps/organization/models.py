@@ -56,7 +56,7 @@ class OfficeNetwork(models.Model):
         return f"{self.name} ({self.network})"
 
 class Department(models.Model):
-    organization = models.ForeignKey(Organization, on_delete=models.CASCADE, related_name='departments')
+    branch = models.ForeignKey('organization.Branch', on_delete=models.CASCADE, related_name='departments')
     name = models.CharField(max_length=255)
     description = models.TextField(blank=True)
     is_active = models.BooleanField(default=True)
@@ -64,10 +64,35 @@ class Department(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
-        unique_together = ('organization', 'name')
+        unique_together = ('branch', 'name')
 
     def __str__(self):
-        return f"{self.name} ({self.organization.name})"
+        return f"{self.name} ({self.branch.name})"
+
+class Team(models.Model):
+    department = models.ForeignKey(Department, on_delete=models.CASCADE, related_name='teams')
+    name = models.CharField(max_length=255)
+    description = models.TextField(blank=True)
+    is_active = models.BooleanField(default=True)
+    manager = models.ForeignKey('employees.Employee', on_delete=models.SET_NULL, null=True, blank=True, related_name='managed_teams')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = ('department', 'name')
+
+    def clean(self):
+        super().clean()
+        if self.manager:
+            if self.manager.branch_id != self.department.branch_id:
+                raise ValidationError({'manager': 'Manager must belong to the same branch as the team.'})
+
+    def save(self, *args, **kwargs):
+        self.clean()
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f"{self.name} ({self.department.name})"
 
 class Designation(models.Model):
     organization = models.ForeignKey(Organization, on_delete=models.CASCADE, related_name='designations')

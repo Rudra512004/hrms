@@ -43,7 +43,7 @@ class EmployeeSerializer(serializers.ModelSerializer):
         if org:
             if branch and branch.organization_id != org.id:
                 raise serializers.ValidationError({'branch': 'Branch must belong to the same organization.'})
-            if dept and dept.organization_id != org.id:
+            if dept and dept.branch.organization_id != org.id:
                 raise serializers.ValidationError({'department': 'Department must belong to the same organization.'})
             if desig and desig.organization_id != org.id:
                 raise serializers.ValidationError({'designation': 'Designation must belong to the same organization.'})

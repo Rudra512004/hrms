@@ -302,7 +302,7 @@ class EmployeeManagementViewSet(viewsets.ModelViewSet):
         effective_date = serializer.validated_data['effective_date']
         reason = serializer.validated_data.get('reason', '')
 
-        if dept and dept.organization_id != employee.organization_id:
+        if dept and dept.branch.organization_id != employee.organization_id:
             return Response({'department': 'Department must belong to the same organization.'}, status=status.HTTP_400_BAD_REQUEST)
         if branch and branch.organization_id != employee.organization_id:
             return Response({'branch': 'Branch must belong to the same organization.'}, status=status.HTTP_400_BAD_REQUEST)

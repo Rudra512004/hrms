@@ -26,12 +26,12 @@ class PayrollReportingTests(TestCase):
         # Branches & Departments in Org 1
         self.branch1 = Branch.objects.create(organization=self.org1, name='HQ Branch', radius=100)
         self.branch2 = Branch.objects.create(organization=self.org1, name='East Branch', radius=100)
-        self.dept1 = Department.objects.create(organization=self.org1, name='Engineering')
-        self.dept2 = Department.objects.create(organization=self.org1, name='Marketing')
+        self.dept1 = Department.objects.create(branch=self.branch1, name='Engineering')
+        self.dept2 = Department.objects.create(branch=self.branch1, name='Marketing')
 
         # Branch in Org 2
         self.branch_org2 = Branch.objects.create(organization=self.org2, name='Other Branch', radius=100)
-        self.dept_org2 = Department.objects.create(organization=self.org2, name='Other Dept')
+        self.dept_org2 = Department.objects.create(branch=self.branch_org2, name='Other Dept')
 
 
         # Employee 1 in Org 1 (Engineering, HQ)

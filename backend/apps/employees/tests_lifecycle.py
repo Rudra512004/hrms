@@ -30,9 +30,9 @@ class EmployeeLifecycleComprehensiveTests(TestCase):
         self.branch2 = Branch.objects.create(organization=self.org, name='Tech Hub')
         self.other_branch = Branch.objects.create(organization=self.other_org, name='External Branch')
 
-        self.dept1 = Department.objects.create(organization=self.org, name='Engineering')
-        self.dept2 = Department.objects.create(organization=self.org, name='Product')
-        self.other_dept = Department.objects.create(organization=self.other_org, name='Legal')
+        self.dept1 = Department.objects.create(branch=self.branch1, name='Engineering')
+        self.dept2 = Department.objects.create(branch=self.branch2, name='Product')
+        self.other_dept = Department.objects.create(branch=self.other_branch, name='Legal')
 
         self.desig1 = Designation.objects.create(organization=self.org, name='Software Engineer')
         self.desig2 = Designation.objects.create(organization=self.org, name='Senior Software Engineer')

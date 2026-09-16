@@ -94,16 +94,16 @@ class MultiTenantIsolationSecurityTests(TestCase):
         self.role_perm_b = RolePermission.objects.create(role=self.role_member_b, permission=self.permissions['department.view'])
 
         # 7. Create Organization Resources for Org A and Org B
-        self.dept_a = Department.objects.create(organization=self.org_a, name='Engineering Alpha')
-        self.dept_b = Department.objects.create(organization=self.org_b, name='Engineering Beta')
-
-        self.desig_a = Designation.objects.create(organization=self.org_a, name='Developer Alpha')
-        self.desig_b = Designation.objects.create(organization=self.org_b, name='Developer Beta')
-
         self.branch_a = Branch.objects.create(organization=self.org_a, name='HQ Alpha')
         self.branch_b = Branch.objects.create(organization=self.org_b, name='HQ Beta')
         self.net_a = OfficeNetwork.objects.create(branch=self.branch_a, name='Net Alpha', network='127.0.0.1/32')
         self.net_b = OfficeNetwork.objects.create(branch=self.branch_b, name='Net Beta', network='172.16.0.0/16')
+
+        self.dept_a = Department.objects.create(branch=self.branch_a, name='Engineering Alpha')
+        self.dept_b = Department.objects.create(branch=self.branch_b, name='Engineering Beta')
+
+        self.desig_a = Designation.objects.create(organization=self.org_a, name='Developer Alpha')
+        self.desig_b = Designation.objects.create(organization=self.org_b, name='Developer Beta')
 
         # 8. Create Audit Logs
         self.audit_a = AuditLog.objects.create(
@@ -276,7 +276,7 @@ class MultiTenantIsolationSecurityTests(TestCase):
         payload = {'organization': self.org_b.id, 'name': 'Injected Dept'}
         response = self.client.post('/api/v1/organization/departments/', payload)
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertIn('organization', response.data)
+        self.assertIn('branch', response.data)
 
     # =========================================================================
     # E. ORGANIZATION MODULE: DESIGNATIONS

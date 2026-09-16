@@ -183,7 +183,7 @@ class AttendanceAPITests(TestCase):
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
     def test_admin_attendance_list_scoping(self):
-        from apps.organization.models import Organization, Department, Designation
+        from apps.organization.models import Organization, Department, Designation, Branch
         from apps.employees.models import Employee
         from django.contrib.auth import get_user_model
         User = get_user_model()
@@ -194,7 +194,8 @@ class AttendanceAPITests(TestCase):
 
         # Create second organization and employee
         org2 = Organization.objects.create(name='Org 2')
-        dept2 = Department.objects.create(organization=org2, name='Dept 2')
+        branch2 = Branch.objects.create(organization=org2, name='Branch 2', radius=100)
+        dept2 = Department.objects.create(branch=branch2, name='Dept 2')
         desig2 = Designation.objects.create(organization=org2, name='Desig 2')
         user2 = User.objects.create_user(email='user2@example.com', password='password123', first_name='User', last_name='Two')
         emp2 = Employee.objects.create(user=user2, organization=org2, department=dept2, designation=desig2, employee_code='EMP002')

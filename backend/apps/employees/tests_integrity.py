@@ -4,7 +4,7 @@ from rest_framework.serializers import ValidationError as DRFValidationError
 from django.contrib.auth import get_user_model
 from apps.employees.models import Employee
 from apps.employees.serializers import EmployeeSerializer
-from apps.organization.models import Organization, Department, Designation
+from apps.organization.models import Organization, Department, Designation, Branch
 
 User = get_user_model()
 
@@ -12,9 +12,11 @@ class EmployeeIntegrityTests(TestCase):
     def setUp(self):
         self.org1 = Organization.objects.create(name='Org 1')
         self.org2 = Organization.objects.create(name='Org 2')
-        self.dept1 = Department.objects.create(organization=self.org1, name='Dept 1')
+        self.branch1 = Branch.objects.create(organization=self.org1, name='Branch 1', radius=100)
+        self.branch_org2 = Branch.objects.create(organization=self.org2, name='Branch Org2', radius=100)
+        self.dept1 = Department.objects.create(branch=self.branch1, name='Dept 1')
         self.desig1 = Designation.objects.create(organization=self.org1, name='Desig 1')
-        self.dept2 = Department.objects.create(organization=self.org2, name='Dept 2')
+        self.dept2 = Department.objects.create(branch=self.branch_org2, name='Dept 2')
         self.desig2 = Designation.objects.create(organization=self.org2, name='Desig 2')
         
         self.user1 = User.objects.create_user(email='emp1@example.com')

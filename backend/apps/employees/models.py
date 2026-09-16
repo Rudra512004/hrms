@@ -75,7 +75,7 @@ class Employee(models.Model):
         if self.organization_id:
             if self.branch_id and self.branch.organization_id != self.organization_id:
                 raise ValidationError({'branch': 'Branch must belong to the same organization.'})
-            if self.department_id and self.department.organization_id != self.organization_id:
+            if self.department_id and self.department.branch.organization_id != self.organization_id:
                 raise ValidationError({'department': 'Department must belong to the same organization.'})
             if self.designation_id and self.designation.organization_id != self.organization_id:
                 raise ValidationError({'designation': 'Designation must belong to the same organization.'})
