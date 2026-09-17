@@ -125,13 +125,15 @@ class EmployeeManagementViewSet(viewsets.ModelViewSet):
         elif hasattr(user, 'employee'):
             from django.db.models import Q
             authorized_branches = AuthorizationService.get_authorized_branches(user, 'employee.view')
-            if AuthorizationService.has_permission(user, 'employee.view', branch_id=None):
+            authorized_teams = AuthorizationService.get_authorized_teams(user, 'employee.view')
+            if AuthorizationService.has_permission(user, 'employee.view', branch_id=None, global_only=True):
                 qs = qs.filter(
                     Q(branch__in=authorized_branches) |
-                    Q(branch__isnull=True, organization=user.employee.organization)
+                    Q(branch__isnull=True, organization=user.employee.organization) |
+                    Q(team__in=authorized_teams)
                 )
             else:
-                qs = qs.filter(branch__in=authorized_branches)
+                qs = qs.filter(Q(branch__in=authorized_branches) | Q(team__in=authorized_teams))
         else:
             return Employee.objects.none()
 
@@ -735,14 +737,16 @@ class EmployeeDocumentViewSet(viewsets.GenericViewSet):
         elif hasattr(user, 'employee'):
             from django.db.models import Q
             authorized_branches = AuthorizationService.get_authorized_branches(user, 'employee.document.view')
-            if AuthorizationService.has_permission(user, 'employee.document.view', branch_id=None):
+            authorized_teams = AuthorizationService.get_authorized_teams(user, 'employee.document.view')
+            if AuthorizationService.has_permission(user, 'employee.document.view', branch_id=None, global_only=True):
                 qs = qs.filter(
                     Q(employee=user.employee) |
                     Q(employee__branch__in=authorized_branches) |
-                    Q(employee__branch__isnull=True, employee__organization=user.employee.organization)
+                    Q(employee__branch__isnull=True, employee__organization=user.employee.organization) |
+                    Q(employee__team__in=authorized_teams)
                 )
             else:
-                qs = qs.filter(Q(employee=user.employee) | Q(employee__branch__in=authorized_branches))
+                qs = qs.filter(Q(employee=user.employee) | Q(employee__branch__in=authorized_branches) | Q(employee__team__in=authorized_teams))
         else:
             return EmployeeDocument.objects.none()
 

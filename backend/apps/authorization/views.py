@@ -7,7 +7,7 @@ from django.utils import timezone
 from django.db import IntegrityError
 from rest_framework.exceptions import ValidationError
 from apps.organization.models import Organization
-from .models import Role, Permission, UserRole, UserPermissionGrant, RolePermission
+from .models import Role, Permission, UserRole, UserPermissionGrant, RolePermission, ScopeChoices
 from .serializers import RoleSerializer, PermissionSerializer, UserRoleSerializer, UserPermissionGrantSerializer, RolePermissionSerializer
 from apps.authorization.permissions import require_permission
 from apps.authorization.services import AuthorizationService
@@ -148,6 +148,21 @@ class UserRoleViewSet(viewsets.ModelViewSet):
 
             if not hasattr(target_user, 'employee') or target_user.employee.organization_id != user_org.id:
                 raise ValidationError({'user': 'Target user does not belong to your organization.'})
+                
+            # Prevent Privilege Escalation
+            scope = serializer.validated_data.get('scope', ScopeChoices.ORGANIZATION)
+            branch = serializer.validated_data.get('branch')
+            team = serializer.validated_data.get('team')
+            
+            if scope == ScopeChoices.ORGANIZATION:
+                if not AuthorizationService.has_permission(user, 'role.assign', branch_id=None, team_id=None, global_only=True):
+                    raise ValidationError({'scope': 'You do not have permission to grant organization-wide roles.'})
+            elif scope == ScopeChoices.BRANCH:
+                if not AuthorizationService.has_permission(user, 'role.assign', branch_id=branch.id if branch else None, team_id=None):
+                    raise ValidationError({'scope': 'You do not have permission to grant roles for this branch.'})
+            elif scope == ScopeChoices.TEAM:
+                if not AuthorizationService.has_permission(user, 'role.assign', branch_id=None, team_id=team.id if team else None):
+                    raise ValidationError({'scope': 'You do not have permission to grant roles for this team.'})
         else:
             if hasattr(target_user, 'employee') and target_user.employee.organization_id:
                 if role.organization_id != target_user.employee.organization_id:
@@ -162,6 +177,36 @@ class UserRoleViewSet(viewsets.ModelViewSet):
             metadata={'role_id': user_role.role.id, 'role_name': user_role.role.name},
             request=self.request
         )
+
+    def perform_update(self, serializer):
+        user = self.request.user
+        target_user = serializer.validated_data.get('user', serializer.instance.user)
+        role = serializer.validated_data.get('role', serializer.instance.role)
+
+        if not user.is_superuser:
+            if not hasattr(user, 'employee') or not user.employee.organization_id:
+                raise ValidationError({'detail': 'User does not belong to an organization.'})
+
+            user_org = user.employee.organization
+            if not hasattr(target_user, 'employee') or target_user.employee.organization_id != user_org.id:
+                raise ValidationError({'user': 'Target user does not belong to your organization.'})
+                
+            # Prevent Privilege Escalation
+            scope = serializer.validated_data.get('scope', serializer.instance.scope)
+            branch = serializer.validated_data.get('branch', serializer.instance.branch)
+            team = serializer.validated_data.get('team', serializer.instance.team)
+            
+            if scope == ScopeChoices.ORGANIZATION:
+                if not AuthorizationService.has_permission(user, 'role.assign', branch_id=None, team_id=None, global_only=True):
+                    raise ValidationError({'scope': 'You do not have permission to grant organization-wide roles.'})
+            elif scope == ScopeChoices.BRANCH:
+                if not AuthorizationService.has_permission(user, 'role.assign', branch_id=branch.id if branch else None, team_id=None):
+                    raise ValidationError({'scope': 'You do not have permission to grant roles for this branch.'})
+            elif scope == ScopeChoices.TEAM:
+                if not AuthorizationService.has_permission(user, 'role.assign', branch_id=None, team_id=team.id if team else None):
+                    raise ValidationError({'scope': 'You do not have permission to grant roles for this team.'})
+
+        serializer.save()
 
     @action(detail=True, methods=['post'])
     def revoke(self, request, pk=None):
@@ -231,6 +276,21 @@ class UserPermissionGrantViewSet(viewsets.ModelViewSet):
             user_org = user.employee.organization
             if not hasattr(target_user, 'employee') or target_user.employee.organization_id != user_org.id:
                 raise ValidationError({'user': 'Target user does not belong to your organization.'})
+                
+            # Prevent Privilege Escalation
+            scope = serializer.validated_data.get('scope', ScopeChoices.ORGANIZATION)
+            branch = serializer.validated_data.get('branch')
+            team = serializer.validated_data.get('team')
+            
+            if scope == ScopeChoices.ORGANIZATION:
+                if not AuthorizationService.has_permission(user, 'permission.assign', branch_id=None, team_id=None, global_only=True):
+                    raise ValidationError({'scope': 'You do not have permission to grant organization-wide permissions.'})
+            elif scope == ScopeChoices.BRANCH:
+                if not AuthorizationService.has_permission(user, 'permission.assign', branch_id=branch.id if branch else None, team_id=None):
+                    raise ValidationError({'scope': 'You do not have permission to grant permissions for this branch.'})
+            elif scope == ScopeChoices.TEAM:
+                if not AuthorizationService.has_permission(user, 'permission.assign', branch_id=None, team_id=team.id if team else None):
+                    raise ValidationError({'scope': 'You do not have permission to grant permissions for this team.'})
 
         user_permission = serializer.save(granted_by=self.request.user)
         AuditService.log(
@@ -253,6 +313,21 @@ class UserPermissionGrantViewSet(viewsets.ModelViewSet):
             user_org = user.employee.organization
             if not hasattr(target_user, 'employee') or target_user.employee.organization_id != user_org.id:
                 raise ValidationError({'user': 'Target user does not belong to your organization.'})
+
+            # Prevent Privilege Escalation
+            scope = serializer.validated_data.get('scope', serializer.instance.scope)
+            branch = serializer.validated_data.get('branch', serializer.instance.branch)
+            team = serializer.validated_data.get('team', serializer.instance.team)
+            
+            if scope == ScopeChoices.ORGANIZATION:
+                if not AuthorizationService.has_permission(user, 'permission.assign', branch_id=None, team_id=None):
+                    raise ValidationError({'scope': 'You do not have permission to grant organization-wide permissions.'})
+            elif scope == ScopeChoices.BRANCH:
+                if not AuthorizationService.has_permission(user, 'permission.assign', branch_id=branch.id if branch else None, team_id=None):
+                    raise ValidationError({'scope': 'You do not have permission to grant permissions for this branch.'})
+            elif scope == ScopeChoices.TEAM:
+                if not AuthorizationService.has_permission(user, 'permission.assign', branch_id=None, team_id=team.id if team else None):
+                    raise ValidationError({'scope': 'You do not have permission to grant permissions for this team.'})
 
         serializer.save()
 
