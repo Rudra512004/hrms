@@ -1,17 +1,27 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
-import { employeeManagementService } from '../../services/employeeManagement';
+import { employeeManagementService, type EmployeeLifecycleEvent } from '../../services/employeeManagement';
 import { type EmployeeProfile } from '../../services/employee';
 import { employeeDocumentService, type EmployeeDocument } from '../../services/employeeDocuments';
 import { Card } from '../../components/Card';
 import { StatusBadge } from '../../components/StatusBadge';
 import {
   Loader2, ArrowLeft, Mail, Phone, MapPin, Building, Briefcase, Calendar,
-  User as UserIcon, FileText, Upload, Download, Eye, Trash2, X, AlertCircle, Package
+  User as UserIcon, FileText, Upload, Download, Eye, Trash2, X, AlertCircle, Package,
+  Layers, ArrowUpRight, Power, UserX, RefreshCw, Edit2, CheckCircle, History
 } from 'lucide-react';
 import { assetService, type Asset } from '../../services/assets';
 import { EmptyState } from '../../components/EmptyState';
+
+// Lifecycle Modals and Components
+import { TransferModal } from '../../components/lifecycle/TransferModal';
+import { PromotionModal } from '../../components/lifecycle/PromotionModal';
+import { ExitModal } from '../../components/lifecycle/ExitModal';
+import { StatusChangeModal } from '../../components/lifecycle/StatusChangeModal';
+import { ReactivateModal } from '../../components/lifecycle/ReactivateModal';
+import { EditEmployeeModal } from '../../components/lifecycle/EditEmployeeModal';
+import { LifecycleHistoryTab } from '../../components/lifecycle/LifecycleHistoryTab';
 
 const DOCUMENT_TYPES = [
   { value: 'identity', label: 'Identity Proof' },
@@ -41,15 +51,23 @@ export const EmployeeProfilePage: React.FC = () => {
   const navigate = useNavigate();
   const { hasPermission } = useAuth();
 
+  // Permissions strictly checked via hasPermission()
   const canViewDocs = hasPermission('employee.document.view');
   const canUploadDocs = hasPermission('employee.document.upload');
   const canDeleteDocs = hasPermission('employee.document.delete');
   const canViewAssets = hasPermission('asset.view');
 
+  const canTransfer = hasPermission('employee.transfer');
+  const canPromote = hasPermission('employee.promote');
+  const canManageStatus = hasPermission('employee.manage_status');
+  const canExit = hasPermission('employee.exit') || hasPermission('employee.manage_status');
+  const canUpdate = hasPermission('employee.update');
+  const canViewLifecycle = hasPermission('employee.lifecycle.view') || hasPermission('employee.view');
+
   const [employee, setEmployee] = useState<EmployeeProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<'overview' | 'contact' | 'employment' | 'documents' | 'assets'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'contact' | 'employment' | 'documents' | 'assets' | 'lifecycle'>('overview');
 
   // Documents state
   const [documents, setDocuments] = useState<EmployeeDocument[]>([]);
@@ -60,6 +78,22 @@ export const EmployeeProfilePage: React.FC = () => {
   const [assignedAssets, setAssignedAssets] = useState<Asset[]>([]);
   const [assetsLoading, setAssetsLoading] = useState(false);
   const [assetsError, setAssetsError] = useState<string | null>(null);
+
+  // Lifecycle Modals state
+  const [showTransferModal, setShowTransferModal] = useState(false);
+  const [showPromotionModal, setShowPromotionModal] = useState(false);
+  const [showExitModal, setShowExitModal] = useState(false);
+  const [showStatusModal, setShowStatusModal] = useState(false);
+  const [showReactivateModal, setShowReactivateModal] = useState(false);
+  const [showEditModal, setShowEditModal] = useState(false);
+
+  // Lifecycle History state
+  const [lifecycleEvents, setLifecycleEvents] = useState<EmployeeLifecycleEvent[]>([]);
+  const [lifecycleLoading, setLifecycleLoading] = useState(false);
+  const [lifecycleError, setLifecycleError] = useState<string | null>(null);
+
+  // Toast / feedback state
+  const [successToast, setSuccessToast] = useState<string | null>(null);
 
   // Upload modal state
   const [showUploadModal, setShowUploadModal] = useState(false);
@@ -72,28 +106,29 @@ export const EmployeeProfilePage: React.FC = () => {
   const [uploadValidationError, setUploadValidationError] = useState<string | null>(null);
   const [actionInProgress, setActionInProgress] = useState<number | null>(null);
 
-  useEffect(() => {
+  const fetchProfile = useCallback(async () => {
     if (!id) return;
-    const fetchProfile = async () => {
-      setLoading(true);
-      try {
-        const data = await employeeManagementService.getEmployee(parseInt(id, 10));
-        setEmployee(data);
-        setError(null);
-      } catch (err: any) {
-        if (err.response?.status === 403) {
-          setError("403 Forbidden: You do not have permission to view this profile.");
-        } else if (err.response?.status === 404) {
-          setError("404 Not Found: Employee does not exist.");
-        } else {
-          setError("Failed to load employee profile.");
-        }
-      } finally {
-        setLoading(false);
+    setLoading(true);
+    try {
+      const data = await employeeManagementService.getEmployee(parseInt(id, 10));
+      setEmployee(data);
+      setError(null);
+    } catch (err: any) {
+      if (err.response?.status === 403 || err.status === 403) {
+        setError("403 Forbidden: You do not have permission to view this profile.");
+      } else if (err.response?.status === 404 || err.status === 404) {
+        setError("404 Not Found: Employee does not exist.");
+      } else {
+        setError("Failed to load employee profile.");
       }
-    };
-    fetchProfile();
+    } finally {
+      setLoading(false);
+    }
   }, [id]);
+
+  useEffect(() => {
+    fetchProfile();
+  }, [fetchProfile]);
 
   const fetchDocuments = useCallback(async () => {
     if (!id || !canViewDocs) return;
@@ -147,6 +182,48 @@ export const EmployeeProfilePage: React.FC = () => {
       fetchAssignedAssets();
     }
   }, [activeTab, fetchAssignedAssets]);
+
+  const fetchLifecycleHistory = useCallback(async () => {
+    if (!id || !canViewLifecycle) return;
+    setLifecycleLoading(true);
+    setLifecycleError(null);
+    try {
+      const events = await employeeManagementService.getLifecycleHistory(parseInt(id, 10));
+      setLifecycleEvents(events || []);
+    } catch (err: any) {
+      if (err.status === 403 || err.response?.status === 403) {
+        setLifecycleError("403 Forbidden: You do not have permission to view lifecycle history.");
+      } else {
+        setLifecycleError("Failed to load employee lifecycle history.");
+      }
+    } finally {
+      setLifecycleLoading(false);
+    }
+  }, [id, canViewLifecycle]);
+
+  useEffect(() => {
+    if (activeTab === 'lifecycle') {
+      fetchLifecycleHistory();
+    }
+  }, [activeTab, fetchLifecycleHistory]);
+
+  // Handle successful lifecycle mutation without full page reload
+  const handleLifecycleSuccess = (updated: EmployeeProfile, message: string) => {
+    setEmployee(updated);
+    setSuccessToast(message);
+    setTimeout(() => setSuccessToast(null), 6000);
+
+    // Refresh lifecycle events
+    fetchLifecycleHistory();
+
+    // Close all lifecycle modals
+    setShowTransferModal(false);
+    setShowPromotionModal(false);
+    setShowExitModal(false);
+    setShowStatusModal(false);
+    setShowReactivateModal(false);
+    setShowEditModal(false);
+  };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setUploadValidationError(null);
@@ -278,14 +355,131 @@ export const EmployeeProfilePage: React.FC = () => {
     );
   }
 
+  const isExited = employee.employment_status === 'exited';
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--spacing-lg)' }}>
       {/* Top Action Bar */}
-      <div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
         <button className="btn btn-ghost" onClick={() => navigate('/admin/employees')} style={{ padding: '4px 8px', marginLeft: '-8px' }}>
           <ArrowLeft size={16} /> Back to Directory
         </button>
+
+        {/* Permission-aware Lifecycle Actions */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }} data-testid="lifecycle-actions-bar">
+          {/* Transfer: strictly employee.transfer */}
+          {canTransfer && (
+            <button
+              className="btn btn-outline"
+              onClick={() => setShowTransferModal(true)}
+              disabled={isExited}
+              title={isExited ? 'Cannot transfer an exited employee' : 'Transfer employee'}
+              data-testid="action-transfer-btn"
+              style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
+            >
+              <Layers size={15} /> Transfer
+            </button>
+          )}
+
+          {/* Promotion: strictly employee.promote */}
+          {canPromote && (
+            <button
+              className="btn btn-outline"
+              onClick={() => setShowPromotionModal(true)}
+              disabled={isExited}
+              title={isExited ? 'Cannot promote an exited employee' : 'Promote employee'}
+              data-testid="action-promote-btn"
+              style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
+            >
+              <ArrowUpRight size={15} /> Promote
+            </button>
+          )}
+
+          {/* Change Status: strictly employee.manage_status (hidden if exited in favor of Reactivate) */}
+          {canManageStatus && !isExited && (
+            <button
+              className="btn btn-outline"
+              onClick={() => setShowStatusModal(true)}
+              data-testid="action-status-btn"
+              style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
+            >
+              <Power size={15} /> Change Status
+            </button>
+          )}
+
+          {/* Exit / Separation: employee.exit or employee.manage_status */}
+          {canExit && (
+            <button
+              className="btn btn-warning"
+              onClick={() => setShowExitModal(true)}
+              disabled={isExited}
+              title={isExited ? 'Employee is already exited' : 'Exit or notice period'}
+              data-testid="action-exit-btn"
+              style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
+            >
+              <UserX size={15} /> Exit / Separation
+            </button>
+          )}
+
+          {/* Reactivate: employee.manage_status, only rendered for exited employees */}
+          {isExited && canManageStatus && (
+            <button
+              className="btn btn-primary"
+              onClick={() => setShowReactivateModal(true)}
+              data-testid="action-reactivate-btn"
+              style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
+            >
+              <RefreshCw size={15} /> Reactivate Employee
+            </button>
+          )}
+
+          {/* Normal Edit: strictly employee.update */}
+          {canUpdate && (
+            <button
+              className="btn btn-secondary"
+              onClick={() => setShowEditModal(true)}
+              data-testid="action-edit-btn"
+              style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
+            >
+              <Edit2 size={15} /> Edit Details
+            </button>
+          )}
+        </div>
       </div>
+
+      {/* Success Notification Toast */}
+      {successToast && (
+        <div
+          style={{
+            padding: '12px 18px',
+            backgroundColor: 'var(--color-status-success-bg, #ecfdf5)',
+            border: '1px solid var(--color-status-success-border, #a7f3d0)',
+            borderRadius: 'var(--radius-lg, 10px)',
+            color: 'var(--color-status-success, #059669)',
+            fontSize: '0.9rem',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: '12px',
+            boxShadow: '0 2px 4px rgba(0,0,0,0.05)',
+          }}
+          data-testid="lifecycle-success-toast"
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <CheckCircle size={18} />
+            <span>{successToast}</span>
+          </div>
+          <button
+            type="button"
+            className="btn btn-ghost"
+            onClick={() => setSuccessToast(null)}
+            style={{ padding: '2px 6px', color: 'inherit' }}
+            aria-label="Dismiss notification"
+          >
+            <X size={16} />
+          </button>
+        </div>
+      )}
 
       {/* Header Card */}
       <Card style={{ padding: '0' }}>
@@ -302,7 +496,7 @@ export const EmployeeProfilePage: React.FC = () => {
               {employee.first_name} {employee.last_name}
             </h1>
             <p style={{ margin: '0 0 12px 0', fontSize: '1rem', color: 'var(--color-text-muted)' }}>
-              {employee.designation_name || 'No Designation'} &bull; {employee.department_name || 'No Department'}
+              {employee.designation_name || 'No Designation'} &bull; {employee.department_name || 'No Department'}{employee.branch_name ? ` • ${employee.branch_name}` : ''}
             </p>
             <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
               <StatusBadge status={(employee.employment_status || employee.status) as any} />
@@ -314,11 +508,12 @@ export const EmployeeProfilePage: React.FC = () => {
         </div>
         
         {/* Tabs */}
-        <div style={{ display: 'flex', borderTop: '1px solid var(--color-border)', padding: '0 var(--spacing-xl)', gap: '8px' }}>
-          {(['overview', 'contact', 'employment', 'documents', 'assets'] as const).map(tab => (
+        <div style={{ display: 'flex', borderTop: '1px solid var(--color-border)', padding: '0 var(--spacing-xl)', gap: '8px', overflowX: 'auto' }}>
+          {(['overview', 'contact', 'employment', 'documents', 'assets', ...(canViewLifecycle ? ['lifecycle'] : [])] as const).map(tab => (
             <button
               key={tab}
-              onClick={() => setActiveTab(tab)}
+              onClick={() => setActiveTab(tab as any)}
+              data-testid={`tab-${tab}`}
               style={{
                 background: 'none',
                 border: 'none',
@@ -332,11 +527,13 @@ export const EmployeeProfilePage: React.FC = () => {
                 display: 'flex',
                 alignItems: 'center',
                 gap: '6px',
+                whiteSpace: 'nowrap',
               }}
             >
               {tab === 'documents' && <FileText size={16} />}
               {tab === 'assets' && <Package size={16} />}
-              {tab}
+              {tab === 'lifecycle' && <History size={16} />}
+              {tab === 'lifecycle' ? 'Lifecycle History' : tab}
               {tab === 'documents' && documents.length > 0 && (
                 <span style={{
                   fontSize: '0.75rem',
@@ -357,6 +554,17 @@ export const EmployeeProfilePage: React.FC = () => {
                   color: activeTab === 'assets' ? 'var(--color-primary)' : 'var(--color-text-muted)',
                 }}>
                   {assignedAssets.length}
+                </span>
+              )}
+              {tab === 'lifecycle' && lifecycleEvents.length > 0 && (
+                <span style={{
+                  fontSize: '0.75rem',
+                  padding: '2px 6px',
+                  borderRadius: '10px',
+                  backgroundColor: activeTab === 'lifecycle' ? 'var(--color-primary-light)' : 'var(--color-bg-subtle, #f1f5f9)',
+                  color: activeTab === 'lifecycle' ? 'var(--color-primary)' : 'var(--color-text-muted)',
+                }}>
+                  {lifecycleEvents.length}
                 </span>
               )}
             </button>
@@ -388,17 +596,38 @@ export const EmployeeProfilePage: React.FC = () => {
             <Card title="Organizational Information">
               <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
                 <div style={{ display: 'flex', gap: '12px', alignItems: 'flex-start' }}>
+                  <MapPin size={18} color="var(--color-text-muted)" style={{ marginTop: '2px' }} />
+                  <div>
+                    <span style={{ display: 'block', fontSize: '0.8rem', color: 'var(--color-text-muted)', marginBottom: '4px' }}>Branch</span>
+                    <span style={{ fontWeight: 500 }} data-testid="profile-branch">{employee.branch_name || '—'}</span>
+                  </div>
+                </div>
+                <div style={{ display: 'flex', gap: '12px', alignItems: 'flex-start' }}>
                   <Building size={18} color="var(--color-text-muted)" style={{ marginTop: '2px' }} />
                   <div>
                     <span style={{ display: 'block', fontSize: '0.8rem', color: 'var(--color-text-muted)', marginBottom: '4px' }}>Department</span>
-                    <span style={{ fontWeight: 500 }}>{employee.department_name || '-'}</span>
+                    <span style={{ fontWeight: 500 }} data-testid="profile-department">{employee.department_name || '—'}</span>
+                  </div>
+                </div>
+                <div style={{ display: 'flex', gap: '12px', alignItems: 'flex-start' }}>
+                  <UserIcon size={18} color="var(--color-text-muted)" style={{ marginTop: '2px' }} />
+                  <div>
+                    <span style={{ display: 'block', fontSize: '0.8rem', color: 'var(--color-text-muted)', marginBottom: '4px' }}>Team</span>
+                    <span style={{ fontWeight: 500 }} data-testid="profile-team">{employee.team_name || '—'}</span>
                   </div>
                 </div>
                 <div style={{ display: 'flex', gap: '12px', alignItems: 'flex-start' }}>
                   <Briefcase size={18} color="var(--color-text-muted)" style={{ marginTop: '2px' }} />
                   <div>
                     <span style={{ display: 'block', fontSize: '0.8rem', color: 'var(--color-text-muted)', marginBottom: '4px' }}>Designation</span>
-                    <span style={{ fontWeight: 500 }}>{employee.designation_name || '-'}</span>
+                    <span style={{ fontWeight: 500 }} data-testid="profile-designation">{employee.designation_name || '—'}</span>
+                  </div>
+                </div>
+                <div style={{ display: 'flex', gap: '12px', alignItems: 'flex-start' }}>
+                  <UserIcon size={18} color="var(--color-text-muted)" style={{ marginTop: '2px' }} />
+                  <div>
+                    <span style={{ display: 'block', fontSize: '0.8rem', color: 'var(--color-text-muted)', marginBottom: '4px' }}>Reporting Manager</span>
+                    <span style={{ fontWeight: 500 }} data-testid="profile-reporting-manager">{employee.reporting_manager_name || '—'}</span>
                   </div>
                 </div>
               </div>
@@ -485,6 +714,32 @@ export const EmployeeProfilePage: React.FC = () => {
                     <span style={{ fontWeight: 500 }}>{employee.exit_date || '-'}</span>
                   </div>
                 </div>
+                {employee.resignation_date && (
+                  <div style={{ display: 'flex', gap: '12px', alignItems: 'flex-start' }}>
+                    <Calendar size={18} color="var(--color-text-muted)" style={{ marginTop: '2px' }} />
+                    <div>
+                      <span style={{ display: 'block', fontSize: '0.8rem', color: 'var(--color-text-muted)', marginBottom: '4px' }}>Resignation Date</span>
+                      <span style={{ fontWeight: 500 }}>{employee.resignation_date}</span>
+                    </div>
+                  </div>
+                )}
+                {employee.notice_period_start && (
+                  <div style={{ display: 'flex', gap: '12px', alignItems: 'flex-start' }}>
+                    <Calendar size={18} color="var(--color-text-muted)" style={{ marginTop: '2px' }} />
+                    <div>
+                      <span style={{ display: 'block', fontSize: '0.8rem', color: 'var(--color-text-muted)', marginBottom: '4px' }}>Notice Period</span>
+                      <span style={{ fontWeight: 500 }}>
+                        {employee.notice_period_start} to {employee.notice_period_end || '—'}
+                      </span>
+                    </div>
+                  </div>
+                )}
+                {employee.exit_reason && (
+                  <div style={{ gridColumn: '1 / -1' }}>
+                    <span style={{ display: 'block', fontSize: '0.8rem', color: 'var(--color-text-muted)', marginBottom: '4px' }}>Exit Reason</span>
+                    <span style={{ fontWeight: 500 }}>{employee.exit_reason}</span>
+                  </div>
+                )}
              </div>
           </Card>
         )}
@@ -714,7 +969,77 @@ export const EmployeeProfilePage: React.FC = () => {
             )}
           </Card>
         )}
+
+        {activeTab === 'lifecycle' && (
+          <Card
+            title="Employee Lifecycle History"
+            style={{ gridColumn: '1 / -1' }}
+          >
+            <LifecycleHistoryTab
+              events={lifecycleEvents}
+              loading={lifecycleLoading}
+              error={lifecycleError}
+              onRetry={fetchLifecycleHistory}
+            />
+          </Card>
+        )}
       </div>
+
+      {/* Lifecycle Modals */}
+      {showTransferModal && (
+        <TransferModal
+          employee={employee}
+          onClose={() => setShowTransferModal(false)}
+          onSuccess={(updated) => handleLifecycleSuccess(updated, 'Employee transferred successfully.')}
+        />
+      )}
+
+      {showPromotionModal && (
+        <PromotionModal
+          employee={employee}
+          onClose={() => setShowPromotionModal(false)}
+          onSuccess={(updated) => handleLifecycleSuccess(updated, 'Employee promoted successfully.')}
+        />
+      )}
+
+      {showExitModal && (
+        <ExitModal
+          employee={employee}
+          onClose={() => setShowExitModal(false)}
+          onSuccess={(updated) =>
+            handleLifecycleSuccess(
+              updated,
+              updated.employment_status === 'on_notice'
+                ? 'Employee placed on notice period.'
+                : 'Employee exit processed successfully.'
+            )
+          }
+        />
+      )}
+
+      {showStatusModal && (
+        <StatusChangeModal
+          employee={employee}
+          onClose={() => setShowStatusModal(false)}
+          onSuccess={(updated) => handleLifecycleSuccess(updated, 'Employment status updated successfully.')}
+        />
+      )}
+
+      {showReactivateModal && (
+        <ReactivateModal
+          employee={employee}
+          onClose={() => setShowReactivateModal(false)}
+          onSuccess={(updated) => handleLifecycleSuccess(updated, 'Employee reactivated successfully.')}
+        />
+      )}
+
+      {showEditModal && (
+        <EditEmployeeModal
+          employee={employee}
+          onClose={() => setShowEditModal(false)}
+          onSuccess={(updated) => handleLifecycleSuccess(updated, 'Employee profile updated successfully.')}
+        />
+      )}
 
       {/* Upload Document Modal */}
       {showUploadModal && (
