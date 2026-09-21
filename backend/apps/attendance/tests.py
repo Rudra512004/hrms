@@ -21,14 +21,39 @@ class AttendanceAPITests(TestCase):
         policy.is_office_gps_enabled = False
         policy.is_office_ip_enabled = False
         policy.save()
+        self.branch.working_calendar.work_days = '0,1,2,3,4,5,6'
+        self.branch.working_calendar.save()
         self.user = User.objects.create_user(email='emp@example.com', password='Password123!', status='active')
         self.employee = Employee.objects.create(user=self.user, employee_code='EMP01', organization=self.org, branch=self.branch)
         self.network = OfficeNetwork.objects.create(branch=self.branch, name='HQ', network='203.0.113.0/24')
         self.office_ip = '203.0.113.50'
         self.external_ip = '198.51.100.5'
 
+        from apps.attendance.models import Shift, EmployeeShiftAssignment
+        from datetime import time
+        self.shift = Shift.objects.create(
+            branch=self.branch,
+            name='Standard Shift',
+            start_time=time(9, 0),
+            end_time=time(17, 0),
+            grace_period=timedelta(minutes=15),
+            full_day_hours=timedelta(hours=8),
+            half_day_hours=timedelta(hours=4),
+            work_days='0,1,2,3,4,5,6'
+        )
+        EmployeeShiftAssignment.objects.create(
+            employee=self.employee,
+            shift=self.shift,
+            effective_from=timezone.now().date() - timedelta(days=30)
+        )
+
         self.super_user = User.objects.create_user(email='super@example.com', password='Password123!', status='active', is_superuser=True)
-        self.super_employee = Employee.objects.create(user=self.super_user, employee_code='EMP02', organization=self.org)
+        self.super_employee = Employee.objects.create(user=self.super_user, employee_code='EMP02', organization=self.org, branch=self.branch)
+        EmployeeShiftAssignment.objects.create(
+            employee=self.super_employee,
+            shift=self.shift,
+            effective_from=timezone.now().date() - timedelta(days=30)
+        )
 
     def test_office_ip_check_in(self):
         self.client.force_authenticate(user=self.user)

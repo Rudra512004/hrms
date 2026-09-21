@@ -230,11 +230,28 @@ class AuditCoverageTests(TestCase):
         make_office_network(self.branch)
 
         self.admin = User.objects.create_superuser(email='admin3@co.com', password='Admin3Pass!')
-        Employee.objects.create(user=self.admin, employee_code='ADM003', personal_email='admin3.personal@ext.com', organization=self.org, branch=self.branch)
+        admin_emp = Employee.objects.create(user=self.admin, employee_code='ADM003', personal_email='admin3.personal@ext.com', organization=self.org, branch=self.branch)
 
         # Second user for WFH approve (can't approve own request)
         self.approver = User.objects.create_superuser(email='approver@co.com', password='Approver123!')
         Employee.objects.create(user=self.approver, employee_code='APR001', personal_email='approver.personal@ext.com', organization=self.org, branch=self.branch)
+
+        self.branch.working_calendar.work_days = '0,1,2,3,4,5,6'
+        self.branch.working_calendar.save()
+        from apps.attendance.models import Shift, EmployeeShiftAssignment
+        from datetime import time, timedelta
+        audit_shift = Shift.objects.create(
+            branch=self.branch,
+            name='Audit Shift',
+            start_time=time(9, 0),
+            end_time=time(17, 0),
+            work_days='0,1,2,3,4,5,6'
+        )
+        EmployeeShiftAssignment.objects.create(
+            employee=admin_emp,
+            shift=audit_shift,
+            effective_from=datetime.date.today() - timedelta(days=30)
+        )
 
         for codename in [
             'employee.create', 'employee.status',

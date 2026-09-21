@@ -106,7 +106,7 @@ class AttendanceViewSet(viewsets.GenericViewSet):
             return loc
 
         from .services import AttendanceCalculationService
-        shift = AttendanceCalculationService.get_effective_shift(employee, today)
+        shift = AttendanceCalculationService.resolve_scheduled_shift(employee, today)
         check_in_time = timezone.now()
         is_late = AttendanceCalculationService.is_late_check_in(shift, check_in_time, target_date=today)
 

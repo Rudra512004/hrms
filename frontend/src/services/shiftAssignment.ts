@@ -1,7 +1,15 @@
 import { ApiError } from './employeeManagement';
-import type { Holiday, CreateHolidayPayload, UpdateHolidayPayload } from '../types/attendance';
+import type {
+  EmployeeShiftAssignment,
+  CreateShiftAssignmentPayload,
+  UpdateShiftAssignmentPayload,
+} from '../types/attendance';
 
-export type { Holiday, CreateHolidayPayload, UpdateHolidayPayload };
+export type {
+  EmployeeShiftAssignment,
+  CreateShiftAssignmentPayload,
+  UpdateShiftAssignmentPayload,
+};
 export { ApiError };
 
 const getHeaders = (includeContentType = true): HeadersInit => {
@@ -27,12 +35,12 @@ const handleResponse = async <T>(response: Response): Promise<T> => {
   return response.json();
 };
 
-export const holidayService = {
-  listHolidays: async (
+export const shiftAssignmentService = {
+  listAssignments: async (
     params?: { branch_id?: number | string | null },
     options?: { signal?: AbortSignal }
-  ): Promise<Holiday[]> => {
-    let url = '/api/v1/attendance/holidays/';
+  ): Promise<EmployeeShiftAssignment[]> => {
+    let url = '/api/v1/attendance/shift-assignments/';
     if (
       params?.branch_id !== undefined &&
       params?.branch_id !== null &&
@@ -46,44 +54,45 @@ export const holidayService = {
       headers: getHeaders(false),
       signal: options?.signal,
     });
-    return handleResponse<Holiday[]>(response);
+    return handleResponse<EmployeeShiftAssignment[]>(response);
   },
 
-  getAll: async (
-    params?: { branch_id?: number | string | null },
+  getById: async (
+    id: number,
     options?: { signal?: AbortSignal }
-  ): Promise<Holiday[]> => {
-    return holidayService.listHolidays(params, options);
-  },
-
-  getById: async (id: number, options?: { signal?: AbortSignal }): Promise<Holiday> => {
-    const response = await fetch(`/api/v1/attendance/holidays/${id}/`, {
+  ): Promise<EmployeeShiftAssignment> => {
+    const response = await fetch(`/api/v1/attendance/shift-assignments/${id}/`, {
       headers: getHeaders(false),
       signal: options?.signal,
     });
-    return handleResponse<Holiday>(response);
+    return handleResponse<EmployeeShiftAssignment>(response);
   },
 
-  create: async (data: CreateHolidayPayload | Partial<Holiday>): Promise<Holiday> => {
-    const response = await fetch('/api/v1/attendance/holidays/', {
+  create: async (
+    data: CreateShiftAssignmentPayload
+  ): Promise<EmployeeShiftAssignment> => {
+    const response = await fetch('/api/v1/attendance/shift-assignments/', {
       method: 'POST',
       headers: getHeaders(true),
       body: JSON.stringify(data),
     });
-    return handleResponse<Holiday>(response);
+    return handleResponse<EmployeeShiftAssignment>(response);
   },
 
-  update: async (id: number, data: UpdateHolidayPayload | Partial<Holiday>): Promise<Holiday> => {
-    const response = await fetch(`/api/v1/attendance/holidays/${id}/`, {
+  update: async (
+    id: number,
+    data: UpdateShiftAssignmentPayload
+  ): Promise<EmployeeShiftAssignment> => {
+    const response = await fetch(`/api/v1/attendance/shift-assignments/${id}/`, {
       method: 'PATCH',
       headers: getHeaders(true),
       body: JSON.stringify(data),
     });
-    return handleResponse<Holiday>(response);
+    return handleResponse<EmployeeShiftAssignment>(response);
   },
 
   delete: async (id: number): Promise<void> => {
-    const response = await fetch(`/api/v1/attendance/holidays/${id}/`, {
+    const response = await fetch(`/api/v1/attendance/shift-assignments/${id}/`, {
       method: 'DELETE',
       headers: getHeaders(false),
     });

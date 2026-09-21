@@ -319,3 +319,44 @@ class AttendanceCalculationEngineHardeningTests(TestCase):
 
         t_late = timezone.make_aware(datetime.combine(today, time(23, 45, 1)), tz)
         self.assertTrue(AttendanceCalculationService.is_late_check_in(shift_night, t_late, target_date=today))
+
+    def test_15_api_check_in_configuration_errors(self):
+        """
+        15. API-level verification for C5.5.2.1 configuration errors through AttendanceViewSet:
+        1. Check-in when employee branch has no WorkingCalendar -> HTTP 400
+           {"detail": "Working calendar is not configured for branch <branch_id>."}
+        2. Check-in on a configured working day when employee has no effective shift assignment -> HTTP 400
+           {"detail": "No effective shift assignment for employee <employee_id> on <date>."}
+        """
+        today = timezone.now().date()
+
+        # 1. Missing WorkingCalendar
+        branch_no_cal = Branch.objects.create(
+            organization=self.org, name='No Cal Branch API',
+            latitude='12.971600', longitude='77.594600', radius=100.0
+        )
+        WorkingCalendar.objects.filter(branch=branch_no_cal).delete()
+        branch_no_cal.refresh_from_db()
+        policy = branch_no_cal.attendance_policy
+        policy.is_office_gps_enabled = False
+        policy.is_office_ip_enabled = False
+        policy.save()
+
+        user_no_cal = User.objects.create_user(email='nocal_api@example.com', password='Password123!', status='active')
+        emp_no_cal = Employee.objects.create(user=user_no_cal, employee_code='EMP_NOCAL', organization=self.org, branch=branch_no_cal)
+
+        self.client.force_authenticate(user=user_no_cal)
+        resp1 = self.client.post(reverse('attendance-check-in'))
+        self.assertEqual(resp1.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(resp1.data.get('detail'), f"Working calendar is not configured for branch {branch_no_cal.id}.")
+
+        # 2. Configured working day without effective shift assignment
+        # Ensure branch1 has today as working day
+        self.cal1.work_days = '0,1,2,3,4,5,6'
+        self.cal1.save()
+
+        # emp1 currently has NO EmployeeShiftAssignment
+        self.client.force_authenticate(user=self.user1)
+        resp2 = self.client.post(reverse('attendance-check-in'))
+        self.assertEqual(resp2.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(resp2.data.get('detail'), f"No effective shift assignment for employee {self.emp1.id} on {today}.")

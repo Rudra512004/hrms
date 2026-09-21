@@ -35,6 +35,23 @@ class GeofenceTests(TestCase):
         self.user3 = User.objects.create_user(email='emp3@test.com', password='Password123!', status='active')
         self.emp3 = Employee.objects.create(user=self.user3, employee_code='E3', organization=self.org1)
 
+        self.branch1.working_calendar.work_days = '0,1,2,3,4,5,6'
+        self.branch1.working_calendar.save()
+        from apps.attendance.models import EmployeeShiftAssignment
+        from datetime import time, timedelta
+        self.shift1 = Shift.objects.create(
+            branch=self.branch1,
+            name='HQ Shift',
+            start_time=time(9, 0),
+            end_time=time(17, 0),
+            work_days='0,1,2,3,4,5,6'
+        )
+        EmployeeShiftAssignment.objects.create(
+            employee=self.emp1,
+            shift=self.shift1,
+            effective_from=timezone.now().date() - timedelta(days=30)
+        )
+
     def test_unauthenticated(self):
         response = self.client.post(reverse('attendance-check-in'))
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)

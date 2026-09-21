@@ -50,6 +50,22 @@ class B0AttendanceSecurityTests(APITestCase):
             branch=self.branch_a,
             employee_code="EMP-001"
         )
+        self.branch_a.working_calendar.work_days = '0,1,2,3,4,5,6'
+        self.branch_a.working_calendar.save()
+        from apps.attendance.models import Shift, EmployeeShiftAssignment
+        from datetime import time
+        shift = Shift.objects.create(
+            branch=self.branch_a,
+            name='Shift A',
+            start_time=time(9, 0),
+            end_time=time(17, 0),
+            work_days='0,1,2,3,4,5,6'
+        )
+        EmployeeShiftAssignment.objects.create(
+            employee=self.emp_a,
+            shift=shift,
+            effective_from=timezone.now().date() - timedelta(days=30)
+        )
 
         self.url = reverse('attendance-check-in')
 
