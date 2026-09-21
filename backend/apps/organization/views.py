@@ -89,11 +89,11 @@ class DepartmentViewSet(viewsets.ModelViewSet):
             return qs
 
         from apps.authorization.services import AuthorizationService
-        
+
         # Determine accessible branches via authorization service
         permission = 'department.view' if self.action in ['list', 'retrieve'] else 'department.manage'
         authorized_branches = AuthorizationService.get_authorized_branches(user, permission)
-        
+
         qs = Department.objects.filter(branch__in=authorized_branches)
         branch_id = self.request.query_params.get('branch')
         if branch_id:
@@ -142,9 +142,7 @@ class TeamViewSet(viewsets.ModelViewSet):
             return qs
         from apps.authorization.services import AuthorizationService
         permission = 'team.view' if self.action in ['list', 'retrieve'] else 'team.manage'
-        authorized_branches = AuthorizationService.get_authorized_branches(user, permission)
-        
-        qs = Team.objects.filter(department__branch__in=authorized_branches)
+        qs = AuthorizationService.get_authorized_teams(user, permission)
         dept_id = self.request.query_params.get('department')
         if dept_id:
             qs = qs.filter(department_id=dept_id)
@@ -310,10 +308,14 @@ class BranchViewSet(viewsets.ModelViewSet):
             if org_id:
                 qs = qs.filter(organization_id=org_id)
             return qs
-        org = _get_request_user_org(self.request)
-        if org:
-            return Branch.objects.filter(organization_id=org.id)
-        return Branch.objects.none()
+
+        from apps.authorization.services import AuthorizationService
+        permission = 'branch.view' if self.action in ['list', 'retrieve'] else 'branch.manage'
+        qs = AuthorizationService.get_authorized_branches(user, permission)
+        org_id = self.request.query_params.get('organization')
+        if org_id:
+            qs = qs.filter(organization_id=org_id)
+        return qs
 
     def get_permissions(self):
         if self.action in ['list', 'retrieve']:

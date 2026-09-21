@@ -96,6 +96,8 @@ class ProvisionEmployeeView(APIView):
         return Response(response_data, status=status.HTTP_201_CREATED)
 
 class EmployeeManagementViewSet(viewsets.ModelViewSet):
+    http_method_names = ['get', 'post', 'put', 'patch', 'head', 'options']
+
     def get_serializer_class(self):
         if self.action == 'create':
             return ProvisionEmployeeSerializer
@@ -287,7 +289,6 @@ class EmployeeManagementViewSet(viewsets.ModelViewSet):
     def transfer(self, request, pk=None):
         if not (
             AuthorizationService.has_permission(request.user, 'employee.transfer') or
-            AuthorizationService.has_permission(request.user, 'employee.update') or
             request.user.is_superuser
         ):
             return Response(status=status.HTTP_403_FORBIDDEN)
@@ -299,6 +300,7 @@ class EmployeeManagementViewSet(viewsets.ModelViewSet):
         serializer = EmployeeTransferSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
+        team = serializer.validated_data.get('team')
         dept = serializer.validated_data.get('department')
         branch = serializer.validated_data.get('branch')
         effective_date = serializer.validated_data['effective_date']
@@ -308,18 +310,42 @@ class EmployeeManagementViewSet(viewsets.ModelViewSet):
             return Response({'department': 'Department must belong to the same organization.'}, status=status.HTTP_400_BAD_REQUEST)
         if branch and branch.organization_id != employee.organization_id:
             return Response({'branch': 'Branch must belong to the same organization.'}, status=status.HTTP_400_BAD_REQUEST)
-            
-        if dept and branch and dept.branch_id != branch.id:
-            return Response({'department': 'Department must belong to the same branch as the employee.'}, status=status.HTTP_400_BAD_REQUEST)
-        elif dept and not branch and dept.branch_id != employee.branch_id:
-            return Response({'department': 'Department must belong to the same branch as the employee.'}, status=status.HTTP_400_BAD_REQUEST)
-        elif branch and not dept and employee.department_id and employee.department.branch_id != branch.id:
-            return Response({'branch': 'Branch must match the employee\'s current department branch.'}, status=status.HTTP_400_BAD_REQUEST)
 
+        # DESTINATION AUTHORIZATION
+        if not request.user.is_superuser:
+            has_access = False
+            # Check which permission they are using
+            if AuthorizationService.has_permission(request.user, 'employee.transfer', branch_id=None, global_only=True):
+                has_access = True
+            else:
+                authorized_branches = AuthorizationService.get_authorized_branches(request.user, 'employee.transfer')
+                authorized_teams = AuthorizationService.get_authorized_teams(request.user, 'employee.transfer')
+
+                if branch and branch in authorized_branches:
+                    has_access = True
+                elif team and team in authorized_teams:
+                    has_access = True
+
+            if not has_access:
+                return Response({'detail': 'You do not have permission to transfer employees into this organizational unit.'}, status=status.HTTP_403_FORBIDDEN)
+
+        # Restore original consistency checks
+        final_team = team if 'team' in serializer.validated_data else employee.team
+        final_dept = dept if 'department' in serializer.validated_data else employee.department
+        final_branch = branch if 'branch' in serializer.validated_data else employee.branch
+
+        if final_team and final_dept and final_team.department_id != final_dept.id:
+            return Response({'team': 'Team must match the employee\'s final department.'}, status=status.HTTP_400_BAD_REQUEST)
+        if final_dept and final_branch and final_dept.branch_id != final_branch.id:
+            return Response({'department': 'Department must match the employee\'s final branch.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        old_team = employee.team
         old_dept = employee.department
         old_branch = employee.branch
 
         with transaction.atomic():
+            if 'team' in serializer.validated_data:
+                employee.team = team
             if 'department' in serializer.validated_data:
                 employee.department = dept
             if 'branch' in serializer.validated_data:
@@ -370,7 +396,6 @@ class EmployeeManagementViewSet(viewsets.ModelViewSet):
     def promote(self, request, pk=None):
         if not (
             AuthorizationService.has_permission(request.user, 'employee.promote') or
-            AuthorizationService.has_permission(request.user, 'employee.update') or
             request.user.is_superuser
         ):
             return Response(status=status.HTTP_403_FORBIDDEN)

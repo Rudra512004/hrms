@@ -76,6 +76,10 @@ class EmployeeSerializer(serializers.ModelSerializer):
             if manager.organization_id != (org.id if org else None):
                 raise serializers.ValidationError({'reporting_manager': 'Reporting manager must belong to the same organization.'})
 
+            from apps.employees.models import EmploymentStatus
+            if manager.employment_status in [EmploymentStatus.INACTIVE, EmploymentStatus.EXITED]:
+                raise serializers.ValidationError({'reporting_manager': 'Reporting manager must be an active employee.'})
+
         joining_date = attrs.get('joining_date', getattr(self.instance, 'joining_date', None))
         exit_date = attrs.get('exit_date', getattr(self.instance, 'exit_date', None))
         if joining_date and exit_date and exit_date < joining_date:
@@ -101,7 +105,7 @@ class ProvisionEmployeeSerializer(serializers.Serializer):
     last_name = serializers.CharField(max_length=150)
     employee_code = serializers.CharField(max_length=50, required=False, allow_blank=True)
     personal_email = serializers.EmailField(required=False, allow_null=True, allow_blank=True)
-    
+
     team = serializers.PrimaryKeyRelatedField(queryset=Team.objects.all(), required=False, allow_null=True)
     department = serializers.PrimaryKeyRelatedField(queryset=Department.objects.all(), required=False, allow_null=True)
     branch = serializers.PrimaryKeyRelatedField(queryset=Branch.objects.all(), required=False, allow_null=True)
@@ -180,19 +184,37 @@ class ProvisionEmployeeSerializer(serializers.Serializer):
                     raise serializers.ValidationError({'department': 'Department must belong to the same organization.'})
                 if branch and department and department.branch_id != branch.id:
                     raise serializers.ValidationError({'department': 'Department must belong to the specified branch.'})
-                
-                # Verify branch scope authorization
-                if branch and not request.user.is_superuser:
+
+                # Verify scope authorization
+                if not request.user.is_superuser:
                     from apps.authorization.services import AuthorizationService
-                    authorized_branches = AuthorizationService.get_authorized_branches(request.user, 'employee.create')
-                    if branch not in authorized_branches:
-                        raise serializers.ValidationError({'branch': 'You do not have permission to provision employees in this branch.'})
-                        
+                    has_access = False
+
+                    if AuthorizationService.has_permission(request.user, 'employee.create', branch_id=None, global_only=True):
+                        has_access = True
+                    else:
+                        authorized_branches = AuthorizationService.get_authorized_branches(request.user, 'employee.create')
+                        if branch and branch in authorized_branches:
+                            has_access = True
+                        else:
+                            authorized_teams = AuthorizationService.get_authorized_teams(request.user, 'employee.create')
+                            if team and team in authorized_teams:
+                                has_access = True
+
+                    if not has_access:
+                        if not branch and not team:
+                            raise serializers.ValidationError({'non_field_errors': 'You must specify an authorized branch or team.'})
+                        raise serializers.ValidationError({'non_field_errors': 'You do not have permission to provision employees into this organizational unit.'})
+
                 if designation and designation.organization_id != org.id:
                     raise serializers.ValidationError({'designation': 'Designation must belong to the same organization.'})
                 if reporting_manager and reporting_manager.organization_id != org.id:
                     raise serializers.ValidationError({'reporting_manager': 'Reporting manager must belong to the same organization.'})
-                
+
+                from apps.employees.models import EmploymentStatus
+                if reporting_manager and reporting_manager.employment_status in [EmploymentStatus.INACTIVE, EmploymentStatus.EXITED]:
+                    raise serializers.ValidationError({'reporting_manager': 'Reporting manager must be an active employee.'})
+
                 if team and not team.is_active:
                     raise serializers.ValidationError({'team': 'Cannot assign an inactive team.'})
 
@@ -207,7 +229,7 @@ class ProvisionEmployeeSerializer(serializers.Serializer):
                     employee_code=employee_code,
                     personal_email=validated_data.get('personal_email')
                 )
-                
+
                 # Handle Role assignment
                 role_id = validated_data.get('role')
                 if role_id:
@@ -272,6 +294,9 @@ class EmployeeLifecycleEventSerializer(serializers.ModelSerializer):
 
 
 class EmployeeTransferSerializer(serializers.Serializer):
+    team = serializers.PrimaryKeyRelatedField(
+        queryset=Team.objects.all(), required=False, allow_null=True
+    )
     department = serializers.PrimaryKeyRelatedField(
         queryset=Department.objects.all(), required=False, allow_null=True
     )
@@ -282,10 +307,28 @@ class EmployeeTransferSerializer(serializers.Serializer):
     reason = serializers.CharField(required=False, allow_blank=True, default='')
 
     def validate(self, attrs):
+        team = attrs.get('team')
         dept = attrs.get('department')
         branch = attrs.get('branch')
-        if not dept and not branch:
-            raise serializers.ValidationError("At least one of department or branch must be specified for transfer.")
+
+        if not team and not dept and not branch:
+            raise serializers.ValidationError("At least one of team, department or branch must be specified for transfer.")
+
+        if team:
+            if not team.is_active:
+                raise serializers.ValidationError({'team': 'Cannot transfer to an inactive team.'})
+            if dept and dept != team.department:
+                raise serializers.ValidationError({'department': 'Contradictory payload: Department does not match the Team\'s department.'})
+            if branch and branch != team.department.branch:
+                raise serializers.ValidationError({'branch': 'Contradictory payload: Branch does not match the Team\'s branch.'})
+
+            attrs['department'] = team.department
+            attrs['branch'] = team.department.branch
+        elif dept:
+            if branch and branch != dept.branch:
+                raise serializers.ValidationError({'branch': 'Contradictory payload: Branch does not match the Department\'s branch.'})
+            attrs['branch'] = dept.branch
+
         return attrs
 class EmployeePromotionSerializer(serializers.Serializer):
     designation = serializers.PrimaryKeyRelatedField(

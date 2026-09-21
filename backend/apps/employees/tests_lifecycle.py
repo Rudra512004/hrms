@@ -417,6 +417,155 @@ class EmployeeLifecycleComprehensiveTests(TestCase):
         })
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
 
+    def test_cross_branch_idor_lifecycle(self, mock_net):
+        # Admin restricted to branch2 tries to deactivate employee in branch1
+        branch_admin_user = User.objects.create_user(email='badmin@acme.com', password='password123', status='active')
+        Employee.objects.create(user=branch_admin_user, employee_code='BADM001', organization=self.org)
+        badmin_role = Role.objects.create(name='BAdmin', organization=self.org)
+        UserRole.objects.create(user=branch_admin_user, role=badmin_role, scope='branch', branch=self.branch2)
+        perm_status = Permission.objects.filter(codename='employee.status').first()
+        if not perm_status:
+            perm_status = Permission.objects.create(codename='employee.status', resource='employee', action='status')
+        perm_view = Permission.objects.filter(codename='employee.view').first()
+        RolePermission.objects.create(role=badmin_role, permission=perm_status)
+        RolePermission.objects.create(role=badmin_role, permission=perm_view)
+
+        self.client.force_authenticate(user=branch_admin_user)
+        response = self.client.post(reverse('employee-management-deactivate', args=[self.employee.id]))
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+
+    def test_cross_team_idor_lifecycle(self, mock_net):
+        # Admin restricted to team2 tries to deactivate employee in team1
+        from apps.organization.models import Team
+        team1 = Team.objects.create(department=self.dept1, name='Team 1')
+        team2 = Team.objects.create(department=self.dept1, name='Team 2')
+        self.employee.team = team1
+        self.employee.save()
+
+        team_admin_user = User.objects.create_user(email='tadmin@acme.com', password='password123', status='active')
+        Employee.objects.create(user=team_admin_user, employee_code='TADM001', organization=self.org)
+        tadmin_role = Role.objects.create(name='TAdmin', organization=self.org)
+        UserRole.objects.create(user=team_admin_user, role=tadmin_role, scope='team', team=team2)
+        perm_status = Permission.objects.filter(codename='employee.status').first()
+        if not perm_status:
+            perm_status = Permission.objects.create(codename='employee.status', resource='employee', action='status')
+        perm_view = Permission.objects.filter(codename='employee.view').first()
+        RolePermission.objects.create(role=tadmin_role, permission=perm_status)
+        RolePermission.objects.create(role=tadmin_role, permission=perm_view)
+
+        self.client.force_authenticate(user=team_admin_user)
+        response = self.client.post(reverse('employee-management-deactivate', args=[self.employee.id]))
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+
+    def test_sibling_team_isolation_lifecycle(self, mock_net):
+        # Admin restricted to team1 CAN deactivate employee in team1
+        from apps.organization.models import Team
+        team1 = Team.objects.create(department=self.dept1, name='Team 1_s')
+        self.employee.team = team1
+        self.employee.save()
+
+        team_admin_user = User.objects.create_user(email='tadmin_s@acme.com', password='password123', status='active')
+        Employee.objects.create(user=team_admin_user, employee_code='TADM002', organization=self.org)
+        tadmin_role = Role.objects.create(name='TAdmin_s', organization=self.org)
+        UserRole.objects.create(user=team_admin_user, role=tadmin_role, scope='team', team=team1)
+        perm_status = Permission.objects.filter(codename='employee.status').first()
+        if not perm_status:
+            perm_status = Permission.objects.create(codename='employee.status', resource='employee', action='status')
+        perm_view = Permission.objects.filter(codename='employee.view').first()
+        RolePermission.objects.create(role=tadmin_role, permission=perm_status)
+        RolePermission.objects.create(role=tadmin_role, permission=perm_view)
+
+        self.client.force_authenticate(user=team_admin_user)
+        response = self.client.post(reverse('employee-management-deactivate', args=[self.employee.id]))
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+    def test_transfer_destination_authorization(self, mock_net):
+        from apps.organization.models import Team
+        team1 = Team.objects.create(department=self.dept1, name='Dest Team 1')
+        team2 = Team.objects.create(department=self.dept1, name='Dest Team 2')
+
+        # 1. Branch-scoped requester transferring within authorized branch -> ALLOWED
+        badmin_u = User.objects.create_user(email='trans_badmin@acme.com', status='active')
+        Employee.objects.create(user=badmin_u, employee_code='TB1', organization=self.org)
+        brole = Role.objects.create(name='TBranchAdmin', organization=self.org)
+        UserRole.objects.create(user=badmin_u, role=brole, scope='branch', branch=self.branch1)
+        perm_trans = Permission.objects.get_or_create(codename='employee.transfer', resource='employee', action='transfer')[0]
+        perm_view = Permission.objects.get_or_create(codename='employee.view', resource='employee', action='view')[0]
+        RolePermission.objects.create(role=brole, permission=perm_trans)
+        RolePermission.objects.create(role=brole, permission=perm_view)
+
+        self.client.force_authenticate(user=badmin_u)
+        res = self.client.post(reverse('employee-management-transfer', args=[self.employee.id]), {
+            'branch': self.branch1.id,
+            'department': None,
+            'team': None,
+            'effective_date': '2026-06-01'
+        }, format='json')
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+
+        # 2. Branch-scoped requester cannot transfer into unauthorized branch -> DENIED
+        res = self.client.post(reverse('employee-management-transfer', args=[self.employee.id]), {
+            'branch': self.branch2.id,
+            'department': None,
+            'team': None,
+            'effective_date': '2026-06-01'
+        }, format='json')
+        self.assertEqual(res.status_code, status.HTTP_403_FORBIDDEN)
+
+        # 3. Team-scoped requester can transfer only into explicitly authorized team -> ALLOWED
+        tadmin_u = User.objects.create_user(email='trans_tadmin@acme.com', status='active')
+        Employee.objects.create(user=tadmin_u, employee_code='TT1', organization=self.org)
+        trole = Role.objects.create(name='TTeamAdmin', organization=self.org)
+        UserRole.objects.create(user=tadmin_u, role=trole, scope='team', team=team1)
+        RolePermission.objects.create(role=trole, permission=perm_trans)
+        RolePermission.objects.create(role=trole, permission=perm_view)
+
+        # Ensure employee is in branch1 / team1 initially so tadmin can view them
+        self.employee.team = team1
+        self.employee.save()
+
+        self.client.force_authenticate(user=tadmin_u)
+        res = self.client.post(reverse('employee-management-transfer', args=[self.employee.id]), {
+            'team': team1.id,
+            'effective_date': '2026-06-01'
+        })
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+
+        # 4. Team-scoped requester cannot transfer into sibling team -> DENIED
+        res = self.client.post(reverse('employee-management-transfer', args=[self.employee.id]), {
+            'team': team2.id,
+            'effective_date': '2026-06-01'
+        })
+        self.assertEqual(res.status_code, status.HTTP_403_FORBIDDEN)
+
+        # 5. Team-scoped requester cannot transfer into another branch -> DENIED
+        res = self.client.post(reverse('employee-management-transfer', args=[self.employee.id]), {
+            'branch': self.branch2.id,
+            'department': None,
+            'team': None,
+            'effective_date': '2026-06-01'
+        }, format='json')
+        self.assertEqual(res.status_code, status.HTTP_403_FORBIDDEN)
+
+        # 6. Organization-scoped requester can transfer within org (tested via admin_user)
+        self.client.force_authenticate(user=self.admin_user)
+        res = self.client.post(reverse('employee-management-transfer', args=[self.employee.id]), {
+            'branch': self.branch2.id,
+            'department': None,
+            'team': None,
+            'effective_date': '2026-06-01'
+        }, format='json')
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+
+        # 8. Contradictory destination hierarchy is rejected
+        res = self.client.post(reverse('employee-management-transfer', args=[self.employee.id]), {
+            'department': self.dept1.id,
+            'branch': self.branch2.id, # dept1 belongs to branch1
+            'effective_date': '2026-06-01'
+        })
+        self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('branch', res.data)
+
     # 19. RBAC permissions are enforced
     def test_rbac_permissions_enforced(self, mock_net):
         RolePermission.objects.filter(role=self.hr_role).delete()
@@ -462,3 +611,85 @@ class EmployeeLifecycleComprehensiveTests(TestCase):
             'exit_reason': 'Resigned'
         })
         self.assertTrue(AuditLog.objects.filter(action='employee_exited', target_id=str(self.employee.id)).exists())
+
+    def test_lifecycle_permissions_strict_separation(self, mock_net):
+        # Create user with ONLY employee.update
+        update_u = User.objects.create_user(email='update_only@acme.com', status='active')
+        Employee.objects.create(user=update_u, employee_code='UPD1', organization=self.org)
+        urole = Role.objects.create(name='UpdateOnly', organization=self.org)
+        UserRole.objects.create(user=update_u, role=urole, scope='organization')
+        perm_update = Permission.objects.get_or_create(codename='employee.update', resource='employee', action='update')[0]
+        perm_view = Permission.objects.get_or_create(codename='employee.view', resource='employee', action='view')[0]
+        RolePermission.objects.create(role=urole, permission=perm_update)
+        RolePermission.objects.create(role=urole, permission=perm_view)
+
+        self.client.force_authenticate(user=update_u)
+
+        # 1. User with ONLY employee.update cannot transfer or promote
+        res_t = self.client.post(reverse('employee-management-transfer', args=[self.employee.id]), {
+            'branch': self.branch2.id,
+            'department': None,
+            'team': None,
+            'effective_date': '2026-06-01'
+        }, format='json')
+        self.assertEqual(res_t.status_code, status.HTTP_403_FORBIDDEN)
+
+        res_p = self.client.post(reverse('employee-management-promote', args=[self.employee.id]), {
+            'designation': self.desig2.id,
+            'effective_date': '2026-06-01'
+        })
+        self.assertEqual(res_p.status_code, status.HTTP_403_FORBIDDEN)
+
+        # 4 & 5. Add transfer and promote permissions
+        perm_trans = Permission.objects.get_or_create(codename='employee.transfer', resource='employee', action='transfer')[0]
+        perm_prom = Permission.objects.get_or_create(codename='employee.promote', resource='employee', action='promote')[0]
+        RolePermission.objects.create(role=urole, permission=perm_trans)
+        RolePermission.objects.create(role=urole, permission=perm_prom)
+
+        # Now can transfer and promote
+        res_t = self.client.post(reverse('employee-management-transfer', args=[self.employee.id]), {
+            'branch': self.branch2.id,
+            'department': None,
+            'team': None,
+            'effective_date': '2026-06-01'
+        }, format='json')
+        self.assertEqual(res_t.status_code, status.HTTP_200_OK)
+
+        res_p = self.client.post(reverse('employee-management-promote', args=[self.employee.id]), {
+            'designation': self.desig2.id,
+            'effective_date': '2026-06-01'
+        })
+        self.assertEqual(res_p.status_code, status.HTTP_200_OK)
+
+    def test_promote_scope_isolation(self, mock_net):
+        badmin_u = User.objects.create_user(email='prom_badmin@acme.com', status='active')
+        Employee.objects.create(user=badmin_u, employee_code='PB1', organization=self.org)
+        brole = Role.objects.create(name='PBranchAdmin', organization=self.org)
+        # Badmin has access to branch2
+        UserRole.objects.create(user=badmin_u, role=brole, scope='branch', branch=self.branch2)
+        perm_prom = Permission.objects.get_or_create(codename='employee.promote', resource='employee', action='promote')[0]
+        perm_view = Permission.objects.get_or_create(codename='employee.view', resource='employee', action='view')[0]
+        RolePermission.objects.create(role=brole, permission=perm_prom)
+        RolePermission.objects.create(role=brole, permission=perm_view)
+
+        self.client.force_authenticate(user=badmin_u)
+
+        # 8. Branch-scoped employee.promote cannot modify employees outside authorized scope
+        # self.employee is in branch1, so badmin (branch2) cannot access it
+        res = self.client.post(reverse('employee-management-promote', args=[self.employee.id]), {
+            'designation': self.desig2.id,
+            'effective_date': '2026-06-01'
+        })
+        self.assertEqual(res.status_code, status.HTTP_404_NOT_FOUND) # Source IDOR blocks it
+
+        # Move employee to branch2 so they CAN promote
+        self.employee.branch = self.branch2
+        self.employee.department = None
+        self.employee.team = None
+        self.employee.save()
+
+        res = self.client.post(reverse('employee-management-promote', args=[self.employee.id]), {
+            'designation': self.desig2.id,
+            'effective_date': '2026-06-01'
+        })
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
