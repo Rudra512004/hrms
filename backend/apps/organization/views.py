@@ -1,9 +1,10 @@
 from rest_framework import viewsets, status
+from rest_framework.decorators import action
 from rest_framework.response import Response
 from django.db import IntegrityError
 from rest_framework.exceptions import ValidationError
 from .models import OfficeNetwork, Organization, Department, Designation, Branch, Team
-from .serializers import OfficeNetworkSerializer, OrganizationSerializer, DepartmentSerializer, DesignationSerializer, BranchSerializer, WorkingCalendarSerializer, OrganizationSetupSerializer, TeamSerializer
+from .serializers import OfficeNetworkSerializer, OrganizationSerializer, DepartmentSerializer, DesignationSerializer, BranchSerializer, WorkingCalendarSerializer, OrganizationSetupSerializer, TeamSerializer, AttendancePolicySerializer
 from apps.authorization.permissions import require_permission, IsNetworkAllowed
 from rest_framework.permissions import IsAuthenticated
 
@@ -310,7 +311,8 @@ class BranchViewSet(viewsets.ModelViewSet):
             return qs
 
         from apps.authorization.services import AuthorizationService
-        permission = 'branch.view' if self.action in ['list', 'retrieve'] else 'branch.manage'
+        is_read = self.action in ['list', 'retrieve'] or (self.action == 'attendance_policy' and getattr(self.request, 'method', None) == 'GET')
+        permission = 'branch.view' if is_read else 'branch.manage'
         qs = AuthorizationService.get_authorized_branches(user, permission)
         org_id = self.request.query_params.get('organization')
         if org_id:
@@ -318,7 +320,8 @@ class BranchViewSet(viewsets.ModelViewSet):
         return qs
 
     def get_permissions(self):
-        if self.action in ['list', 'retrieve']:
+        is_read = self.action in ['list', 'retrieve'] or (self.action == 'attendance_policy' and getattr(self.request, 'method', None) == 'GET')
+        if is_read:
             permission = require_permission('branch.view')
         else:
             permission = require_permission('branch.manage')
@@ -351,3 +354,28 @@ class BranchViewSet(viewsets.ModelViewSet):
             serializer.save(organization=org)
         except IntegrityError:
             raise ValidationError({"name": "A branch with this name already exists in this organization."})
+
+    @action(detail=True, methods=['get', 'put', 'patch'], url_path='attendance-policy')
+    def attendance_policy(self, request, pk=None):
+        branch = self.get_object()
+        from .models import AttendancePolicy
+        policy, _ = AttendancePolicy.objects.get_or_create(branch=branch)
+
+        if request.method == 'GET':
+            serializer = AttendancePolicySerializer(policy)
+            return Response(serializer.data)
+
+        # Write actions require branch.manage on this branch
+        user = request.user
+        if not user.is_superuser:
+            from apps.authorization.services import AuthorizationService
+            if not AuthorizationService.has_permission(user, 'branch.manage', branch.id):
+                return Response(
+                    {'detail': 'You do not have permission to manage attendance policy for this branch.'},
+                    status=status.HTTP_403_FORBIDDEN
+                )
+
+        serializer = AttendancePolicySerializer(policy, data=request.data, partial=(request.method == 'PATCH'))
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(serializer.data)

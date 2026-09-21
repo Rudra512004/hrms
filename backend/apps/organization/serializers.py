@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import OfficeNetwork, Organization, Department, Designation, Branch, WorkingCalendar, Team
+from .models import OfficeNetwork, Organization, Department, Designation, Branch, WorkingCalendar, Team, AttendancePolicy
 
 class WorkingCalendarSerializer(serializers.ModelSerializer):
     class Meta:
@@ -150,25 +150,82 @@ class OfficeNetworkSerializer(serializers.ModelSerializer):
         fields = ['id', 'branch', 'name', 'network', 'description', 'is_active', 'created_at', 'updated_at']
         read_only_fields = ['id', 'branch', 'created_at', 'updated_at']
 
+class AttendancePolicySerializer(serializers.ModelSerializer):
+    class Meta:
+        model = AttendancePolicy
+        fields = [
+            'id', 'branch', 'is_office_gps_enabled', 'is_office_ip_enabled',
+            'is_wfh_enabled', 'wfh_bypasses_office_restrictions', 'created_at', 'updated_at'
+        ]
+        read_only_fields = ['id', 'branch', 'created_at', 'updated_at']
+
 class BranchSerializer(serializers.ModelSerializer):
+    attendance_policy = AttendancePolicySerializer(required=False)
+    working_calendar = WorkingCalendarSerializer(required=False)
+
+    class Meta:
+        model = Branch
+        fields = [
+            'id', 'organization', 'name', 'address', 'latitude', 'longitude', 'radius',
+            'is_active', 'attendance_policy', 'working_calendar', 'created_at', 'updated_at'
+        ]
+        read_only_fields = ['id', 'organization', 'created_at', 'updated_at']
+
     def to_representation(self, instance):
         ret = super().to_representation(instance)
         try:
-            ret['working_calendar'] = {'work_days': instance.working_calendar.work_days}
-        except:
+            ret['working_calendar'] = {
+                'id': instance.working_calendar.id,
+                'work_days': instance.working_calendar.work_days
+            }
+        except Exception:
             ret['working_calendar'] = {'work_days': '0,1,2,3,4'}
         try:
             ret['attendance_policy'] = {
+                'id': instance.attendance_policy.id,
                 'is_office_gps_enabled': instance.attendance_policy.is_office_gps_enabled,
                 'is_office_ip_enabled': instance.attendance_policy.is_office_ip_enabled,
                 'is_wfh_enabled': instance.attendance_policy.is_wfh_enabled,
                 'wfh_bypasses_office_restrictions': instance.attendance_policy.wfh_bypasses_office_restrictions
             }
-        except:
+        except Exception:
             pass
         return ret
 
-    class Meta:
-        model = Branch
-        fields = ['id', 'organization', 'name', 'address', 'latitude', 'longitude', 'radius', 'is_active', 'created_at', 'updated_at']
-        read_only_fields = ['id', 'organization', 'created_at', 'updated_at']
+    def create(self, validated_data):
+        ap_data = validated_data.pop('attendance_policy', None)
+        wc_data = validated_data.pop('working_calendar', None)
+        instance = super().create(validated_data)
+
+        if ap_data:
+            policy, _ = AttendancePolicy.objects.get_or_create(branch=instance)
+            for attr, val in ap_data.items():
+                setattr(policy, attr, val)
+            policy.save()
+
+        if wc_data:
+            wc, _ = WorkingCalendar.objects.get_or_create(branch=instance)
+            for attr, val in wc_data.items():
+                setattr(wc, attr, val)
+            wc.save()
+
+        return instance
+
+    def update(self, instance, validated_data):
+        ap_data = validated_data.pop('attendance_policy', None)
+        wc_data = validated_data.pop('working_calendar', None)
+        instance = super().update(instance, validated_data)
+
+        if ap_data:
+            policy, _ = AttendancePolicy.objects.get_or_create(branch=instance)
+            for attr, val in ap_data.items():
+                setattr(policy, attr, val)
+            policy.save()
+
+        if wc_data:
+            wc, _ = WorkingCalendar.objects.get_or_create(branch=instance)
+            for attr, val in wc_data.items():
+                setattr(wc, attr, val)
+            wc.save()
+
+        return instance

@@ -1653,3 +1653,73 @@ To build forms (like provisioning or transfer), the frontend MUST cascade its qu
 
 **Payload Optimization:**
 When provisioning or transferring, the backend auto-derives parent hierarchy if a child is sent. Sending only `team` is sufficient for the backend to resolve `department` and `branch`. If you send all three, they MUST logically match the database hierarchy, or a `400` validation error will be triggered.
+
+---
+
+## 19. Attendance & Policy Authorization Contracts (C5.5.1)
+
+### Attendance Management
+- **Method:** `GET`
+- **Path:** `/api/v1/attendance/management/`
+- **Authorization:** `attendance.view_all`
+- **Scope Semantics:**
+  - **ORGANIZATION:** Can view attendance for all employees within the user's organization.
+  - **BRANCH:** Can view attendance strictly for employees assigned to the user's authorized branch(es).
+  - **TEAM:** Uses `AuthorizationService.get_authorized_teams()`. Strictly limited to employees assigned to the authorized team(s). Does NOT broaden or leak to sibling teams, parent departments, branches, or the organization.
+- **Query Parameters (Filter modifiers):**
+  - `branch_id=<id>`: Filter records by branch ID. If user is branch-authorized, ID must be within their authorized branches. If team-authorized, filtered within their authorized teams.
+  - `team_id=<id>`: Filter records by team ID. Must be within authorized teams if user lacks broader branch access.
+  - `date=<YYYY-MM-DD>`: Filter records by a specific date.
+
+### Holiday Management
+- **Endpoints:**
+  - `GET /api/v1/attendance/holidays/` (List holidays)
+  - `POST /api/v1/attendance/holidays/` (Create holiday)
+  - `GET /api/v1/attendance/holidays/{id}/` (Retrieve holiday)
+  - `PUT /api/v1/attendance/holidays/{id}/` (Update holiday)
+  - `PATCH /api/v1/attendance/holidays/{id}/` (Partial update holiday)
+  - `DELETE /api/v1/attendance/holidays/{id}/` (Delete holiday)
+- **Authorization:**
+  - Read: `holiday.view`
+  - Write/Mutation: `holiday.manage`
+- **Isolation Guarantees:**
+  - Scoped strictly by branch via `AuthorizationService.get_authorized_branches()`.
+  - Payloads attempting to set `branch` to an unauthorized branch return `403 Forbidden` / `400 ValidationError`.
+  - Modifications to holidays belonging to unauthorized or cross-organization branches are blocked with `403 Forbidden` / `404 Not Found`.
+
+### Shift Management
+- **Endpoints:**
+  - `GET /api/v1/attendance/shifts/` (List shifts)
+  - `POST /api/v1/attendance/shifts/` (Create shift)
+  - `GET /api/v1/attendance/shifts/{id}/` (Retrieve shift)
+  - `PUT /api/v1/attendance/shifts/{id}/` (Update shift)
+  - `PATCH /api/v1/attendance/shifts/{id}/` (Partial update shift)
+  - `DELETE /api/v1/attendance/shifts/{id}/` (Delete shift)
+- **Authorization:**
+  - Read: `shift.view`
+  - Write/Mutation: `shift.manage`
+- **Isolation Guarantees:**
+  - Filtered by branch via `AuthorizationService.get_authorized_branches()`.
+  - Mutation operations validate that the shift's branch and target branch payload are within the user's authorized branches for `shift.manage`. Cross-organization access is rejected.
+
+### Employee Shift Assignment
+- **Endpoints:** `/api/v1/attendance/shift-assignments/` (`GET`, `POST`, `PUT`, `PATCH`, `DELETE`)
+- **Authorization:**
+  - Read: `shift.view`
+  - Write/Mutation: `shift_assignment.manage`
+- **Validation:**
+  - Target employee must belong to the caller's authorized branches.
+  - Assigned shift must belong to the caller's organization.
+
+### Branch Attendance Policy API
+- **Direct Endpoint:**
+  - `GET /api/v1/organization/branches/{id}/attendance-policy/`
+    - **Authorization:** `branch.view` on target branch.
+    - **Response:** `AttendancePolicySerializer` (e.g. `is_wfh_enabled`, `is_office_ip_enabled`, `is_office_gps_enabled`, `allowed_radius_meters`, `half_day_minimum_hours`, `full_day_minimum_hours`).
+  - `PUT / PATCH /api/v1/organization/branches/{id}/attendance-policy/`
+    - **Authorization:** `branch.manage` on target branch.
+    - **Response:** Updated `AttendancePolicySerializer`.
+- **Nested Branch Endpoint:**
+  - `PATCH /api/v1/organization/branches/{id}/`
+    - **Authorization:** `branch.manage`
+    - Supports nested write: `{"attendance_policy": { ... }}` and `{"working_calendar": { ... }}`.

@@ -92,6 +92,15 @@ class Command(BaseCommand):
             {'codename': 'asset.update', 'resource': 'asset', 'action': 'update', 'name': 'Update Assets'},
             {'codename': 'asset.delete', 'resource': 'asset', 'action': 'delete', 'name': 'Delete Assets'},
             {'codename': 'asset.assign', 'resource': 'asset', 'action': 'assign', 'name': 'Assign and Return Assets'},
+
+            # Attendance & Scheduling
+            {'codename': 'attendance.view_all', 'resource': 'attendance', 'action': 'view_all', 'name': 'View All Attendance'},
+            {'codename': 'holiday.view', 'resource': 'holiday', 'action': 'view', 'name': 'View Holidays'},
+            {'codename': 'holiday.manage', 'resource': 'holiday', 'action': 'manage', 'name': 'Manage Holidays'},
+            {'codename': 'shift.view', 'resource': 'shift', 'action': 'view', 'name': 'View Shifts'},
+            {'codename': 'shift.manage', 'resource': 'shift', 'action': 'manage', 'name': 'Manage Shifts'},
+            {'codename': 'shift_assignment.view', 'resource': 'shift_assignment', 'action': 'view', 'name': 'View Shift Assignments'},
+            {'codename': 'shift_assignment.manage', 'resource': 'shift_assignment', 'action': 'manage', 'name': 'Manage Shift Assignments'},
         ]
 
         for p_data in permissions_data:

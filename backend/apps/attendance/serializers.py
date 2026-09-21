@@ -63,14 +63,17 @@ class EmployeeShiftAssignmentSerializer(serializers.ModelSerializer):
         if employee and shift and employee.branch_id and shift.branch_id and employee.branch_id != shift.branch_id:
             raise serializers.ValidationError({"employee": "Employee and Shift must belong to the same branch."})
 
-        # Ensure we do not allow assigning an employee from another tenant
+        # Ensure we do not allow assigning an employee from another tenant or unauthorized branch
         request = self.context.get('request')
-        if request and hasattr(request.user, 'employee'):
-            branch_id = request.user.employee.branch_id
-            if employee and employee.branch_id != branch_id:
-                raise serializers.ValidationError({"employee": "Cannot assign employee from another branch."})
-            if shift and shift.branch_id != branch_id:
-                raise serializers.ValidationError({"shift": "Cannot assign shift from another branch."})
+        if request and not getattr(request.user, 'is_superuser', False) and hasattr(request.user, 'employee') and request.user.employee:
+            from apps.authorization.services import AuthorizationService
+            user_org_id = request.user.employee.organization_id
+            if employee and employee.organization_id != user_org_id:
+                raise serializers.ValidationError({"employee": "Cannot assign employee from another organization."})
+            if shift and shift.branch.organization_id != user_org_id:
+                raise serializers.ValidationError({"shift": "Cannot assign shift from another organization."})
+            if employee and not AuthorizationService.has_permission(request.user, 'shift_assignment.manage', employee.branch_id):
+                raise serializers.ValidationError({"employee": "You do not have permission to assign shifts in this branch."})
 
         effective_from = attrs.get('effective_from', getattr(self.instance, 'effective_from', None))
         effective_to = attrs.get('effective_to', getattr(self.instance, 'effective_to', None))
