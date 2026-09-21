@@ -24,11 +24,30 @@ class WorkingCalendar(models.Model):
     def __str__(self):
         return f"{self.branch.name} Calendar"
 
+    def clean(self):
+        super().clean()
+        from django.core.exceptions import ValidationError
+        if self.work_days is not None:
+            if not self.work_days.strip():
+                raise ValidationError({'work_days': 'work_days cannot be empty.'})
+            for d in self.work_days.split(','):
+                d_str = d.strip()
+                if not d_str.isdigit() or int(d_str) < 0 or int(d_str) > 6:
+                    raise ValidationError({'work_days': f"Invalid work day '{d_str}'. Must be integers between 0 and 6."})
+
     def get_work_days_list(self):
-        try:
-            return [int(d.strip()) for d in self.work_days.split(',') if d.strip().isdigit()]
-        except (ValueError, AttributeError):
-            return [0, 1, 2, 3, 4]
+        from apps.attendance.exceptions import AttendanceConfigurationError
+        if not self.work_days or not self.work_days.strip():
+            raise AttendanceConfigurationError(f"Working calendar for branch {self.branch_id} has unconfigured work days.")
+        days = []
+        for d in self.work_days.split(','):
+            d_str = d.strip()
+            if not d_str.isdigit() or int(d_str) < 0 or int(d_str) > 6:
+                raise AttendanceConfigurationError(f"Invalid work day '{d_str}' in working calendar for branch {self.branch_id}.")
+            days.append(int(d_str))
+        if not days:
+            raise AttendanceConfigurationError(f"Working calendar for branch {self.branch_id} has no valid work days.")
+        return days
 
 import ipaddress
 from django.core.exceptions import ValidationError

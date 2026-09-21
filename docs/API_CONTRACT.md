@@ -1752,3 +1752,28 @@ When provisioning or transferring, the backend auto-derives parent hierarchy if 
 - **Conflict Behavior:** If an employee with an approved `LeaveRequest` checks in on the leave date, check-in is NOT blocked. The attendance record is successfully created.
 - **Payroll Integration:** `_approved_leave_days` accepts `exclude_dates` (dates with attendance records), preventing duplicate counting or overpayment.
 - **Calendar Alignment:** Payroll `_approved_leave_days` respects the branch's `WorkingCalendar.work_days` (eliminating hardcoded weekday < 5 assumptions).
+
+### Attendance Configuration Hardening & Semantic Errors (C5.5.2.1)
+- **Authoritative Resolution:**
+  - Branch `WorkingCalendar` is strictly required; missing or malformed calendar configurations do NOT fall back to Mon–Fri.
+  - `EmployeeShiftAssignment` is strictly required for scheduled working days; does NOT fall back to arbitrary active branch shifts.
+- **Error Semantics & Shapes:**
+  - **Missing Working Calendar:**
+    - **Condition:** Employee's branch has no `WorkingCalendar` configured.
+    - **HTTP Status:** `400 Bad Request`
+    - **Payload Shape:** `{"detail": "Working calendar is not configured for branch <branch_id>."}`
+  - **Invalid Working Calendar:**
+    - **Condition:** `work_days` is empty, contains non-digits, or values outside 0–6.
+    - **HTTP Status:** `400 Bad Request`
+    - **Payload Shape:** `{"detail": "Working calendar for branch <branch_id> has unconfigured work days."}`
+  - **Missing Shift Assignment on Scheduled Working Day:**
+    - **Condition:** Target date is a configured branch working day and not a holiday, but employee lacks an active `EmployeeShiftAssignment`.
+    - **HTTP Status:** `400 Bad Request`
+    - **Payload Shape:** `{"detail": "No effective shift assignment for employee <employee_id> on <date>."}`
+- **Evaluation Precedence:**
+  1. Resolve branch `WorkingCalendar` (rejects missing/invalid configuration).
+  2. Determine whether date is a configured branch working day.
+  3. Check active branch `Holiday`.
+  4. If non-working or holiday, established as non-working without requiring a shift assignment.
+  5. If date is a branch working day, resolves `EmployeeShiftAssignment` (rejects missing assignment with configuration error).
+  6. Evaluates `Shift.work_days` against branch calendar. Both must permit the date for it to be a scheduled working day.
