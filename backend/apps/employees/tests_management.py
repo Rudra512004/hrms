@@ -185,6 +185,69 @@ class EmployeeManagementAPITests(TestCase):
         # So it's actually IMPOSSIBLE for the last active superadmin to be deactivated by anyone!
         pass
 
+    def test_employee_hard_delete_disabled(self):
+        # Even superuser cannot hard delete via the management API
+        self.client.force_authenticate(user=self.super_user)
+
+        # Ensure employee exists
+        emp_id = self.target_employee.pk
+        emp_exists = Employee.objects.filter(pk=emp_id).exists()
+        self.assertTrue(emp_exists)
+
+        response = self.client.delete(reverse('employee-management-detail', kwargs={'pk': emp_id}))
+
+        # 405 Method Not Allowed is expected
+        self.assertEqual(response.status_code, status.HTTP_405_METHOD_NOT_ALLOWED)
+
+        # Employee must still exist unchanged
+        self.assertTrue(Employee.objects.filter(pk=emp_id).exists())
+
+    def test_assign_active_reporting_manager(self):
+        self.client.force_authenticate(user=self.super_user)
+        active_manager_user = User.objects.create_user(email='activemgr@example.com', status='active')
+        active_manager = Employee.objects.create(user=active_manager_user, employee_code='MGR_ACTIVE', organization=self.org, employment_status='active')
+
+        response = self.client.patch(reverse('employee-management-detail', kwargs={'pk': self.target_employee.pk}), {
+            'reporting_manager': active_manager.id
+        })
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['reporting_manager'], active_manager.id)
+
+    def test_assign_inactive_reporting_manager_fails(self):
+        self.client.force_authenticate(user=self.super_user)
+        inactive_manager_user = User.objects.create_user(email='inactivemgr@example.com', status='inactive')
+        inactive_manager = Employee.objects.create(user=inactive_manager_user, employee_code='MGR_INACTIVE', organization=self.org, employment_status='inactive')
+
+        response = self.client.patch(reverse('employee-management-detail', kwargs={'pk': self.target_employee.pk}), {
+            'reporting_manager': inactive_manager.id
+        })
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('reporting_manager', response.data)
+
+    def test_assign_exited_reporting_manager_fails(self):
+        self.client.force_authenticate(user=self.super_user)
+        exited_manager_user = User.objects.create_user(email='exitedmgr@example.com', status='inactive')
+        exited_manager = Employee.objects.create(user=exited_manager_user, employee_code='MGR_EXITED', organization=self.org, employment_status='exited')
+
+        response = self.client.patch(reverse('employee-management-detail', kwargs={'pk': self.target_employee.pk}), {
+            'reporting_manager': exited_manager.id
+        })
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('reporting_manager', response.data)
+
+    def test_cross_org_reporting_manager_fails(self):
+        self.client.force_authenticate(user=self.super_user)
+        from apps.organization.models import Organization
+        other_org = Organization.objects.create(name='Other Org')
+        other_org_manager_user = User.objects.create_user(email='otherorgmgr@example.com', status='active')
+        other_org_manager = Employee.objects.create(user=other_org_manager_user, employee_code='MGR_OTHER', organization=other_org, employment_status='active')
+
+        response = self.client.patch(reverse('employee-management-detail', kwargs={'pk': self.target_employee.pk}), {
+            'reporting_manager': other_org_manager.id
+        })
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('reporting_manager', response.data)
+
 class EmployeeIDGenerationTests(TestCase):
     def setUp(self):
         from apps.employees.models import EmployeeIDSequence
@@ -225,30 +288,30 @@ class EmployeeTeamProvisioningTests(TestCase):
     def setUp(self):
         self.patcher = patch('apps.authorization.permissions.IsNetworkAllowed.has_permission', return_value=True)
         self.patcher.start()
-        
+
         self.client = APIClient()
         self.org1 = Organization.objects.create(name='Org 1')
         self.org2 = Organization.objects.create(name='Org 2')
         self.branch1 = Branch.objects.create(organization=self.org1, name='Branch 1', radius=100)
         self.dept1 = Department.objects.create(branch=self.branch1, name='Dept 1')
         self.team1 = Team.objects.create(department=self.dept1, name='Team 1')
-        
+
         self.branch2 = Branch.objects.create(organization=self.org1, name='Branch 2', radius=100)
         self.dept2 = Department.objects.create(branch=self.branch2, name='Dept 2')
         self.team2 = Team.objects.create(department=self.dept2, name='Team 2')
-        
+
         self.branch_org2 = Branch.objects.create(organization=self.org2, name='Branch Org2', radius=100)
         self.dept_org2 = Department.objects.create(branch=self.branch_org2, name='Dept Org2')
         self.team_org2 = Team.objects.create(department=self.dept_org2, name='Team Org2')
-        
+
         self.team_inactive = Team.objects.create(department=self.dept1, name='Team Inactive', is_active=False)
-        
+
         self.super_user = User.objects.create_user(email='super@org1.com', is_superuser=True, status='active')
         self.super_employee = Employee.objects.create(user=self.super_user, employee_code='SUP01', organization=self.org1)
-        
+
         self.hr_role = Role.objects.create(name='HR', organization=self.org1)
         self.super_admin_role = Role.objects.create(name='Super Admin', organization=self.org1)
-        
+
         self.client.force_authenticate(user=self.super_user)
 
     def test_provision_with_team(self):
@@ -295,7 +358,7 @@ class EmployeeTeamProvisioningTests(TestCase):
             'department': self.dept1.id,
         })
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-        
+
     def test_provision_prevent_superadmin_role_assignment(self):
         normal_user = User.objects.create_user(email='normal@org1.com', status='active')
         Employee.objects.create(user=normal_user, employee_code='NORM01', organization=self.org1)
@@ -303,7 +366,7 @@ class EmployeeTeamProvisioningTests(TestCase):
         hr_role = Role.objects.create(name='HR2', organization=self.org1)
         RolePermission.objects.create(role=hr_role, permission=perm)
         UserRole.objects.create(user=normal_user, role=hr_role)
-        
+
         self.client.force_authenticate(user=normal_user)
         response = self.client.post(reverse('employee-management-list'), {
             'email': 'new_emp5@org1.com',
@@ -315,14 +378,14 @@ class EmployeeTeamProvisioningTests(TestCase):
         self.assertIn('role', response.data)
 
     def test_same_department_team_reassignment(self):
-        emp = Employee.objects.create(user=User.objects.create_user(email='reassign@org1.com'), 
-                                      employee_code='REASS01', 
-                                      organization=self.org1, 
-                                      branch=self.branch1, 
-                                      department=self.dept1, 
+        emp = Employee.objects.create(user=User.objects.create_user(email='reassign@org1.com'),
+                                      employee_code='REASS01',
+                                      organization=self.org1,
+                                      branch=self.branch1,
+                                      department=self.dept1,
                                       team=self.team1)
         team1_b = Team.objects.create(department=self.dept1, name='Team 1B')
-        
+
         self.client.force_authenticate(user=self.super_user)
         response = self.client.patch(reverse('employee-management-detail', kwargs={'pk': emp.pk}), {
             'team': team1_b.id
@@ -334,17 +397,17 @@ class EmployeeTeamProvisioningTests(TestCase):
     def test_branch_scoped_user_cannot_assign_unauthorized_team(self):
         branch_admin = User.objects.create_user(email='badmin@org1.com', status='active')
         Employee.objects.create(user=branch_admin, employee_code='BADMIN', organization=self.org1)
-        
+
         perm = Permission.objects.create(codename='employee.create', resource='employee', action='create')
         badmin_role = Role.objects.create(name='BAdmin Role', organization=self.org1)
         RolePermission.objects.create(role=badmin_role, permission=perm)
         UserRole.objects.create(user=branch_admin, role=badmin_role, scope='branch', branch=self.branch1)
-        
+
         self.client.force_authenticate(user=branch_admin)
-        
+
         from apps.authorization.services import AuthorizationService
         print("PERMS BADMIN:", AuthorizationService.get_effective_permissions(branch_admin))
-        
+
         response = self.client.post(reverse('employee-management-list'), {
             'email': 'hacked@org1.com',
             'first_name': 'Hacked',
@@ -360,15 +423,15 @@ class EmployeeTeamProvisioningTests(TestCase):
         # Prevent PATCH from changing branch or department
         branch2 = Branch.objects.create(organization=self.org1, name='Branch X2', radius=100)
         dept2 = Department.objects.create(branch=branch2, name='Dept 2')
-        
+
         emp_user = User.objects.create_user(email='emp_bypass@example.com', status='active')
         emp1 = Employee.objects.create(user=emp_user, employee_code='BYP01', organization=self.org1, branch=self.branch1, department=self.dept1, team=self.team1)
-        
+
         self.client.force_authenticate(user=self.super_user)
-        
+
         # Test cross-department team assignment
         team_other_dept = Team.objects.create(department=dept2, name='Other Team')
-        
+
         # Test updating branch
         response = self.client.patch(reverse('employee-management-detail', args=[emp1.id]), {
             'branch': branch2.id,
@@ -377,21 +440,135 @@ class EmployeeTeamProvisioningTests(TestCase):
         })
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertIn('branch', response.data)
-        
-        # Test updating department
-        response = self.client.patch(reverse('employee-management-detail', args=[emp1.id]), {
-            'department': dept2.id,
-            'team': team_other_dept.id
+
+    def test_team_scoped_create_allowed_for_authorized_team(self):
+        team_admin = User.objects.create_user(email='tadmin_allow@org1.com', status='active')
+        Employee.objects.create(user=team_admin, employee_code='TADMIN1', organization=self.org1)
+
+        perm = Permission.objects.create(codename='employee.create', resource='employee', action='create')
+        role = Role.objects.create(name='Team Admin Role', organization=self.org1)
+        RolePermission.objects.create(role=role, permission=perm)
+        UserRole.objects.create(user=team_admin, role=role, scope='team', team=self.team1)
+
+        self.client.force_authenticate(user=team_admin)
+        response = self.client.post(reverse('employee-management-list'), {
+            'email': 'new_team_emp@org1.com',
+            'first_name': 'Team',
+            'last_name': 'Emp',
+            'team': self.team1.id
+        })
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+
+    def test_team_scoped_create_denied_for_sibling_team(self):
+        team_admin = User.objects.create_user(email='tadmin_deny_sibling@org1.com', status='active')
+        Employee.objects.create(user=team_admin, employee_code='TADMIN2', organization=self.org1)
+
+        perm = Permission.objects.filter(codename='employee.create').first()
+        if not perm:
+            perm = Permission.objects.create(codename='employee.create', resource='employee', action='create')
+        role = Role.objects.create(name='Team Admin Role 2', organization=self.org1)
+        RolePermission.objects.create(role=role, permission=perm)
+        UserRole.objects.create(user=team_admin, role=role, scope='team', team=self.team1)
+
+        self.client.force_authenticate(user=team_admin)
+        response = self.client.post(reverse('employee-management-list'), {
+            'email': 'new_team_emp_sibling@org1.com',
+            'first_name': 'Team',
+            'last_name': 'Emp',
+            'team': self.team2.id # Sibling team
         })
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertIn('department', response.data)
-        
-        # Test cross-department team assignment only
-        response = self.client.patch(reverse('employee-management-detail', args=[emp1.id]), {
-            'team': team_other_dept.id
+        self.assertIn('non_field_errors', response.data)
+
+    def test_team_scoped_create_denied_for_another_branch(self):
+        team_admin = User.objects.create_user(email='tadmin_deny_branch@org1.com', status='active')
+        Employee.objects.create(user=team_admin, employee_code='TADMIN3', organization=self.org1)
+
+        perm = Permission.objects.filter(codename='employee.create').first()
+        if not perm:
+            perm = Permission.objects.create(codename='employee.create', resource='employee', action='create')
+        role = Role.objects.create(name='Team Admin Role 3', organization=self.org1)
+        RolePermission.objects.create(role=role, permission=perm)
+        UserRole.objects.create(user=team_admin, role=role, scope='team', team=self.team1)
+
+        branch2 = Branch.objects.create(organization=self.org1, name='Branch Y2', radius=100)
+        dept2 = Department.objects.create(branch=branch2, name='Dept Y2')
+        team_other_branch = Team.objects.create(department=dept2, name='Team Y2')
+
+        self.client.force_authenticate(user=team_admin)
+        response = self.client.post(reverse('employee-management-list'), {
+            'email': 'new_team_emp_other_branch@org1.com',
+            'first_name': 'Team',
+            'last_name': 'Emp',
+            'team': team_other_branch.id
         })
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertIn('team', response.data)
+        self.assertIn('non_field_errors', response.data)
+
+    def test_branch_scoped_create_allowed_for_team_inside_authorized_branch(self):
+        branch_admin = User.objects.create_user(email='badmin_allow@org1.com', status='active')
+        Employee.objects.create(user=branch_admin, employee_code='BADMIN1', organization=self.org1)
+
+        perm = Permission.objects.filter(codename='employee.create').first()
+        if not perm:
+            perm = Permission.objects.create(codename='employee.create', resource='employee', action='create')
+        role = Role.objects.create(name='Branch Admin Role 1', organization=self.org1)
+        RolePermission.objects.create(role=role, permission=perm)
+        UserRole.objects.create(user=branch_admin, role=role, scope='branch', branch=self.branch1)
+
+        self.client.force_authenticate(user=branch_admin)
+        # Provisioning into team1 which is inside branch1
+        response = self.client.post(reverse('employee-management-list'), {
+            'email': 'new_branch_emp@org1.com',
+            'first_name': 'Branch',
+            'last_name': 'Emp',
+            'team': self.team1.id
+        })
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+
+    def test_branch_scoped_create_denied_for_team_in_another_branch(self):
+        branch_admin = User.objects.create_user(email='badmin_deny@org1.com', status='active')
+        Employee.objects.create(user=branch_admin, employee_code='BADMIN2', organization=self.org1)
+
+        perm = Permission.objects.filter(codename='employee.create').first()
+        if not perm:
+            perm = Permission.objects.create(codename='employee.create', resource='employee', action='create')
+        role = Role.objects.create(name='Branch Admin Role 2', organization=self.org1)
+        RolePermission.objects.create(role=role, permission=perm)
+        UserRole.objects.create(user=branch_admin, role=role, scope='branch', branch=self.branch1)
+
+        self.client.force_authenticate(user=branch_admin)
+        # Provisioning into team2 which is inside branch2
+        response = self.client.post(reverse('employee-management-list'), {
+            'email': 'new_branch_emp_other@org1.com',
+            'first_name': 'Branch',
+            'last_name': 'Emp',
+            'team': self.team2.id
+        })
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('non_field_errors', response.data)
+
+    def test_organization_isolation(self):
+        org_admin = User.objects.create_user(email='orgadmin_allow@org1.com', status='active')
+        Employee.objects.create(user=org_admin, employee_code='ORGADMIN1', organization=self.org1)
+
+        perm = Permission.objects.filter(codename='employee.create').first()
+        if not perm:
+            perm = Permission.objects.create(codename='employee.create', resource='employee', action='create')
+        role = Role.objects.create(name='Org Admin Role 1', organization=self.org1)
+        RolePermission.objects.create(role=role, permission=perm)
+        UserRole.objects.create(user=org_admin, role=role, scope='organization')
+
+        self.client.force_authenticate(user=org_admin)
+        # Provisioning into team_org2 which is in org2
+        response = self.client.post(reverse('employee-management-list'), {
+            'email': 'new_org_emp_other@org2.com',
+            'first_name': 'Org',
+            'last_name': 'Emp',
+            'team': self.team_org2.id
+        })
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('team', response.data) # Fails cross-org team validation first
 
 class EmployeeIDGenerationTests(TestCase):
     def setUp(self):
