@@ -69,6 +69,8 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen }) => {
         { path: '/admin/wfh',          label: 'WFH Requests',          icon: Network,   permission: 'wfh.view' },
         { path: '/admin/holidays',     label: 'Holidays',              icon: CalendarDays, permission: 'holiday.view' },
         { path: '/admin/shifts',       label: 'Shifts',                icon: Clock,     permission: 'shift.view' },
+        { path: '/admin/working-calendar', label: 'Working Calendar',   icon: CalendarDays, permission: 'organization.update' },
+        { path: '/admin/attendance-policy',label: 'Attendance Policy',  icon: ShieldAlert,  permission: 'branch.view' },
       ],
     },
     {

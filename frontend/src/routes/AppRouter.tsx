@@ -39,6 +39,8 @@ import { BranchesPage } from '../pages/admin/organization/BranchesPage';
 import { HolidaysPage } from '../pages/admin/HolidaysPage';
 import { ShiftsPage } from '../pages/admin/ShiftsPage';
 import { AssetsPage } from '../pages/admin/AssetsPage';
+import { WorkingCalendarPage } from '../pages/admin/WorkingCalendarPage';
+import { AttendancePolicyPage } from '../pages/admin/AttendancePolicyPage';
 import { ProtectedRoute } from '../components/ProtectedRoute';
 
 export const AppRouter: React.FC = () => {
@@ -118,6 +120,14 @@ export const AppRouter: React.FC = () => {
 
           <Route element={<ProtectedRoute requiredPermission="shift.view" />}>
             <Route path="/admin/shifts" element={<ShiftsPage />} />
+          </Route>
+
+          <Route element={<ProtectedRoute requiredPermission="organization.update" />}>
+            <Route path="/admin/working-calendar" element={<WorkingCalendarPage />} />
+          </Route>
+
+          <Route element={<ProtectedRoute requiredPermission="branch.view" />}>
+            <Route path="/admin/attendance-policy" element={<AttendancePolicyPage />} />
           </Route>
 
           <Route element={<ProtectedRoute requiredPermission="wfh.view" />}>

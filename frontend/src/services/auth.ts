@@ -15,6 +15,7 @@ export interface User {
   firstName: string;
   lastName: string;
   status?: string;
+  isSuperuser?: boolean;
 }
 
 export interface AuthSession {
@@ -98,6 +99,7 @@ export const authService = {
             lastName: data.user.last_name,
             hrmsId: data.user.employee_code,
             status: data.user.status,
+            isSuperuser: Boolean(data.user.is_superuser),
           },
           roles: data.roles || [],
           permissions: data.permissions || [],
