@@ -1,14 +1,20 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { employeeManagementService } from '../../services/employeeManagement';
+import { employeeManagementService, type ListEmployeesParams } from '../../services/employeeManagement';
 import { type EmployeeProfile } from '../../services/employee';
-import { organizationService, type Organization, type Department, type Designation } from '../../services/organization';
+import {
+  organizationService,
+  type Branch,
+  type Department,
+  type Team,
+  type Designation,
+} from '../../services/organization';
 import { Card } from '../../components/Card';
 import { Table } from '../../components/Table';
 import { StatusBadge } from '../../components/StatusBadge';
 import { Plus, Edit2, Shield, Power, AlertCircle, Loader2, Search, Eye } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
-
+import { useBranchContext } from '../../contexts/BranchContext';
 
 const styles = {
   header: {
@@ -85,6 +91,13 @@ const styles = {
     color: 'var(--color-text-main)',
     fontSize: '0.95rem',
   },
+  fieldError: {
+    display: 'block',
+    color: 'var(--color-status-danger, #ef4444)',
+    fontSize: '0.8rem',
+    marginTop: '4px',
+    fontWeight: 500,
+  },
   modalActions: {
     display: 'flex',
     justifyContent: 'flex-end',
@@ -127,6 +140,8 @@ const styles = {
 export const EmployeesPage: React.FC = () => {
   const navigate = useNavigate();
   const { hasPermission } = useAuth();
+  const { branchId } = useBranchContext();
+
   const [employees, setEmployees] = useState<EmployeeProfile[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -138,15 +153,25 @@ export const EmployeesPage: React.FC = () => {
   const [statusEmployee, setStatusEmployee] = useState<EmployeeProfile | null>(null);
   const [newStatus, setNewStatus] = useState('');
 
-  const [organizations, setOrganizations] = useState<Organization[]>([]);
+  // Selector datasets
+  const [branches, setBranches] = useState<Branch[]>([]);
   const [departments, setDepartments] = useState<Department[]>([]);
+  const [teams, setTeams] = useState<Team[]>([]);
   const [designations, setDesignations] = useState<Designation[]>([]);
   const [managers, setManagers] = useState<EmployeeProfile[]>([]);
 
+  // Loading states for cascading selectors
+  const [branchesLoading, setBranchesLoading] = useState(false);
+  const [departmentsLoading, setDepartmentsLoading] = useState(false);
+  const [teamsLoading, setTeamsLoading] = useState(false);
+  const [designationsLoading, setDesignationsLoading] = useState(false);
+
+  // Filters
   const [statusFilter, setStatusFilter] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [departmentFilter, setDepartmentFilter] = useState('all');
 
+  // Form State
   const [formData, setFormData] = useState({
     email: '',
     personal_email: '',
@@ -155,81 +180,221 @@ export const EmployeesPage: React.FC = () => {
     employee_code: '',
     phone_number: '',
     address: '',
-    organization: 0,
+    branch: 0,
     department: 0,
+    team: 0,
     designation: 0,
     reporting_manager: 0,
     joining_date: '',
-    exit_date: ''
+    exit_date: '',
   });
 
   const [formError, setFormError] = useState<string | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
-  useEffect(() => {
-    loadEmployees();
-  }, []);
+  // Stale request protection refs
+  const employeeAbortRef = useRef<AbortController | null>(null);
+  const deptAbortRef = useRef<AbortController | null>(null);
+  const teamAbortRef = useRef<AbortController | null>(null);
 
-  const loadEmployees = async () => {
+  const loadEmployees = useCallback(async () => {
+    if (employeeAbortRef.current) {
+      employeeAbortRef.current.abort();
+    }
+    const controller = new AbortController();
+    employeeAbortRef.current = controller;
+
     setLoading(true);
     try {
-      const data = await employeeManagementService.listEmployees();
-      setEmployees(data);
-      setError(null);
+      const params: ListEmployeesParams = {};
+      if (branchId !== null && branchId !== undefined) {
+        params.branch_id = branchId;
+      }
+      if (searchQuery.trim()) {
+        params.search = searchQuery.trim();
+      }
+      if (statusFilter !== 'all') {
+        params.status = statusFilter;
+      }
+
+      const data = await employeeManagementService.listEmployees(params, { signal: controller.signal });
+      if (employeeAbortRef.current === controller) {
+        setEmployees(data || []);
+        setError(null);
+      }
     } catch (err: any) {
-      if (err.message?.includes('403')) {
+      if (err.name === 'AbortError') {
+        return;
+      }
+      if (err.status === 403 || err.message?.includes('403')) {
         setError("403 Forbidden: Access Denied.");
       } else {
         setError("Failed to load employees. Backend might be unavailable.");
       }
     } finally {
-      setLoading(false);
+      if (employeeAbortRef.current === controller) {
+        setLoading(false);
+      }
     }
-  };
+  }, [branchId, searchQuery, statusFilter]);
 
-  const loadOrgData = async (orgId?: number) => {
+  useEffect(() => {
+    loadEmployees();
+    return () => {
+      employeeAbortRef.current?.abort();
+    };
+  }, [loadEmployees]);
+
+  const loadInitialData = async () => {
+    setBranchesLoading(true);
+    setDesignationsLoading(true);
     try {
-      if (!organizations.length) {
-        const orgs = await organizationService.listOrganizations().catch(() => []);
-        setOrganizations(orgs);
-      }
-      if (orgId) {
-        const [depts, desigs] = await Promise.all([
-          organizationService.listDepartments(orgId).catch(() => []),
-          organizationService.listDesignations(orgId).catch(() => [])
-        ]);
-        setDepartments(depts);
-        setDesignations(desigs);
+      const [branchList, desigList] = await Promise.all([
+        organizationService.listBranches().catch(() => []),
+        organizationService.listDesignations().catch(() => []),
+      ]);
+      setBranches(branchList || []);
+      setDesignations(desigList || []);
 
-        // Filter managers to those in the same organization
-        const orgManagers = employees.filter(e => e.organization === orgId && (e.employment_status === 'active' || e.status === 'active'));
-        setManagers(orgManagers);
-      } else {
-        setDepartments([]);
-        setDesignations([]);
-        setManagers([]);
-      }
+      // Managers list: active employees
+      const activeEmps = employees.filter(
+        e => e.employment_status === 'active' || e.status === 'active'
+      );
+      setManagers(activeEmps);
     } catch (e) {
-      console.error("Failed to load organizational data", e);
+      console.error("Failed to load initial form data", e);
+    } finally {
+      setBranchesLoading(false);
+      setDesignationsLoading(false);
     }
   };
 
-  const handleOrgChange = (orgId: number) => {
-    setFormData(prev => ({ ...prev, organization: orgId, department: 0, designation: 0, reporting_manager: 0 }));
-    loadOrgData(orgId);
+  const handleBranchChange = async (selectedBranchId: number) => {
+    setFormData(prev => ({
+      ...prev,
+      branch: selectedBranchId,
+      department: 0,
+      team: 0,
+    }));
+    setFieldErrors(prev => ({ ...prev, branch: '', department: '', team: '' }));
+    setTeams([]);
+
+    if (deptAbortRef.current) {
+      deptAbortRef.current.abort();
+    }
+    if (teamAbortRef.current) {
+      teamAbortRef.current.abort();
+    }
+
+    if (!selectedBranchId) {
+      setDepartments([]);
+      setDepartmentsLoading(false);
+      return;
+    }
+
+    const controller = new AbortController();
+    deptAbortRef.current = controller;
+    setDepartmentsLoading(true);
+
+    try {
+      const depts = await organizationService.listDepartments(selectedBranchId, { signal: controller.signal });
+      if (deptAbortRef.current === controller) {
+        setDepartments(depts || []);
+      }
+    } catch (err: any) {
+      if (err.name !== 'AbortError') {
+        console.error("Failed to load departments", err);
+        setDepartments([]);
+      }
+    } finally {
+      if (deptAbortRef.current === controller) {
+        setDepartmentsLoading(false);
+      }
+    }
+  };
+
+  const handleDepartmentChange = async (selectedDeptId: number) => {
+    setFormData(prev => ({
+      ...prev,
+      department: selectedDeptId,
+      team: 0,
+    }));
+    setFieldErrors(prev => ({ ...prev, department: '', team: '' }));
+
+    if (teamAbortRef.current) {
+      teamAbortRef.current.abort();
+    }
+
+    if (!selectedDeptId) {
+      setTeams([]);
+      setTeamsLoading(false);
+      return;
+    }
+
+    const controller = new AbortController();
+    teamAbortRef.current = controller;
+    setTeamsLoading(true);
+
+    try {
+      const teamList = await organizationService.listTeams(selectedDeptId, { signal: controller.signal });
+      if (teamAbortRef.current === controller) {
+        setTeams(teamList || []);
+      }
+    } catch (err: any) {
+      if (err.name !== 'AbortError') {
+        console.error("Failed to load teams", err);
+        setTeams([]);
+      }
+    } finally {
+      if (teamAbortRef.current === controller) {
+        setTeamsLoading(false);
+      }
+    }
+  };
+
+  const handleTeamChange = (selectedTeamId: number) => {
+    setFormData(prev => ({ ...prev, team: selectedTeamId }));
+    setFieldErrors(prev => ({ ...prev, team: '' }));
+    if (selectedTeamId) {
+      const matched = teams.find(t => t.id === selectedTeamId);
+      if (matched && matched.department) {
+        setFormData(prev => ({ ...prev, department: matched.department }));
+      }
+    }
   };
 
   const openCreateModal = () => {
     setEditingEmployee(null);
+    const initialBranch = branchId || 0;
     setFormData({
-      email: '', personal_email: '', first_name: '', last_name: '', employee_code: '',
-      phone_number: '', address: '', organization: 0, department: 0, designation: 0, reporting_manager: 0,
-      joining_date: '', exit_date: ''
+      email: '',
+      personal_email: '',
+      first_name: '',
+      last_name: '',
+      employee_code: '',
+      phone_number: '',
+      address: '',
+      branch: initialBranch,
+      department: 0,
+      team: 0,
+      designation: 0,
+      reporting_manager: 0,
+      joining_date: '',
+      exit_date: '',
     });
     setFormError(null);
+    setFieldErrors({});
     setIsModalOpen(true);
-    loadOrgData();
+    loadInitialData();
+
+    if (initialBranch) {
+      handleBranchChange(initialBranch);
+    } else {
+      setDepartments([]);
+      setTeams([]);
+    }
   };
 
   const openEditModal = (emp: EmployeeProfile) => {
@@ -242,19 +407,29 @@ export const EmployeesPage: React.FC = () => {
       employee_code: emp.employee_code,
       phone_number: emp.phone_number || '',
       address: emp.address || '',
-      organization: emp.organization || 0,
+      branch: emp.branch || 0,
       department: emp.department || 0,
+      team: emp.team || 0,
       designation: emp.designation || 0,
       reporting_manager: emp.reporting_manager || 0,
       joining_date: emp.joining_date || '',
-      exit_date: emp.exit_date || ''
+      exit_date: emp.exit_date || '',
     });
     setFormError(null);
+    setFieldErrors({});
     setIsModalOpen(true);
-    if (emp.organization) {
-      loadOrgData(emp.organization);
+    loadInitialData();
+
+    if (emp.department) {
+      // Load teams for current department to allow same-department team reassignment
+      setTeamsLoading(true);
+      organizationService
+        .listTeams(emp.department)
+        .then(teamList => setTeams(teamList || []))
+        .catch(() => setTeams([]))
+        .finally(() => setTeamsLoading(false));
     } else {
-      loadOrgData();
+      setTeams([]);
     }
   };
 
@@ -297,31 +472,46 @@ export const EmployeesPage: React.FC = () => {
     e.preventDefault();
     setSaving(true);
     setFormError(null);
+    setFieldErrors({});
 
     try {
-      const payload: any = {};
-      if (formData.organization) payload.organization = formData.organization;
-      if (formData.department) payload.department = formData.department;
-      if (formData.designation) payload.designation = formData.designation;
-      if (formData.reporting_manager) payload.reporting_manager = formData.reporting_manager;
-      if (formData.joining_date) payload.joining_date = formData.joining_date;
-      if (formData.exit_date) payload.exit_date = formData.exit_date;
-
       if (editingEmployee) {
-        // Only include sensitive fields if they were exposed by the backend
+        // Ordinary update via PATCH:
+        // Do NOT allow changing branch or department through ordinary edit.
+        const payload: Record<string, any> = {};
         if (editingEmployee.phone_number !== undefined) payload.phone_number = formData.phone_number;
         if (editingEmployee.address !== undefined) payload.address = formData.address;
+        if (formData.designation) payload.designation = formData.designation > 0 ? formData.designation : null;
+        if (formData.reporting_manager) payload.reporting_manager = formData.reporting_manager > 0 ? formData.reporting_manager : null;
+        if (formData.joining_date) payload.joining_date = formData.joining_date;
+        if (formData.exit_date) payload.exit_date = formData.exit_date;
+
+        // Same-department team reassignment
+        if (formData.team !== undefined) {
+          payload.team = formData.team > 0 ? formData.team : null;
+        }
 
         await employeeManagementService.updateEmployee(editingEmployee.id, payload);
         setSuccessMessage("Employee updated successfully.");
       } else {
-        const result = await employeeManagementService.createEmployee({
-          email: formData.email,
-          personal_email: formData.personal_email,
-          first_name: formData.first_name,
-          last_name: formData.last_name,
-          ...payload
-        });
+        // Provisioning Employee via POST
+        const payload: any = {
+          email: formData.email.trim(),
+          first_name: formData.first_name.trim(),
+          last_name: formData.last_name.trim(),
+        };
+
+        if (formData.personal_email?.trim()) payload.personal_email = formData.personal_email.trim();
+        if (formData.employee_code?.trim()) payload.employee_code = formData.employee_code.trim();
+        if (formData.branch) payload.branch = formData.branch;
+        if (formData.department) payload.department = formData.department;
+        if (formData.team) payload.team = formData.team;
+        if (formData.designation) payload.designation = formData.designation;
+        if (formData.reporting_manager) payload.reporting_manager = formData.reporting_manager;
+        if (formData.joining_date) payload.joining_date = formData.joining_date;
+        if (formData.exit_date) payload.exit_date = formData.exit_date;
+
+        const result = await employeeManagementService.createEmployee(payload);
 
         let msg = `Employee created successfully.\n\nEmployee ID: ${result.employee.employee_code}`;
         if (result.onboarding_email_status === 'sent') {
@@ -333,17 +523,42 @@ export const EmployeesPage: React.FC = () => {
         }
         setSuccessMessage(msg);
       }
+
       setTimeout(() => setSuccessMessage(null), 10000);
       setIsModalOpen(false);
       loadEmployees();
     } catch (err: any) {
-      if (err.errorData) {
-        const errorMsgs = Object.entries(err.errorData).map(([key, val]) => `${key}: ${val}`).join(' | ');
-        setFormError(errorMsgs || "Validation error.");
-      } else if (err.response?.status === 403) {
-        setFormError("Permission denied.");
+      const status = err.status || err.response?.status;
+      const errorData = err.errorData || {};
+
+      if (status === 403) {
+        const msg = errorData.detail || errorData.message || "Permission denied: Destination unit is outside your authorized scope.";
+        setFormError(msg);
+      } else if (status === 400 && errorData && typeof errorData === 'object') {
+        const newFieldErrors: Record<string, string> = {};
+        const nonField: string[] = [];
+
+        for (const [key, val] of Object.entries(errorData)) {
+          const msg = Array.isArray(val) ? val.join(' ') : String(val);
+          if (key === 'non_field_errors' || key === 'detail') {
+            nonField.push(msg);
+          } else {
+            newFieldErrors[key] = msg;
+          }
+        }
+
+        setFieldErrors(newFieldErrors);
+        if (nonField.length > 0) {
+          setFormError(nonField.join(' | '));
+        } else if (Object.keys(newFieldErrors).length > 0) {
+          setFormError("Please correct the errors indicated below.");
+        } else {
+          setFormError("Validation error occurred.");
+        }
+      } else if (status === 404) {
+        setFormError("Resource not found.");
       } else {
-        setFormError("An error occurred while saving.");
+        setFormError(err.message || "An unexpected error occurred while saving.");
       }
     } finally {
       setSaving(false);
@@ -355,12 +570,12 @@ export const EmployeesPage: React.FC = () => {
       const matchStatus = statusFilter === 'all' || (e.employment_status || e.status) === statusFilter;
       const matchDept = departmentFilter === 'all' || e.department_name === departmentFilter;
       const q = searchQuery.toLowerCase();
-      const matchSearch = q === '' || 
-        e.first_name.toLowerCase().includes(q) || 
-        e.last_name.toLowerCase().includes(q) || 
+      const matchSearch = q === '' ||
+        e.first_name.toLowerCase().includes(q) ||
+        e.last_name.toLowerCase().includes(q) ||
         e.employee_code.toLowerCase().includes(q) ||
         (e.email && e.email.toLowerCase().includes(q));
-      
+
       return matchStatus && matchDept && matchSearch;
     });
   }, [employees, statusFilter, departmentFilter, searchQuery]);
@@ -441,6 +656,7 @@ export const EmployeesPage: React.FC = () => {
             style={{ ...styles.actionBtn, padding: '5px', borderRadius: '6px', backgroundColor: 'rgba(112, 38, 227, 0.08)' }}
             onClick={() => navigate(`/admin/employees/${e.id}`)}
             title="View Profile"
+            data-testid={`view-profile-${e.id}`}
           >
             <Eye size={16} color="var(--color-primary)" />
           </button>
@@ -450,6 +666,7 @@ export const EmployeesPage: React.FC = () => {
               style={{ ...styles.actionBtn, padding: '5px', borderRadius: '6px', backgroundColor: 'var(--color-bg-secondary)' }}
               onClick={() => openEditModal(e)}
               title="Edit Employee"
+              data-testid={`edit-employee-${e.id}`}
             >
               <Edit2 size={16} color="var(--color-text-sub)" />
             </button>
@@ -460,6 +677,7 @@ export const EmployeesPage: React.FC = () => {
               style={{ ...styles.actionBtn, padding: '5px', borderRadius: '6px', backgroundColor: 'rgba(217, 119, 6, 0.08)' }}
               onClick={() => openStatusModal(e)}
               title="Change Lifecycle Status"
+              data-testid={`status-employee-${e.id}`}
             >
               <Power size={16} color="#d97706" />
             </button>
@@ -470,6 +688,7 @@ export const EmployeesPage: React.FC = () => {
               style={{ ...styles.actionBtn, padding: '5px', borderRadius: '6px', backgroundColor: 'rgba(14, 165, 233, 0.08)' }}
               onClick={() => navigate(`/admin/employees/${e.id}/access`)}
               title="RBAC Access"
+              data-testid={`rbac-employee-${e.id}`}
             >
               <Shield size={16} color="#0284c7" />
             </button>
@@ -503,7 +722,7 @@ export const EmployeesPage: React.FC = () => {
       <div style={styles.header}>
         <h1 style={styles.title}>Employee Management</h1>
         {hasPermission('employee.create') && (
-          <button className="btn btn-primary" onClick={openCreateModal}>
+          <button className="btn btn-primary" onClick={openCreateModal} data-testid="add-employee-btn">
             <Plus size={18} /> Add Employee
           </button>
         )}
@@ -529,12 +748,14 @@ export const EmployeesPage: React.FC = () => {
               placeholder="Search by name, code, or email..." 
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
+              data-testid="search-input"
             />
           </div>
           <select
             style={{...styles.input, width: '200px'}}
             value={departmentFilter}
             onChange={(e) => setDepartmentFilter(e.target.value)}
+            data-testid="department-filter"
           >
             <option value="all">All Departments</option>
             {uniqueDepartments.map(dept => (
@@ -545,6 +766,7 @@ export const EmployeesPage: React.FC = () => {
             style={{...styles.input, width: '200px'}}
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value)}
+            data-testid="status-filter"
           >
             <option value="all">All Statuses</option>
             <option value="onboarding">Onboarding</option>
@@ -608,18 +830,17 @@ export const EmployeesPage: React.FC = () => {
             <h2 style={{ marginTop: 0 }}>{editingEmployee ? 'Edit Employee Info' : 'Provision Employee'}</h2>
 
             {formError && (
-              <div style={styles.errorBox}>
+              <div style={styles.errorBox} data-testid="form-error-alert">
                 <AlertCircle size={18} /> {formError}
               </div>
             )}
 
             <form onSubmit={handleSave}>
-
               <h3 style={styles.sectionTitle}>Basic Information</h3>
               {editingEmployee && (
                 <div style={{ marginBottom: '16px', padding: '12px', backgroundColor: 'var(--color-bg-body)', borderRadius: 'var(--radius-md)' }}>
                   <div style={{ fontSize: '0.85rem', color: 'var(--color-text-muted)' }}>
-                    Email, name, and employee code cannot be changed.
+                    Email, name, and employee code cannot be changed through ordinary profile edits.
                   </div>
                 </div>
               )}
@@ -638,18 +859,32 @@ export const EmployeesPage: React.FC = () => {
                       <input
                         style={styles.input}
                         value={formData.first_name}
-                        onChange={(e) => setFormData({...formData, first_name: e.target.value})}
+                        onChange={(e) => {
+                          setFormData({ ...formData, first_name: e.target.value });
+                          setFieldErrors(prev => ({ ...prev, first_name: '' }));
+                        }}
                         required
+                        data-testid="input-first-name"
                       />
+                      {fieldErrors.first_name && (
+                        <span style={styles.fieldError} data-testid="error-first-name">{fieldErrors.first_name}</span>
+                      )}
                     </div>
                     <div style={{ ...styles.formGroup, flex: 1 }}>
                       <label style={styles.label}>Last Name</label>
                       <input
                         style={styles.input}
                         value={formData.last_name}
-                        onChange={(e) => setFormData({...formData, last_name: e.target.value})}
+                        onChange={(e) => {
+                          setFormData({ ...formData, last_name: e.target.value });
+                          setFieldErrors(prev => ({ ...prev, last_name: '' }));
+                        }}
                         required
+                        data-testid="input-last-name"
                       />
+                      {fieldErrors.last_name && (
+                        <span style={styles.fieldError} data-testid="error-last-name">{fieldErrors.last_name}</span>
+                      )}
                     </div>
                   </div>
                 </>
@@ -664,9 +899,16 @@ export const EmployeesPage: React.FC = () => {
                       style={styles.input}
                       type="email"
                       value={formData.email}
-                      onChange={(e) => setFormData({...formData, email: e.target.value})}
+                      onChange={(e) => {
+                        setFormData({ ...formData, email: e.target.value });
+                        setFieldErrors(prev => ({ ...prev, email: '' }));
+                      }}
                       required
+                      data-testid="input-email"
                     />
+                    {fieldErrors.email && (
+                      <span style={styles.fieldError} data-testid="error-email">{fieldErrors.email}</span>
+                    )}
                   </div>
                   {hasPermission('employee.view_sensitive') ? (
                     <div style={styles.formGroup}>
@@ -675,9 +917,15 @@ export const EmployeesPage: React.FC = () => {
                         style={styles.input}
                         type="email"
                         value={formData.personal_email}
-                        onChange={(e) => setFormData({...formData, personal_email: e.target.value})}
-                        required
+                        onChange={(e) => {
+                          setFormData({ ...formData, personal_email: e.target.value });
+                          setFieldErrors(prev => ({ ...prev, personal_email: '' }));
+                        }}
+                        data-testid="input-personal-email"
                       />
+                      {fieldErrors.personal_email && (
+                        <span style={styles.fieldError} data-testid="error-personal-email">{fieldErrors.personal_email}</span>
+                      )}
                     </div>
                   ) : (
                     <div style={{ fontSize: '0.9rem', color: 'var(--color-text-muted)', fontStyle: 'italic', marginBottom: '16px' }}>
@@ -700,7 +948,8 @@ export const EmployeesPage: React.FC = () => {
                     <input
                       style={styles.input}
                       value={formData.phone_number}
-                      onChange={(e) => setFormData({...formData, phone_number: e.target.value})}
+                      onChange={(e) => setFormData({ ...formData, phone_number: e.target.value })}
+                      data-testid="input-phone-number"
                     />
                   </div>
                   <div style={styles.formGroup}>
@@ -708,7 +957,8 @@ export const EmployeesPage: React.FC = () => {
                     <input
                       style={styles.input}
                       value={formData.address}
-                      onChange={(e) => setFormData({...formData, address: e.target.value})}
+                      onChange={(e) => setFormData({ ...formData, address: e.target.value })}
+                      data-testid="input-address"
                     />
                   </div>
                 </>
@@ -723,8 +973,12 @@ export const EmployeesPage: React.FC = () => {
                     type="date"
                     style={styles.input}
                     value={formData.joining_date}
-                    onChange={(e) => setFormData({...formData, joining_date: e.target.value})}
+                    onChange={(e) => setFormData({ ...formData, joining_date: e.target.value })}
+                    data-testid="input-joining-date"
                   />
+                  {fieldErrors.joining_date && (
+                    <span style={styles.fieldError} data-testid="error-joining-date">{fieldErrors.joining_date}</span>
+                  )}
                 </div>
                 <div style={{ ...styles.formGroup, flex: 1 }}>
                   <label style={styles.label}>Exit Date</label>
@@ -732,81 +986,199 @@ export const EmployeesPage: React.FC = () => {
                     type="date"
                     style={styles.input}
                     value={formData.exit_date}
-                    onChange={(e) => setFormData({...formData, exit_date: e.target.value})}
+                    onChange={(e) => setFormData({ ...formData, exit_date: e.target.value })}
+                    data-testid="input-exit-date"
                   />
+                  {fieldErrors.exit_date && (
+                    <span style={styles.fieldError} data-testid="error-exit-date">{fieldErrors.exit_date}</span>
+                  )}
                 </div>
               </div>
 
-              <h3 style={styles.sectionTitle}>Organization & Reporting</h3>
+              <h3 style={styles.sectionTitle}>Organizational Placement</h3>
 
-              <div style={styles.formGroup}>
-                <label style={styles.label}>Organization</label>
-                <select
-                  style={styles.input}
-                  value={formData.organization}
-                  onChange={(e) => handleOrgChange(parseInt(e.target.value))}
-                >
-                  <option value={0}>None</option>
-                  {organizations.map(org => (
-                    <option key={org.id} value={org.id}>{org.name}</option>
-                  ))}
-                </select>
-              </div>
+              {editingEmployee ? (
+                <>
+                  <div style={styles.formGroup}>
+                    <label style={styles.label}>Branch</label>
+                    <input
+                      style={{ ...styles.input, backgroundColor: 'var(--color-bg-page, #f3f4f6)', cursor: 'not-allowed' }}
+                      value={editingEmployee.branch_name || 'No Branch'}
+                      disabled
+                      readOnly
+                      data-testid="disabled-edit-branch"
+                    />
+                    <small style={{ color: 'var(--color-text-muted)', fontSize: '0.8rem', display: 'block', marginTop: '4px' }}>
+                      Branch transfer must be performed through the dedicated transfer workflow.
+                    </small>
+                  </div>
 
-              <div style={styles.formGroup}>
-                <label style={styles.label}>Department</label>
-                <select
-                  style={styles.input}
-                  value={formData.department}
-                  onChange={(e) => setFormData({...formData, department: parseInt(e.target.value)})}
-                  disabled={!formData.organization}
-                >
-                  <option value={0}>None</option>
-                  {departments.map(dept => (
-                    <option key={dept.id} value={dept.id}>{dept.name}</option>
-                  ))}
-                </select>
-              </div>
+                  <div style={styles.formGroup}>
+                    <label style={styles.label}>Department</label>
+                    <input
+                      style={{ ...styles.input, backgroundColor: 'var(--color-bg-page, #f3f4f6)', cursor: 'not-allowed' }}
+                      value={editingEmployee.department_name || 'No Department'}
+                      disabled
+                      readOnly
+                      data-testid="disabled-edit-department"
+                    />
+                    <small style={{ color: 'var(--color-text-muted)', fontSize: '0.8rem', display: 'block', marginTop: '4px' }}>
+                      Department transfer must be performed through the dedicated transfer workflow.
+                    </small>
+                  </div>
+
+                  <div style={styles.formGroup}>
+                    <label style={styles.label}>Team (Same-Department)</label>
+                    <select
+                      style={styles.input}
+                      value={formData.team}
+                      onChange={(e) => {
+                        const val = parseInt(e.target.value, 10);
+                        setFormData(prev => ({ ...prev, team: val }));
+                        setFieldErrors(prev => ({ ...prev, team: '' }));
+                      }}
+                      disabled={!editingEmployee.department || teamsLoading}
+                      data-testid="select-edit-team"
+                    >
+                      <option value={0}>{teamsLoading ? 'Loading teams...' : 'None'}</option>
+                      {teams.map(t => (
+                        <option key={t.id} value={t.id}>{t.name}</option>
+                      ))}
+                    </select>
+                    {fieldErrors.team && (
+                      <span style={styles.fieldError} data-testid="error-team">{fieldErrors.team}</span>
+                    )}
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div style={styles.formGroup}>
+                    <label style={styles.label}>Branch</label>
+                    <select
+                      style={styles.input}
+                      value={formData.branch}
+                      onChange={(e) => handleBranchChange(parseInt(e.target.value, 10))}
+                      disabled={branchesLoading}
+                      data-testid="select-branch"
+                    >
+                      <option value={0}>{branchesLoading ? 'Loading branches...' : 'Select Branch'}</option>
+                      {branches.map(b => (
+                        <option key={b.id} value={b.id}>{b.name}</option>
+                      ))}
+                    </select>
+                    {fieldErrors.branch && (
+                      <span style={styles.fieldError} data-testid="error-branch">{fieldErrors.branch}</span>
+                    )}
+                  </div>
+
+                  <div style={styles.formGroup}>
+                    <label style={styles.label}>Department</label>
+                    <select
+                      style={styles.input}
+                      value={formData.department}
+                      onChange={(e) => handleDepartmentChange(parseInt(e.target.value, 10))}
+                      disabled={!formData.branch || departmentsLoading}
+                      data-testid="select-department"
+                    >
+                      <option value={0}>
+                        {departmentsLoading
+                          ? 'Loading departments...'
+                          : !formData.branch
+                          ? 'Select a branch first'
+                          : departments.length === 0
+                          ? 'No departments found'
+                          : 'Select Department'}
+                      </option>
+                      {departments.map(d => (
+                        <option key={d.id} value={d.id}>{d.name}</option>
+                      ))}
+                    </select>
+                    {fieldErrors.department && (
+                      <span style={styles.fieldError} data-testid="error-department">{fieldErrors.department}</span>
+                    )}
+                  </div>
+
+                  <div style={styles.formGroup}>
+                    <label style={styles.label}>Team</label>
+                    <select
+                      style={styles.input}
+                      value={formData.team}
+                      onChange={(e) => handleTeamChange(parseInt(e.target.value, 10))}
+                      disabled={!formData.department || teamsLoading}
+                      data-testid="select-team"
+                    >
+                      <option value={0}>
+                        {teamsLoading
+                          ? 'Loading teams...'
+                          : !formData.department
+                          ? 'Select a department first'
+                          : teams.length === 0
+                          ? 'No teams found'
+                          : 'Select Team (Optional)'}
+                      </option>
+                      {teams.map(t => (
+                        <option key={t.id} value={t.id}>{t.name}</option>
+                      ))}
+                    </select>
+                    {fieldErrors.team && (
+                      <span style={styles.fieldError} data-testid="error-team">{fieldErrors.team}</span>
+                    )}
+                  </div>
+                </>
+              )}
 
               <div style={styles.formGroup}>
                 <label style={styles.label}>Designation</label>
                 <select
                   style={styles.input}
                   value={formData.designation}
-                  onChange={(e) => setFormData({...formData, designation: parseInt(e.target.value)})}
-                  disabled={!formData.organization}
+                  onChange={(e) => {
+                    setFormData(prev => ({ ...prev, designation: parseInt(e.target.value, 10) }));
+                    setFieldErrors(prev => ({ ...prev, designation: '' }));
+                  }}
+                  disabled={designationsLoading}
+                  data-testid="select-designation"
                 >
-                  <option value={0}>None</option>
+                  <option value={0}>{designationsLoading ? 'Loading designations...' : 'None'}</option>
                   {designations.map(desig => (
                     <option key={desig.id} value={desig.id}>{desig.name}</option>
                   ))}
                 </select>
+                {fieldErrors.designation && (
+                  <span style={styles.fieldError} data-testid="error-designation">{fieldErrors.designation}</span>
+                )}
               </div>
 
-              {hasPermission('hierarchy.manage') && (
-                <div style={styles.formGroup}>
-                  <label style={styles.label}>Reporting Manager</label>
-                  <select
-                    style={styles.input}
-                    value={formData.reporting_manager}
-                    onChange={(e) => setFormData({...formData, reporting_manager: parseInt(e.target.value)})}
-                    disabled={!formData.organization}
-                  >
-                    <option value={0}>None</option>
-                    {managers
-                      .filter(m => m.id !== editingEmployee?.id) // Cannot report to self
-                      .map(m => (
-                      <option key={m.id} value={m.id}>{m.first_name} {m.last_name} ({m.employee_code})</option>
+              <div style={styles.formGroup}>
+                <label style={styles.label}>Reporting Manager</label>
+                <select
+                  style={styles.input}
+                  value={formData.reporting_manager}
+                  onChange={(e) => {
+                    setFormData(prev => ({ ...prev, reporting_manager: parseInt(e.target.value, 10) }));
+                    setFieldErrors(prev => ({ ...prev, reporting_manager: '' }));
+                  }}
+                  data-testid="select-reporting-manager"
+                >
+                  <option value={0}>None</option>
+                  {managers
+                    .filter(m => m.id !== editingEmployee?.id)
+                    .map(m => (
+                      <option key={m.id} value={m.id}>
+                        {m.first_name} {m.last_name} ({m.employee_code})
+                      </option>
                     ))}
-                  </select>
-                </div>
-              )}
+                </select>
+                {fieldErrors.reporting_manager && (
+                  <span style={styles.fieldError} data-testid="error-reporting-manager">{fieldErrors.reporting_manager}</span>
+                )}
+              </div>
 
               <div style={styles.modalActions}>
                 <button type="button" style={styles.cancelBtn} onClick={() => setIsModalOpen(false)}>
                   Cancel
                 </button>
-                <button type="submit" className="btn btn-primary" disabled={saving}>
+                <button type="submit" className="btn btn-primary" disabled={saving} data-testid="save-employee-btn">
                   {saving ? <Loader2 size={18} style={{ animation: 'spin 1s linear infinite' }}/> : 'Save'}
                 </button>
               </div>
