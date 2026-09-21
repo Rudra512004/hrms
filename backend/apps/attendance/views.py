@@ -105,6 +105,11 @@ class AttendanceViewSet(viewsets.GenericViewSet):
         if isinstance(loc, Response):
             return loc
 
+        from .services import AttendanceCalculationService
+        shift = AttendanceCalculationService.get_effective_shift(employee, today)
+        check_in_time = timezone.now()
+        is_late = AttendanceCalculationService.is_late_check_in(shift, check_in_time, target_date=today)
+
         try:
             with transaction.atomic():
                 if Attendance.objects.filter(employee=employee, date=today).exists():
@@ -113,8 +118,9 @@ class AttendanceViewSet(viewsets.GenericViewSet):
                 attendance = Attendance.objects.create(
                     employee=employee,
                     date=today,
-                    check_in=timezone.now(),
+                    check_in=check_in_time,
                     status='present',
+                    is_late=is_late,
                     check_in_latitude=loc.get('lat') if loc else None,
                     check_in_longitude=loc.get('lon') if loc else None,
                     check_in_accuracy=loc.get('acc') if loc else None
@@ -175,6 +181,9 @@ class AttendanceViewSet(viewsets.GenericViewSet):
             attendance.total_break_duration = total_break
             productive = (now - attendance.check_in) - total_break
             attendance.productive_work_duration = max(timedelta(0), productive)
+
+            from .services import AttendanceCalculationService
+            attendance.status = AttendanceCalculationService.determine_attendance_status(attendance)
 
             attendance.save()
 

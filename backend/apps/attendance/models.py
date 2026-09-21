@@ -25,6 +25,7 @@ class Attendance(models.Model):
     check_out_accuracy = models.FloatField(null=True, blank=True)
     total_break_duration = models.DurationField(null=True, blank=True)
     productive_work_duration = models.DurationField(null=True, blank=True)
+    is_late = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -83,6 +84,12 @@ class Shift(models.Model):
 
     def __str__(self):
         return f"{self.name} ({self.start_time} - {self.end_time})"
+
+    def get_work_days_list(self):
+        try:
+            return [int(d.strip()) for d in self.work_days.split(',') if d.strip().isdigit()]
+        except (ValueError, AttributeError):
+            return [0, 1, 2, 3, 4]
 
 
 class EmployeeShiftAssignment(models.Model):

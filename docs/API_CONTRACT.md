@@ -1723,3 +1723,32 @@ When provisioning or transferring, the backend auto-derives parent hierarchy if 
   - `PATCH /api/v1/organization/branches/{id}/`
     - **Authorization:** `branch.manage`
     - Supports nested write: `{"attendance_policy": { ... }}` and `{"working_calendar": { ... }}`.
+
+---
+
+## 20. Attendance Calculation Engine Contracts (C5.5.2)
+
+### Check-in & Late Arrival
+- **Endpoint:** `POST /api/v1/attendance/check-in/`
+- **Fields in Response:** Includes `'is_late'` (boolean).
+- **Calculation Rule:**
+  - Effective shift resolved via `EmployeeShiftAssignment` (effective_from <= date <= effective_to).
+  - Grace cutoff = `shift.start_time + (shift.grace_period or 0)`.
+  - Check-in precisely at the cutoff is NOT late (`is_late = false`). Check-in strictly past cutoff is late (`is_late = true`).
+  - Timezones are normalized to the server timezone (`TIME_ZONE = 'UTC'`).
+
+### Check-out & Status Determination
+- **Endpoint:** `POST /api/v1/attendance/check-out/`
+- **Calculation Rule:**
+  - `productive_work_duration = (check_out - check_in) - total_break_duration`.
+  - Shift thresholds: `full_day_hours` (defaults to shift duration or 8h) and `half_day_hours` (defaults to full_day_hours / 2).
+  - Status evaluation:
+    - `productive_work_duration >= full_day_hours` => `status = 'present'`
+    - `productive_work_duration >= half_day_hours` => `status = 'half_day'`
+    - `productive_work_duration < half_day_hours` => `status = 'absent'`
+  - If no shift or thresholds are configured, existing status is preserved.
+
+### Approved Leave Interaction
+- **Conflict Behavior:** If an employee with an approved `LeaveRequest` checks in on the leave date, check-in is NOT blocked. The attendance record is successfully created.
+- **Payroll Integration:** `_approved_leave_days` accepts `exclude_dates` (dates with attendance records), preventing duplicate counting or overpayment.
+- **Calendar Alignment:** Payroll `_approved_leave_days` respects the branch's `WorkingCalendar.work_days` (eliminating hardcoded weekday < 5 assumptions).

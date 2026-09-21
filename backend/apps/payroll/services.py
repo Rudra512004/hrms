@@ -139,13 +139,18 @@ def _approved_leave_days(employee, start: date, end: date, exclude_dates: set = 
             is_active=True,
         ).values_list('date', flat=True)
     )
+    try:
+        work_days = employee.branch.working_calendar.get_work_days_list()
+    except Exception:
+        work_days = [0, 1, 2, 3, 4]
+
     for lr in requests:
         clipped_start = max(lr.start_date, start)
         clipped_end = min(lr.end_date, end)
 
         current = clipped_start
         while current <= clipped_end:
-            if current.weekday() < 5 and current not in holiday_dates and current not in exclude_dates:
+            if current.weekday() in work_days and current not in holiday_dates and current not in exclude_dates:
                 leave_dates.add(current)
             current += timedelta(days=1)
     return len(leave_dates)
