@@ -54,6 +54,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen }) => {
         { path: '/admin/assets',       label: 'Assets',        icon: Package,    permission: 'asset.view' },
         { path: '/admin/organizations',label: 'Organizations', icon: Building2,  permission: 'organization.view' },
         { path: '/admin/departments',  label: 'Departments',   icon: GitBranch,  permission: 'department.view' },
+        { path: '/admin/teams',        label: 'Teams',         icon: Users,      permission: 'team.view' },
         { path: '/admin/branches',     label: 'Branches',      icon: Building2,  permission: 'branch.view' },
         { path: '/admin/designations', label: 'Designations',  icon: Briefcase,  permission: 'designation.view' },
       ],

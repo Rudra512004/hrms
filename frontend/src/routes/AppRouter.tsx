@@ -34,6 +34,7 @@ import { RolesPage } from '../pages/admin/RolesPage';
 import { RolePermissionsPage } from '../pages/admin/RolePermissionsPage';
 import { OrganizationsPage } from '../pages/admin/organization/OrganizationsPage';
 import { DepartmentsPage } from '../pages/admin/organization/DepartmentsPage';
+import { TeamsPage } from '../pages/admin/organization/TeamsPage';
 import { DesignationsPage } from '../pages/admin/organization/DesignationsPage';
 import { BranchesPage } from '../pages/admin/organization/BranchesPage';
 import { HolidaysPage } from '../pages/admin/HolidaysPage';
@@ -104,6 +105,10 @@ export const AppRouter: React.FC = () => {
 
           <Route element={<ProtectedRoute requiredPermission="department.view" />}>
             <Route path="/admin/departments" element={<DepartmentsPage />} />
+          </Route>
+
+          <Route element={<ProtectedRoute requiredPermission="team.view" />}>
+            <Route path="/admin/teams" element={<TeamsPage />} />
           </Route>
 
           <Route element={<ProtectedRoute requiredPermission="designation.view" />}>

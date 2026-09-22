@@ -6,8 +6,8 @@ export type { Branch };
 export interface Organization {
   id: number;
   name: string;
-  description: string;
-  is_active: boolean;
+  description?: string;
+  is_active?: boolean;
   status?: string;
   created_at?: string;
   updated_at?: string;
@@ -15,10 +15,10 @@ export interface Organization {
 
 export interface Department {
   id: number;
-  organization: number;
-  organization_name?: string;
-  branch?: number;
+  branch: number;
   branch_name?: string;
+  organization?: number;
+  organization_name?: string;
   name: string;
   description: string;
   is_active: boolean;

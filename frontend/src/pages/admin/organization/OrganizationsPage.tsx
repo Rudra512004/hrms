@@ -112,7 +112,7 @@ export const OrganizationsPage: React.FC = () => {
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingOrg, setEditingOrg] = useState<Organization | null>(null);
-  const [formData, setFormData] = useState({ name: '', description: '', is_active: true });
+  const [formData, setFormData] = useState<{ name: string; status: string }>({ name: '', status: 'active' });
   const [formError, setFormError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const { hasPermission } = useAuth();
@@ -127,7 +127,7 @@ export const OrganizationsPage: React.FC = () => {
     setLoading(true);
     try {
       const data = await organizationService.listOrganizations();
-      setOrganizations(data);
+      setOrganizations(Array.isArray(data) ? data : []);
       setError(null);
     } catch (err: any) {
       if (err.response?.status === 403) {
@@ -142,7 +142,7 @@ export const OrganizationsPage: React.FC = () => {
 
   const openCreateModal = () => {
     setEditingOrg(null);
-    setFormData({ name: '', description: '', is_active: true });
+    setFormData({ name: '', status: 'active' });
     setFormError(null);
     setIsModalOpen(true);
   };
@@ -151,8 +151,7 @@ export const OrganizationsPage: React.FC = () => {
     setEditingOrg(org);
     setFormData({ 
       name: org.name, 
-      description: org.description, 
-      is_active: org.is_active 
+      status: org.status || (org.is_active ? 'active' : 'inactive'),
     });
     setFormError(null);
     setIsModalOpen(true);
@@ -160,11 +159,19 @@ export const OrganizationsPage: React.FC = () => {
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!formData.name.trim()) {
+      setFormError("Organization name is required.");
+      return;
+    }
+
     setSaving(true);
     setFormError(null);
 
     try {
-      const payload = { ...formData };
+      const payload = {
+        name: formData.name.trim(),
+        status: formData.status,
+      };
       
       if (editingOrg) {
         await organizationService.updateOrganization(editingOrg.id, payload);
@@ -175,11 +182,13 @@ export const OrganizationsPage: React.FC = () => {
       loadOrganizations();
     } catch (err: any) {
       if (err.errorData && err.errorData.name) {
-        setFormError(err.errorData.name[0]);
+        setFormError(Array.isArray(err.errorData.name) ? err.errorData.name[0] : err.errorData.name);
       } else if (err.response?.status === 403) {
         setFormError("Permission denied.");
       } else if (err.errorData && typeof err.errorData === 'object') {
-        const errorMsgs = Object.entries(err.errorData).map(([key, val]) => `${key}: ${val}`).join(' | ');
+        const errorMsgs = Object.entries(err.errorData)
+          .map(([key, val]) => `${key}: ${Array.isArray(val) ? val.join(', ') : val}`)
+          .join(' | ');
         setFormError(errorMsgs || "Validation error.");
       } else {
         setFormError("An error occurred while saving.");
@@ -191,7 +200,9 @@ export const OrganizationsPage: React.FC = () => {
 
   const toggleActive = async (org: Organization) => {
     try {
-      await organizationService.updateOrganization(org.id, { is_active: !org.is_active });
+      const currentStatus = org.status || (org.is_active ? 'active' : 'inactive');
+      const newStatus = currentStatus === 'active' ? 'inactive' : 'active';
+      await organizationService.updateOrganization(org.id, { status: newStatus });
       loadOrganizations();
     } catch {
       alert("Failed to toggle status.");
@@ -204,7 +215,7 @@ export const OrganizationsPage: React.FC = () => {
       await organizationService.deleteOrganization(org.id);
       loadOrganizations();
     } catch (err: any) {
-      if (err.response?.status === 409) {
+      if (err.response?.status === 409 || err.response?.status === 400) {
         alert(err.errorData?.detail || "Cannot delete organization that is in use.");
       } else {
         alert("Failed to delete organization.");
@@ -215,12 +226,11 @@ export const OrganizationsPage: React.FC = () => {
   const columns = [
     { key: 'id', title: 'ID' },
     { key: 'name', title: 'Name' },
-    { key: 'description', title: 'Description' },
     { 
-      key: 'is_active', 
+      key: 'status', 
       title: 'Status', 
       render: (n: Organization) => (
-        <StatusBadge status={n.is_active ? 'active' : 'inactive'} />
+        <StatusBadge status={n.status || (n.is_active ? 'active' : 'inactive')} />
       ) 
     }
   ];
@@ -231,13 +241,31 @@ export const OrganizationsPage: React.FC = () => {
       title: 'Actions', 
       render: (n: Organization) => (
         <div>
-          <button style={styles.actionBtn} onClick={() => openEditModal(n)} title="Edit">
+          <button 
+            style={styles.actionBtn} 
+            onClick={() => openEditModal(n)} 
+            title="Edit"
+            data-testid={`edit-org-${n.id}`}
+          >
             <Edit2 size={18} />
           </button>
-          <button style={styles.actionBtn} onClick={() => toggleActive(n)} title={n.is_active ? "Deactivate" : "Activate"}>
-            <Power size={18} color={n.is_active ? "var(--color-status-success)" : "var(--color-text-muted)"} />
+          <button 
+            style={styles.actionBtn} 
+            onClick={() => toggleActive(n)} 
+            title={(n.status || (n.is_active ? 'active' : 'inactive')) === 'active' ? "Deactivate" : "Activate"}
+            data-testid={`toggle-org-${n.id}`}
+          >
+            <Power 
+              size={18} 
+              color={(n.status || (n.is_active ? 'active' : 'inactive')) === 'active' ? "var(--color-status-success)" : "var(--color-text-muted)"} 
+            />
           </button>
-          <button style={styles.actionBtn} onClick={() => handleDelete(n)} title="Delete">
+          <button 
+            style={styles.actionBtn} 
+            onClick={() => handleDelete(n)} 
+            title="Delete"
+            data-testid={`delete-org-${n.id}`}
+          >
             <Trash2 size={18} color="var(--color-status-danger)" />
           </button>
         </div>
@@ -269,7 +297,7 @@ export const OrganizationsPage: React.FC = () => {
       <div style={styles.header}>
         <h1 style={styles.title}>Organizations</h1>
         {canManage && (
-          <button style={styles.button} onClick={openCreateModal}>
+          <button style={styles.button} onClick={openCreateModal} data-testid="add-organization-btn">
             <Plus size={18} /> Add Organization
           </button>
         )}
@@ -288,12 +316,12 @@ export const OrganizationsPage: React.FC = () => {
       </Card>
 
       {isModalOpen && (
-        <div style={styles.modalOverlay}>
+        <div style={styles.modalOverlay} data-testid="organization-modal">
           <div style={styles.modalContent}>
             <h2 style={{ marginTop: 0 }}>{editingOrg ? 'Edit Organization' : 'Add Organization'}</h2>
             
             {formError && (
-              <div style={styles.errorBox}>
+              <div style={styles.errorBox} data-testid="org-form-error">
                 <AlertCircle size={18} /> {formError}
               </div>
             )}
@@ -306,22 +334,39 @@ export const OrganizationsPage: React.FC = () => {
                   value={formData.name}
                   onChange={(e) => setFormData({...formData, name: e.target.value})}
                   required
+                  data-testid="org-name-input"
+                  placeholder="e.g. Acme Corp"
                 />
               </div>
+
               <div style={styles.formGroup}>
-                <label style={styles.label}>Description</label>
-                <input 
-                  style={styles.input} 
-                  value={formData.description}
-                  onChange={(e) => setFormData({...formData, description: e.target.value})}
-                />
+                <label style={styles.label}>Status</label>
+                <select
+                  style={styles.input}
+                  value={formData.status}
+                  onChange={(e) => setFormData({...formData, status: e.target.value})}
+                  data-testid="org-status-select"
+                >
+                  <option value="active">Active</option>
+                  <option value="inactive">Inactive</option>
+                </select>
               </div>
               
               <div style={styles.modalActions}>
-                <button type="button" style={styles.cancelBtn} onClick={() => setIsModalOpen(false)}>
+                <button 
+                  type="button" 
+                  style={styles.cancelBtn} 
+                  onClick={() => setIsModalOpen(false)}
+                  data-testid="org-cancel-btn"
+                >
                   Cancel
                 </button>
-                <button type="submit" style={styles.button} disabled={saving}>
+                <button 
+                  type="submit" 
+                  style={styles.button} 
+                  disabled={saving}
+                  data-testid="org-save-btn"
+                >
                   {saving ? <Loader2 size={18} style={{ animation: 'spin 1s linear infinite' }}/> : 'Save'}
                 </button>
               </div>
