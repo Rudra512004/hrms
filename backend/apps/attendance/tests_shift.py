@@ -5,7 +5,7 @@ from rest_framework.test import APIClient
 from django.contrib.auth import get_user_model
 from apps.employees.models import Employee
 from apps.organization.models import Organization
-from .models import Shift, EmployeeShiftAssignment
+from .models import Shift
 from datetime import date, time, timedelta
 
 User = get_user_model()
@@ -100,186 +100,59 @@ class ShiftAndAssignmentAPITests(TestCase):
         res = self.client.post(url, data)
         self.assertEqual(res.status_code, status.HTTP_201_CREATED)
 
-    def test_shift_assignment_overlap_rejection(self):
+    def test_shift_list_branch_filtering(self):
         self.client.force_authenticate(user=self.super_user)
-        url = reverse('shift-assignment-list')
+        url = reverse('shift-list')
 
-        # Valid assignment 1
-        res1 = self.client.post(url, {
-            'employee': self.emp1.id,
-            'shift': self.shift1.id,
-            'effective_from': '2023-01-01',
-            'effective_to': '2023-01-31'
-        })
-        self.assertEqual(res1.status_code, status.HTTP_201_CREATED)
-
-        # Overlapping assignment 2
-        res2 = self.client.post(url, {
-            'employee': self.emp1.id,
-            'shift': self.shift1.id,
-            'effective_from': '2023-01-15',
-            'effective_to': '2023-02-15'
-        })
-        self.assertEqual(res2.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertIn('effective_from', res2.data)
-
-        # Sequential assignment (allowed)
-        res3 = self.client.post(url, {
-            'employee': self.emp1.id,
-            'shift': self.shift1.id,
-            'effective_from': '2023-02-01',
-            'effective_to': '2023-02-28'
-        })
-        self.assertEqual(res3.status_code, status.HTTP_201_CREATED)
-
-        # Open-ended assignment (allowed)
-        res4 = self.client.post(url, {
-            'employee': self.emp1.id,
-            'shift': self.shift1.id,
-            'effective_from': '2023-03-01',
-            'effective_to': ''
-        })
-        self.assertEqual(res4.status_code, status.HTTP_201_CREATED)
-
-        # Another open-ended assignment (rejected overlap)
-        res5 = self.client.post(url, {
-            'employee': self.emp1.id,
-            'shift': self.shift1.id,
-            'effective_from': '2023-04-01',
-            'effective_to': ''
-        })
-        self.assertEqual(res5.status_code, status.HTTP_400_BAD_REQUEST)
-
-    def test_assignment_cross_tenant_rejection(self):
-        self.client.force_authenticate(user=self.super_user)
-        url = reverse('shift-assignment-list')
-
-        # Shift in Org 2, Employee in Org 1
-        res = self.client.post(url, {
-            'employee': self.emp1.id,
-            'shift': self.shift2.id,
-            'effective_from': '2023-01-01'
-        })
-        self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
-
-    def test_invalid_effective_dates(self):
-        self.client.force_authenticate(user=self.super_user)
-        url = reverse('shift-assignment-list')
-
-        # End before start
-        res = self.client.post(url, {
-            'employee': self.emp1.id,
-            'shift': self.shift1.id,
-            'effective_from': '2023-01-31',
-            'effective_to': '2023-01-01'
-        })
-        self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
-
-    def test_shift_assignment_branch_id_filtering(self):
-        from apps.organization.models import Branch
-        branch1b = Branch.objects.create(organization=self.org1, name='Branch 1B')
-        user1b = User.objects.create_user(email='emp1b@example.com', password='Password123!', status='active')
-        emp1b = Employee.objects.create(user=user1b, employee_code='E1B', organization=self.org1, branch=branch1b)
-        shift1b = Shift.objects.create(branch=branch1b, name='Shift 1B', start_time=time(10, 0), end_time=time(18, 0))
-
-        sa1 = EmployeeShiftAssignment.objects.create(
-            employee=self.emp1, shift=self.shift1, effective_from=date(2026, 1, 1)
-        )
-        sa1b = EmployeeShiftAssignment.objects.create(
-            employee=emp1b, shift=shift1b, effective_from=date(2026, 1, 1)
-        )
-
-        self.client.force_authenticate(user=self.super_user)
-        url = reverse('shift-assignment-list')
-
-        # Filter by branch 1
         res = self.client.get(url, {'branch_id': self.branch1.id})
         self.assertEqual(res.status_code, status.HTTP_200_OK)
-        returned_ids = [item['id'] for item in res.data]
-        self.assertIn(sa1.id, returned_ids)
-        self.assertNotIn(sa1b.id, returned_ids)
+        returned_ids = [s['id'] for s in res.data]
+        self.assertIn(self.shift1.id, returned_ids)
+        self.assertNotIn(self.shift2.id, returned_ids)
 
-    def test_shift_assignment_same_day_boundary_overlap_rejection(self):
+    def test_shift_update_and_branch_scope(self):
         self.client.force_authenticate(user=self.super_user)
-        url = reverse('shift-assignment-list')
+        url = reverse('shift-detail', args=[self.shift1.id])
 
-        # Assignment A: ends 2026-09-30
-        res1 = self.client.post(url, {
-            'employee': self.emp1.id,
-            'shift': self.shift1.id,
-            'effective_from': '2026-09-01',
-            'effective_to': '2026-09-30'
-        })
-        self.assertEqual(res1.status_code, status.HTTP_201_CREATED)
-
-        # Assignment B: starting on same day 2026-09-30 (must be rejected as overlap)
-        res2 = self.client.post(url, {
-            'employee': self.emp1.id,
-            'shift': self.shift1.id,
-            'effective_from': '2026-09-30',
-            'effective_to': '2026-10-31'
-        })
-        self.assertEqual(res2.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertIn('effective_from', res2.data)
-
-        # Assignment C: starting next calendar day 2026-10-01 (allowed)
-        res3 = self.client.post(url, {
-            'employee': self.emp1.id,
-            'shift': self.shift1.id,
-            'effective_from': '2026-10-01',
-            'effective_to': '2026-10-31'
-        })
-        self.assertEqual(res3.status_code, status.HTTP_201_CREATED)
-
-    def test_shift_assignment_patch_effective_to(self):
-        self.client.force_authenticate(user=self.super_user)
-        sa = EmployeeShiftAssignment.objects.create(
-            employee=self.emp1, shift=self.shift1, effective_from=date(2026, 1, 1), effective_to=None
-        )
-        url = reverse('shift-assignment-detail', args=[sa.id])
-
-        res = self.client.patch(url, {'effective_to': '2026-06-30'})
+        res = self.client.patch(url, {'name': 'Updated Shift Name'})
         self.assertEqual(res.status_code, status.HTTP_200_OK)
-        sa.refresh_from_db()
-        self.assertEqual(sa.effective_to, date(2026, 6, 30))
+        self.shift1.refresh_from_db()
+        self.assertEqual(self.shift1.name, 'Updated Shift Name')
 
-    def test_shift_assignment_delete_authorization(self):
-        sa = EmployeeShiftAssignment.objects.create(
-            employee=self.emp1, shift=self.shift1, effective_from=date(2026, 1, 1)
-        )
-        url = reverse('shift-assignment-detail', args=[sa.id])
-
-        # Regular user without permission gets 403
-        self.client.force_authenticate(user=self.user1)
-        res_unauth = self.client.delete(url)
-        self.assertEqual(res_unauth.status_code, status.HTTP_403_FORBIDDEN)
-
-        # Superuser succeeds
+    def test_shift_delete_and_branch_scope(self):
         self.client.force_authenticate(user=self.super_user)
-        res_auth = self.client.delete(url)
-        self.assertEqual(res_auth.status_code, status.HTTP_204_NO_CONTENT)
-        self.assertFalse(EmployeeShiftAssignment.objects.filter(id=sa.id).exists())
+        shift_to_delete = Shift.objects.create(
+            branch=self.branch1,
+            name='Temporary Shift',
+            start_time=time(10, 0),
+            end_time=time(18, 0)
+        )
+        url = reverse('shift-detail', args=[shift_to_delete.id])
 
-    def test_shift_assignment_cross_branch_idor(self):
+        res = self.client.delete(url)
+        self.assertEqual(res.status_code, status.HTTP_204_NO_CONTENT)
+        self.assertFalse(Shift.objects.filter(id=shift_to_delete.id).exists())
+
+    def test_shift_cross_organization_forbidden(self):
         from apps.authorization.models import Role, RolePermission, Permission, UserRole, ScopeChoices
-        p_manage = Permission.objects.get(codename='shift_assignment.manage')
-        p_view = Permission.objects.get(codename='shift_assignment.view')
-        role = Role.objects.create(organization=self.org1, name='Branch 1 Admin')
+        p_manage = Permission.objects.get(codename='shift.manage')
+        p_view = Permission.objects.get(codename='shift.view')
+        role = Role.objects.create(organization=self.org1, name='Org 1 Shift Admin')
         RolePermission.objects.create(role=role, permission=p_manage)
         RolePermission.objects.create(role=role, permission=p_view)
         UserRole.objects.create(user=self.user1, role=role, scope=ScopeChoices.BRANCH, branch=self.branch1)
 
-        # Assignment in another branch/org
-        sa_other = EmployeeShiftAssignment.objects.create(
-            employee=self.emp2, shift=self.shift2, effective_from=date(2026, 1, 1)
-        )
-        url = reverse('shift-assignment-detail', args=[sa_other.id])
-
+        # Attempt to modify shift in Org 2
         self.client.force_authenticate(user=self.user1)
-        # Cannot delete
-        res_del = self.client.delete(url)
-        self.assertEqual(res_del.status_code, status.HTTP_404_NOT_FOUND)
+        url = reverse('shift-detail', args=[self.shift2.id])
+        res = self.client.patch(url, {'name': 'Hacked Shift'})
+        self.assertEqual(res.status_code, status.HTTP_404_NOT_FOUND)
 
-        # Cannot patch
-        res_patch = self.client.patch(url, {'effective_to': '2026-12-31'})
-        self.assertEqual(res_patch.status_code, status.HTTP_404_NOT_FOUND)
+    def test_shift_inactive_toggle(self):
+        self.client.force_authenticate(user=self.super_user)
+        url = reverse('shift-detail', args=[self.shift1.id])
+
+        res = self.client.patch(url, {'is_active': False})
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        self.shift1.refresh_from_db()
+        self.assertFalse(self.shift1.is_active)

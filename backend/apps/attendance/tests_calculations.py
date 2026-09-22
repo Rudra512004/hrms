@@ -8,7 +8,7 @@ from datetime import date, time, datetime, timedelta
 
 from apps.organization.models import Organization, Branch, WorkingCalendar, AttendancePolicy
 from apps.employees.models import Employee
-from apps.attendance.models import Attendance, Holiday, Shift, EmployeeShiftAssignment
+from apps.attendance.models import Attendance, Holiday, Shift
 from apps.attendance.services import AttendanceCalculationService
 from apps.attendance.exceptions import AttendanceConfigurationError
 from apps.leaves.models import LeaveType, LeaveRequest
@@ -146,59 +146,56 @@ class AttendanceCalculationEngineHardeningTests(TestCase):
             AttendanceCalculationService.is_branch_working_day(self.branch1, monday)
         self.assertIn("Invalid work day 'M'", str(cm.exception))
 
-    def test_05_employee_with_effective_shift_assignment_uses_that_exact_shift(self):
-        """5. Employee with effective shift assignment uses that exact shift."""
-        shift_a = Shift.objects.create(
-            branch=self.branch1, name='Shift A', start_time=time(7, 0), end_time=time(15, 0)
-        )
-        EmployeeShiftAssignment.objects.create(
-            employee=self.emp1, shift=shift_a, effective_from=date(2026, 9, 1)
-        )
-
+    def test_05_employee_resolves_schedule_from_branch(self):
+        """5. Employee automatically resolves schedule from their branch's active shift without EmployeeShiftAssignment."""
         resolved = AttendanceCalculationService.get_effective_shift(self.emp1, date(2026, 9, 21))
         self.assertIsNotNone(resolved)
-        self.assertEqual(resolved.id, shift_a.id)
+        self.assertEqual(resolved.id, self.shift_std.id)
 
-    def test_06_employee_without_effective_shift_assignment_does_not_fall_back(self):
-        """6. Employee without effective shift assignment does NOT fall back to an arbitrary active branch shift."""
-        # Active shifts exist in branch1 (self.shift_std), but emp1 has NO EmployeeShiftAssignment
-        resolved = AttendanceCalculationService.get_effective_shift(self.emp1, date(2026, 9, 21))
-        self.assertIsNone(resolved, "Must NOT fall back to branch's active shift when no assignment exists.")
+    def test_06_inactive_branch_shift_is_not_selected(self):
+        """6. Inactive branch shift is not selected and raises configuration error."""
+        self.shift_std.is_active = False
+        self.shift_std.save()
+        with self.assertRaises(AttendanceConfigurationError) as cm:
+            AttendanceCalculationService.get_effective_shift(self.emp1, date(2026, 9, 21))
+        self.assertIn("No active shift configured for branch", str(cm.exception))
 
-    def test_07_missing_shift_assignment_produces_deterministic_error_on_scheduled_working_day(self):
-        """7. Missing shift assignment produces deterministic configuration error on a scheduled working day."""
+    def test_07_missing_branch_shift_produces_deterministic_error_on_scheduled_working_day(self):
+        """7. Missing branch shift produces deterministic configuration error on a scheduled working day."""
         monday = date(2026, 9, 21) # Monday is a branch working day
         self.assertTrue(AttendanceCalculationService.is_branch_working_day(self.branch1, monday))
 
-        # emp1 has NO shift assignment
+        # Delete active shifts for branch1
+        Shift.objects.filter(branch=self.branch1).delete()
+
         with self.assertRaises(AttendanceConfigurationError) as cm:
             AttendanceCalculationService.resolve_scheduled_shift(self.emp1, monday)
 
-        expected_msg = f"No effective shift assignment for employee {self.emp1.id} on {monday}."
+        expected_msg = f"No active shift configured for branch {self.branch1.id} ({self.branch1.name})."
         self.assertEqual(str(cm.exception), expected_msg)
 
     def test_08_multiple_active_branch_shifts_do_not_cause_arbitrary_selection(self):
-        """8. Multiple active branch shifts do not cause arbitrary shift selection when assignment is missing."""
-        Shift.objects.create(branch=self.branch1, name='Active 1', start_time=time(8, 0), end_time=time(16, 0), is_active=True)
+        """8. Multiple active branch shifts raise a configuration error rather than choosing arbitrarily."""
         Shift.objects.create(branch=self.branch1, name='Active 2', start_time=time(16, 0), end_time=time(0, 0), is_active=True)
 
-        resolved = AttendanceCalculationService.get_effective_shift(self.emp1, date(2026, 9, 21))
-        self.assertIsNone(resolved)
+        with self.assertRaises(AttendanceConfigurationError) as cm:
+            AttendanceCalculationService.get_effective_shift(self.emp1, date(2026, 9, 21))
+        self.assertIn("Multiple active shifts configured for branch", str(cm.exception))
 
     def test_09_non_working_branch_calendar_date_does_not_require_shift(self):
         """9. Non-working branch-calendar date does not require a shift merely to determine non-working."""
         saturday = date(2026, 9, 26) # Saturday is non-working on branch1 calendar
         self.assertFalse(AttendanceCalculationService.is_branch_working_day(self.branch1, saturday))
 
-        # emp1 has NO shift assignment, but calling is_employee_scheduled_work_day on a non-working day
-        # must return False without raising a missing-shift configuration error
+        # Even if branch1 has no active shifts, non-working day returns False without error
+        Shift.objects.filter(branch=self.branch1).delete()
         is_scheduled = AttendanceCalculationService.is_employee_scheduled_work_day(self.emp1, saturday)
         self.assertFalse(is_scheduled)
 
     def test_10_branch_working_calendar_and_shift_work_days_both_respected(self):
         """
         10. Branch WorkingCalendar and Shift.work_days are both respected (Cases A, B, C, D):
-        A. Branch Mon-Fri + Shift Mon-Fri + normal weekday -> scheduled working day
+        A. Branch Mon-Fri (self.cal1) + Shift Mon-Fri + normal weekday -> scheduled working day
         B. Branch Mon-Fri + Shift Sat-Sun + Saturday -> non-working because branch calendar excludes Saturday
         C. Branch Mon-Sun + Shift Sat-Sun + Saturday -> scheduled working day
         D. Branch Mon-Sun + Shift Mon-Sun + active Holiday -> holiday/non-working
@@ -207,20 +204,12 @@ class AttendanceCalculationEngineHardeningTests(TestCase):
         saturday = date(2026, 9, 26)
 
         # Case A: Branch Mon-Fri (self.cal1) + Shift Mon-Fri + Monday
-        EmployeeShiftAssignment.objects.create(
-            employee=self.emp1, shift=self.shift_std, effective_from=date(2026, 9, 1)
-        )
         self.assertTrue(AttendanceCalculationService.is_employee_scheduled_work_day(self.emp1, monday))
 
         # Case B: Branch Mon-Fri + Shift Sat-Sun (weekend shift) + Saturday
-        shift_weekend = Shift.objects.create(
-            branch=self.branch1, name='Weekend Shift', start_time=time(9, 0), end_time=time(17, 0), work_days='5,6'
-        )
-        EmployeeShiftAssignment.objects.filter(employee=self.emp1).delete()
-        EmployeeShiftAssignment.objects.create(
-            employee=self.emp1, shift=shift_weekend, effective_from=date(2026, 9, 1)
-        )
-        # Saturday is in shift_weekend, BUT excluded by branch1 calendar (Mon-Fri) -> non-working!
+        self.shift_std.work_days = '5,6'
+        self.shift_std.save()
+        # Saturday is in shift_std, BUT excluded by branch1 calendar (Mon-Fri) -> non-working!
         self.assertFalse(AttendanceCalculationService.is_employee_scheduled_work_day(self.emp1, saturday))
 
         # Case C: Branch Mon-Sun (all 7 days) + Shift Sat-Sun + Saturday
@@ -232,23 +221,14 @@ class AttendanceCalculationEngineHardeningTests(TestCase):
         branch_7day.working_calendar.save()
 
         emp_7day = Employee.objects.create(user=User.objects.create_user(email='e7@ex.com', password='P!'), employee_code='E7', organization=self.org, branch=branch_7day)
-        shift_we_7day = Shift.objects.create(
+        Shift.objects.create(
             branch=branch_7day, name='Weekend Shift 7D', start_time=time(9, 0), end_time=time(17, 0), work_days='5,6'
-        )
-        EmployeeShiftAssignment.objects.create(
-            employee=emp_7day, shift=shift_we_7day, effective_from=date(2026, 9, 1)
         )
         # Both branch calendar and shift allow Saturday -> scheduled working day!
         self.assertTrue(AttendanceCalculationService.is_employee_scheduled_work_day(emp_7day, saturday))
 
         # Case D: Branch Mon-Sun + Shift Mon-Sun + active Holiday
-        shift_all = Shift.objects.create(
-            branch=branch_7day, name='All Days', start_time=time(9, 0), end_time=time(17, 0), work_days='0,1,2,3,4,5,6'
-        )
-        EmployeeShiftAssignment.objects.filter(employee=emp_7day).delete()
-        EmployeeShiftAssignment.objects.create(
-            employee=emp_7day, shift=shift_all, effective_from=date(2026, 9, 1)
-        )
+        Shift.objects.filter(branch=branch_7day).update(work_days='0,1,2,3,4,5,6')
         holiday_date = date(2026, 9, 23)
         Holiday.objects.create(branch=branch_7day, name='Special Holiday', date=holiday_date, is_active=True)
         # Active holiday takes precedence -> holiday/non-working!
@@ -257,18 +237,12 @@ class AttendanceCalculationEngineHardeningTests(TestCase):
     def test_11_active_holiday_prevents_scheduled_calculation_regardless_of_shift(self):
         """11. Active Holiday prevents scheduled attendance calculation regardless of shift."""
         monday = date(2026, 9, 21)
-        EmployeeShiftAssignment.objects.create(
-            employee=self.emp1, shift=self.shift_std, effective_from=date(2026, 9, 1)
-        )
         Holiday.objects.create(branch=self.branch1, name='National Day', date=monday, is_active=True)
 
         self.assertFalse(AttendanceCalculationService.is_employee_scheduled_work_day(self.emp1, monday))
 
     def test_12_existing_late_full_day_half_day_behavior_remains_unchanged(self):
-        """12. Existing late, full-day, and half-day calculations remain unchanged."""
-        EmployeeShiftAssignment.objects.create(
-            employee=self.emp1, shift=self.shift_std, effective_from=date(2026, 9, 1)
-        )
+        """12. Existing late, full-day, and half-day calculations use branch shift without EmployeeShiftAssignment."""
         today = timezone.now().date()
         tz = timezone.get_current_timezone()
 
@@ -279,7 +253,7 @@ class AttendanceCalculationEngineHardeningTests(TestCase):
         t_late = timezone.make_aware(datetime.combine(today, time(9, 15, 1)), tz)
         self.assertTrue(AttendanceCalculationService.is_late_check_in(self.shift_std, t_late, target_date=today))
 
-        # Full-day vs half-day vs absent
+        # Full-day vs half-day vs absent using branch shift
         att_full = Attendance.objects.create(
             employee=self.emp1, date=today, check_in=timezone.now() - timedelta(hours=9),
             status='present', productive_work_duration=timedelta(hours=8, minutes=1)
@@ -299,12 +273,18 @@ class AttendanceCalculationEngineHardeningTests(TestCase):
         self.assertEqual(AttendanceCalculationService.determine_attendance_status(att_absent, shift=self.shift_std), 'absent')
 
     def test_13_cross_branch_isolation_remains_intact(self):
-        """13. Cross-branch isolation remains intact."""
-        monday = date(2026, 9, 21)
-        Holiday.objects.create(branch=self.branch1, name='HQ Holiday Only', date=monday, is_active=True)
+        """13. Cross-branch isolation: Branch A employee uses Branch A shift; Branch B employee uses Branch B shift."""
+        # Branch 2 (Dubai) has no shift yet
+        with self.assertRaises(AttendanceConfigurationError) as cm:
+            AttendanceCalculationService.get_effective_shift(self.emp2)
+        self.assertIn("No active shift configured for branch", str(cm.exception))
 
-        self.assertFalse(AttendanceCalculationService.is_branch_working_day(self.branch1, monday))
-        self.assertTrue(AttendanceCalculationService.is_branch_working_day(self.branch2, monday))
+        # Add shift to Branch 2
+        shift_dubai = Shift.objects.create(
+            branch=self.branch2, name='Dubai General', start_time=time(8, 0), end_time=time(16, 0), work_days='6,0,1,2,3'
+        )
+        self.assertEqual(AttendanceCalculationService.get_branch_shift(self.branch1).id, self.shift_std.id)
+        self.assertEqual(AttendanceCalculationService.get_branch_shift(self.branch2).id, shift_dubai.id)
 
     def test_14_existing_timezone_date_boundary_behavior_remains_intact(self):
         """14. Timezone and date-boundary behavior remains intact."""
@@ -322,11 +302,11 @@ class AttendanceCalculationEngineHardeningTests(TestCase):
 
     def test_15_api_check_in_configuration_errors(self):
         """
-        15. API-level verification for C5.5.2.1 configuration errors through AttendanceViewSet:
+        15. API-level verification for configuration errors through AttendanceViewSet:
         1. Check-in when employee branch has no WorkingCalendar -> HTTP 400
            {"detail": "Working calendar is not configured for branch <branch_id>."}
-        2. Check-in on a configured working day when employee has no effective shift assignment -> HTTP 400
-           {"detail": "No effective shift assignment for employee <employee_id> on <date>."}
+        2. Check-in on a configured working day when branch has no active shift -> HTTP 400
+           {"detail": "No active shift configured for branch <branch_id> (<branch_name>)."}
         """
         today = timezone.now().date()
 
@@ -350,13 +330,14 @@ class AttendanceCalculationEngineHardeningTests(TestCase):
         self.assertEqual(resp1.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertEqual(resp1.data.get('detail'), f"Working calendar is not configured for branch {branch_no_cal.id}.")
 
-        # 2. Configured working day without effective shift assignment
-        # Ensure branch1 has today as working day
+        # 2. Configured working day without active branch shift
         self.cal1.work_days = '0,1,2,3,4,5,6'
         self.cal1.save()
 
-        # emp1 currently has NO EmployeeShiftAssignment
+        # Delete active shifts for branch1
+        Shift.objects.filter(branch=self.branch1).delete()
+
         self.client.force_authenticate(user=self.user1)
         resp2 = self.client.post(reverse('attendance-check-in'))
         self.assertEqual(resp2.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertEqual(resp2.data.get('detail'), f"No effective shift assignment for employee {self.emp1.id} on {today}.")
+        self.assertEqual(resp2.data.get('detail'), f"No active shift configured for branch {self.branch1.id} ({self.branch1.name}).")

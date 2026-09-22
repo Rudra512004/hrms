@@ -8,7 +8,7 @@ from django.core.exceptions import ValidationError
 from apps.organization.models import Organization, Branch, OfficeNetwork, WorkingCalendar, WorkingCalendarRule
 from apps.organization.services import WorkingCalendarService
 from apps.organization.exceptions import WorkingCalendarConfigurationError
-from apps.attendance.models import Holiday, Shift, EmployeeShiftAssignment
+from apps.attendance.models import Holiday, Shift
 from apps.attendance.services import AttendanceCalculationService
 from apps.leaves.models import LeaveRequest, LeaveType
 from apps.payroll.services import _working_days_in_period
@@ -127,11 +127,6 @@ class RecurringWorkingCalendarTests(TestCase):
             branch=self.branch_a, name='Standard Shift',
             start_time='09:00:00', end_time='18:00:00',
             work_days='0,1,2,3,4,5', is_active=True
-        )
-        # Shift assignment for employee_a
-        EmployeeShiftAssignment.objects.create(
-            employee=self.employee_a, shift=self.shift_a,
-            effective_from=date(2026, 1, 1)
         )
 
         # Leave Type

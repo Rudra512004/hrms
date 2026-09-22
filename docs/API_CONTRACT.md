@@ -1702,15 +1702,6 @@ When provisioning or transferring, the backend auto-derives parent hierarchy if 
   - Filtered by branch via `AuthorizationService.get_authorized_branches()`.
   - Mutation operations validate that the shift's branch and target branch payload are within the user's authorized branches for `shift.manage`. Cross-organization access is rejected.
 
-### Employee Shift Assignment
-- **Endpoints:** `/api/v1/attendance/shift-assignments/` (`GET`, `POST`, `PUT`, `PATCH`, `DELETE`)
-- **Authorization:**
-  - Read: `shift_assignment.view`
-  - Write/Mutation: `shift_assignment.manage`
-- **Validation:**
-  - Target employee must belong to the caller's authorized branches.
-  - Assigned shift must belong to the caller's organization.
-
 ### Branch Attendance Policy API
 - **Direct Endpoint:**
   - `GET /api/v1/organization/branches/{id}/attendance-policy/`
@@ -1726,13 +1717,13 @@ When provisioning or transferring, the backend auto-derives parent hierarchy if 
 
 ---
 
-## 20. Attendance Calculation Engine Contracts (C5.5.2)
+## 20. Attendance Calculation Engine Contracts (C5.5.2 / C5.5.5)
 
 ### Check-in & Late Arrival
 - **Endpoint:** `POST /api/v1/attendance/check-in/`
 - **Fields in Response:** Includes `'is_late'` (boolean).
 - **Calculation Rule:**
-  - Effective shift resolved via `EmployeeShiftAssignment` (effective_from <= date <= effective_to).
+  - Effective shift resolved via branch-level shift configuration (`Employee → Branch → Branch Shift`).
   - Grace cutoff = `shift.start_time + (shift.grace_period or 0)`.
   - Check-in precisely at the cutoff is NOT late (`is_late = false`). Check-in strictly past cutoff is late (`is_late = true`).
   - Timezones are normalized to the server timezone (`TIME_ZONE = 'UTC'`).
@@ -1753,10 +1744,10 @@ When provisioning or transferring, the backend auto-derives parent hierarchy if 
 - **Payroll Integration:** `_approved_leave_days` accepts `exclude_dates` (dates with attendance records), preventing duplicate counting or overpayment.
 - **Calendar Alignment:** Payroll `_approved_leave_days` respects the branch's `WorkingCalendar.work_days` (eliminating hardcoded weekday < 5 assumptions).
 
-### Attendance Configuration Hardening & Semantic Errors (C5.5.2.1)
+### Attendance Configuration Hardening & Semantic Errors (C5.5.2.1 / C5.5.5)
 - **Authoritative Resolution:**
   - Branch `WorkingCalendar` is strictly required; missing or malformed calendar configurations do NOT fall back to Mon–Fri.
-  - `EmployeeShiftAssignment` is strictly required for scheduled working days; does NOT fall back to arbitrary active branch shifts.
+  - Branch `Shift` is strictly required for scheduled working days (single active shift per branch); does NOT fall back to arbitrary shifts or hardcoded Mon–Fri.
 - **Error Semantics & Shapes:**
   - **Missing Working Calendar:**
     - **Condition:** Employee's branch has no `WorkingCalendar` configured.
@@ -1766,16 +1757,20 @@ When provisioning or transferring, the backend auto-derives parent hierarchy if 
     - **Condition:** `work_days` is empty, contains non-digits, or values outside 0–6.
     - **HTTP Status:** `400 Bad Request`
     - **Payload Shape:** `{"detail": "Working calendar for branch <branch_id> has unconfigured work days."}`
-  - **Missing Shift Assignment on Scheduled Working Day:**
-    - **Condition:** Target date is a configured branch working day and not a holiday, but employee lacks an active `EmployeeShiftAssignment`.
+  - **Missing Active Branch Shift on Scheduled Working Day:**
+    - **Condition:** Target date is a configured branch working day and not a holiday, but employee's branch has no active `Shift` configured.
     - **HTTP Status:** `400 Bad Request`
-    - **Payload Shape:** `{"detail": "No effective shift assignment for employee <employee_id> on <date>."}`
+    - **Payload Shape:** `{"detail": "No active shift configured for branch <branch_id> (<branch_name>)."}`
+  - **Ambiguous Active Branch Shifts:**
+    - **Condition:** Target date is a configured branch working day and not a holiday, but employee's branch has multiple active `Shift` records configured.
+    - **HTTP Status:** `400 Bad Request`
+    - **Payload Shape:** `{"detail": "Multiple active shifts configured for branch <branch_id> (<branch_name>). Branch must have a single active shift configuration."}`
 - **Evaluation Precedence:**
   1. Resolve branch `WorkingCalendar` (rejects missing/invalid configuration).
   2. Determine whether date is a configured branch working day.
   3. Check active branch `Holiday`.
-  4. If non-working or holiday, established as non-working without requiring a shift assignment.
-  5. If date is a branch working day, resolves `EmployeeShiftAssignment` (rejects missing assignment with configuration error).
+  4. If non-working or holiday, established as non-working without requiring a shift configuration.
+  5. If date is a branch working day, resolves active branch `Shift` (rejects missing or ambiguous active shift with configuration error).
   6. Evaluates `Shift.work_days` against branch calendar. Both must permit the date for it to be a scheduled working day.
 
 ---

@@ -2,7 +2,6 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { attendanceService, ApiError } from '../attendance';
 import { holidayService } from '../holiday';
 import { shiftService } from '../shift';
-import { shiftAssignmentService } from '../shiftAssignment';
 import { workingCalendarService } from '../workingCalendar';
 import { attendancePolicyService } from '../attendancePolicy';
 
@@ -401,99 +400,9 @@ describe('C5.5.3 Frontend Attendance Services & API Contract Suite', () => {
   });
 
   // ==========================================
-  // 4. SHIFT ASSIGNMENT SERVICE
+  // 4. WORKING CALENDAR SERVICE
   // ==========================================
-  describe('4. Shift Assignment Service', () => {
-    it('listAssignments supports branch filtering and AbortSignal', async () => {
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        status: 200,
-        json: async () => [],
-      });
-
-      const controller = new AbortController();
-      await shiftAssignmentService.listAssignments({ branch_id: 5 }, { signal: controller.signal });
-
-      const [url, opts] = mockFetch.mock.calls[0];
-      expect(url).toBe('/api/v1/attendance/shift-assignments/?branch_id=5');
-      expect(opts.signal).toBe(controller.signal);
-    });
-
-    it('create sends POST with employee, shift, and effective dates', async () => {
-      const payload = {
-        employee: 12,
-        shift: 4,
-        effective_from: '2026-09-01',
-        effective_to: null,
-      };
-
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        status: 201,
-        json: async () => ({ id: 50, ...payload, created_at: '', updated_at: '' }),
-      });
-
-      const res = await shiftAssignmentService.create(payload);
-      const [url, opts] = mockFetch.mock.calls[0];
-      expect(url).toBe('/api/v1/attendance/shift-assignments/');
-      expect(opts.method).toBe('POST');
-      expect(JSON.parse(opts.body)).toEqual(payload);
-      expect(res.id).toBe(50);
-    });
-
-    it('update sends PATCH with updated effective_to', async () => {
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        status: 200,
-        json: async () => ({ id: 50, effective_to: '2026-12-31' }),
-      });
-
-      await shiftAssignmentService.update(50, { effective_to: '2026-12-31' });
-      const [url, opts] = mockFetch.mock.calls[0];
-      expect(url).toBe('/api/v1/attendance/shift-assignments/50/');
-      expect(opts.method).toBe('PATCH');
-      expect(JSON.parse(opts.body)).toEqual({ effective_to: '2026-12-31' });
-    });
-
-    it('delete sends DELETE to /api/v1/attendance/shift-assignments/:id/', async () => {
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        status: 204,
-      });
-
-      await shiftAssignmentService.delete(50);
-      const [url, opts] = mockFetch.mock.calls[0];
-      expect(url).toBe('/api/v1/attendance/shift-assignments/50/');
-      expect(opts.method).toBe('DELETE');
-    });
-
-    it('propagates ApiError on cross-branch shift assignment error', async () => {
-      mockFetch.mockResolvedValueOnce({
-        ok: false,
-        status: 400,
-        json: async () => ({
-          employee: 'Employee and Shift must belong to the same branch.',
-        }),
-      });
-
-      try {
-        await shiftAssignmentService.create({
-          employee: 1,
-          shift: 99,
-          effective_from: '2026-09-01',
-        });
-        expect.unreachable('Should have thrown ApiError');
-      } catch (err: any) {
-        expect(err).toBeInstanceOf(ApiError);
-        expect(err.status).toBe(400);
-      }
-    });
-  });
-
-  // ==========================================
-  // 5. WORKING CALENDAR SERVICE
-  // ==========================================
-  describe('5. Working Calendar Service', () => {
+  describe('4. Working Calendar Service', () => {
     it('listWorkingCalendars fetches from /api/v1/organization/working-calendars/', async () => {
       mockFetch.mockResolvedValueOnce({
         ok: true,

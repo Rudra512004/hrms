@@ -14,7 +14,7 @@ from apps.authorization.models import (
     Role, Permission, RolePermission, UserRole, ScopeChoices
 )
 from apps.attendance.models import (
-    Attendance, Holiday, Shift, EmployeeShiftAssignment
+    Attendance, Holiday, Shift
 )
 
 User = get_user_model()
@@ -346,12 +346,12 @@ class AttendanceAuthorizationTestSuite(TestCase):
         self.assertEqual(shift_b1.name, 'Updated Day Shift HQ')
 
     def test_cross_organization_isolation(self):
-        """9. Cross-organization isolation for attendance, shifts, and shift assignments."""
+        """9. Cross-organization isolation for attendance and shifts."""
         role1 = Role.objects.create(organization=self.org1, name='Org 1 Admin')
-        p_sa_manage = Permission.objects.get(codename='shift_assignment.manage')
-        p_sa_view = Permission.objects.get(codename='shift_assignment.view')
-        RolePermission.objects.create(role=role1, permission=p_sa_manage)
-        RolePermission.objects.create(role=role1, permission=p_sa_view)
+        p_shift_manage = Permission.objects.get(codename='shift.manage')
+        p_shift_view = Permission.objects.get(codename='shift.view')
+        RolePermission.objects.create(role=role1, permission=p_shift_manage)
+        RolePermission.objects.create(role=role1, permission=p_shift_view)
         UserRole.objects.create(user=self.user_1a, role=role1, scope=ScopeChoices.ORGANIZATION)
 
         shift_b1 = Shift.objects.create(
@@ -363,21 +363,16 @@ class AttendanceAuthorizationTestSuite(TestCase):
 
         self.client.force_authenticate(user=self.user_1a)
 
-        # Cannot assign employee from Org 2 to shift in Org 1
-        res_x1 = self.client.post(reverse('shift-assignment-list'), {
-            'employee': self.emp_3.id,
-            'shift': shift_b1.id,
-            'effective_from': '2026-10-01'
-        })
-        self.assertEqual(res_x1.status_code, status.HTTP_400_BAD_REQUEST)
+        # Can see shift in Org 1
+        res1 = self.client.get(reverse('shift-detail', args=[shift_b1.id]))
+        self.assertEqual(res1.status_code, status.HTTP_200_OK)
 
-        # Cannot assign employee from Org 1 to shift in Org 2
-        res_x2 = self.client.post(reverse('shift-assignment-list'), {
-            'employee': self.emp_1a.id,
-            'shift': shift_b3.id,
-            'effective_from': '2026-10-01'
-        })
-        self.assertEqual(res_x2.status_code, status.HTTP_400_BAD_REQUEST)
+        # Cannot see or modify shift in Org 2
+        res2 = self.client.get(reverse('shift-detail', args=[shift_b3.id]))
+        self.assertEqual(res2.status_code, status.HTTP_404_NOT_FOUND)
+
+        res3 = self.client.patch(reverse('shift-detail', args=[shift_b3.id]), {'name': 'Hacked'})
+        self.assertEqual(res3.status_code, status.HTTP_404_NOT_FOUND)
 
     def test_attendance_policy_authorization(self):
         """10. AttendancePolicy API authorization via Branch configuration endpoint."""

@@ -37,7 +37,6 @@ class GeofenceTests(TestCase):
 
         self.branch1.working_calendar.work_days = '0,1,2,3,4,5,6'
         self.branch1.working_calendar.save()
-        from apps.attendance.models import EmployeeShiftAssignment
         from datetime import time, timedelta
         self.shift1 = Shift.objects.create(
             branch=self.branch1,
@@ -45,11 +44,6 @@ class GeofenceTests(TestCase):
             start_time=time(9, 0),
             end_time=time(17, 0),
             work_days='0,1,2,3,4,5,6'
-        )
-        EmployeeShiftAssignment.objects.create(
-            employee=self.emp1,
-            shift=self.shift1,
-            effective_from=timezone.now().date() - timedelta(days=30)
         )
 
     def test_unauthenticated(self):

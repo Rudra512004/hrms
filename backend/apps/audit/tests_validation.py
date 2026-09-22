@@ -238,7 +238,7 @@ class AuditCoverageTests(TestCase):
 
         self.branch.working_calendar.work_days = '0,1,2,3,4,5,6'
         self.branch.working_calendar.save()
-        from apps.attendance.models import Shift, EmployeeShiftAssignment
+        from apps.attendance.models import Shift
         from datetime import time, timedelta
         audit_shift = Shift.objects.create(
             branch=self.branch,
@@ -246,11 +246,6 @@ class AuditCoverageTests(TestCase):
             start_time=time(9, 0),
             end_time=time(17, 0),
             work_days='0,1,2,3,4,5,6'
-        )
-        EmployeeShiftAssignment.objects.create(
-            employee=admin_emp,
-            shift=audit_shift,
-            effective_from=datetime.date.today() - timedelta(days=30)
         )
 
         for codename in [

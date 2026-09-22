@@ -2,7 +2,7 @@ from datetime import datetime, date, time, timedelta
 from typing import Optional, List
 from django.utils import timezone
 from django.db.models import Q
-from .models import Attendance, Holiday, Shift, EmployeeShiftAssignment
+from .models import Attendance, Holiday, Shift
 from .exceptions import AttendanceConfigurationError
 from apps.employees.models import Employee
 from apps.organization.models import Branch, WorkingCalendar
@@ -58,36 +58,47 @@ class AttendanceCalculationService:
         except WorkingCalendarConfigurationError as exc:
             raise AttendanceConfigurationError(str(exc)) from exc
 
+    @staticmethod
+    def get_branch_shift(branch: Optional[Branch]) -> Shift:
+        """
+        Resolve the single active shift configured for the branch.
+        Raises AttendanceConfigurationError if branch is missing, or if 0 or >1 active shifts exist.
+        """
+        if not branch:
+            raise AttendanceConfigurationError("Branch is required to determine shift configuration.")
+        active_shifts = Shift.objects.filter(branch=branch, is_active=True)
+        count = active_shifts.count()
+        if count == 0:
+            raise AttendanceConfigurationError(
+                f"No active shift configured for branch {branch.id} ({branch.name})."
+            )
+        if count > 1:
+            raise AttendanceConfigurationError(
+                f"Multiple active shifts configured for branch {branch.id} ({branch.name}). Branch must have a single active shift configuration."
+            )
+        return active_shifts.first()
 
     @staticmethod
-    def get_effective_shift(employee: Employee, target_date: date) -> Optional[Shift]:
+    def get_effective_shift(employee: Employee, target_date: Optional[date] = None) -> Optional[Shift]:
         """
-        Resolve the employee's authoritative shift for the target_date from EmployeeShiftAssignment:
-            employee = target employee
-            effective_from <= target_date
-            effective_to is NULL OR effective_to >= target_date
-        Does NOT fall back to an arbitrary active branch shift.
-        Returns None if no effective assignment exists.
+        Resolve the employee's authoritative shift for the target_date from their branch's shift configuration.
+        Does not require or query EmployeeShiftAssignment.
+        Returns None if target_date is provided and falls outside the shift's work_days.
         """
         if not employee:
             return None
-
-        assignment = (
-            EmployeeShiftAssignment.objects.filter(
-                employee=employee,
-                effective_from__lte=target_date,
+        if not employee.branch_id:
+            raise AttendanceConfigurationError(
+                f"Branch is not configured for employee {employee.id}."
             )
-            .filter(
-                Q(effective_to__isnull=True) | Q(effective_to__gte=target_date)
-            )
-            .select_related('shift')
-            .order_by('-effective_from')
-            .first()
-        )
-        if assignment:
-            return assignment.shift
 
-        return None
+        shift = AttendanceCalculationService.get_branch_shift(employee.branch)
+        if target_date is not None:
+            shift_work_days = AttendanceCalculationService.get_shift_work_days(shift)
+            if target_date.weekday() not in shift_work_days:
+                return None
+
+        return shift
 
     @staticmethod
     def resolve_scheduled_shift(employee: Employee, target_date: date) -> Optional[Shift]:
@@ -95,13 +106,12 @@ class AttendanceCalculationService:
         Resolves the employee's authoritative shift for a scheduled working day
         following the strict evaluation order:
         1. Resolve employee and branch.
-        2. Resolve branch WorkingCalendar.
-        3. Determine whether target date is configured as a branch working day.
-        4. Check active branch Holiday.
-        5. If non-working or holiday, returns None without requiring a shift.
-        6. If scheduled working day, resolves effective EmployeeShiftAssignment.
-        7. If no assignment exists, raises AttendanceConfigurationError.
-        8. If assignment exists, evaluates Shift.work_days.
+        2. Resolve branch WorkingCalendar / Holiday precedence via is_branch_working_day.
+        3. If non-working or holiday, returns None without requiring a shift.
+        4. If scheduled working day, resolves the branch's authoritative Shift configuration.
+        5. If no active shift exists for the branch, raises AttendanceConfigurationError.
+        6. If multiple active shifts exist for the branch, raises AttendanceConfigurationError.
+        7. If single active shift exists, evaluates Shift.work_days.
            If target_date is in Shift.work_days, returns Shift; else returns None.
         """
         if not employee or not employee.branch:
@@ -109,20 +119,14 @@ class AttendanceCalculationService:
                 f"Branch is not configured for employee {employee.id if employee else 'None'}."
             )
 
-        # Steps 2-4: Check authoritative branch working day (accounts for holiday, recurring rules, and base calendar)
+        # Steps 2-3: Check authoritative branch working day (accounts for holiday, recurring rules, and base calendar)
         if not AttendanceCalculationService.is_branch_working_day(employee.branch, target_date):
             return None
 
+        # Step 4-6: Resolve the branch's active shift configuration
+        shift = AttendanceCalculationService.get_branch_shift(employee.branch)
 
-        # Step 6: Resolve effective assignment
-        shift = AttendanceCalculationService.get_effective_shift(employee, target_date)
-        if not shift:
-            # Step 7: No assignment on a scheduled working day -> configuration error
-            raise AttendanceConfigurationError(
-                f"No effective shift assignment for employee {employee.id} on {target_date}."
-            )
-
-        # Step 8: Evaluate shift work_days
+        # Step 7: Evaluate shift work_days
         shift_work_days = AttendanceCalculationService.get_shift_work_days(shift)
         if target_date.weekday() in shift_work_days:
             return shift
@@ -154,7 +158,7 @@ class AttendanceCalculationService:
         Determine if target_date is a scheduled working day for the employee,
         respecting both the branch WorkingCalendar and assigned Shift.work_days.
         Raises AttendanceConfigurationError if WorkingCalendar is missing/invalid,
-        or if EmployeeShiftAssignment is missing on a branch working day.
+        or if active branch shift is missing on a branch working day.
         """
         shift = AttendanceCalculationService.resolve_scheduled_shift(employee, target_date)
         return shift is not None
@@ -200,7 +204,11 @@ class AttendanceCalculationService:
             return attendance.status or 'present'
 
         if not shift:
-            shift = AttendanceCalculationService.get_effective_shift(attendance.employee, attendance.date)
+            if attendance.employee and attendance.employee.branch_id:
+                try:
+                    shift = AttendanceCalculationService.get_branch_shift(attendance.employee.branch)
+                except AttendanceConfigurationError:
+                    shift = None
 
         if not shift:
             return attendance.status or 'present'

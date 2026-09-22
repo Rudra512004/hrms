@@ -29,7 +29,7 @@ class AttendanceAPITests(TestCase):
         self.office_ip = '203.0.113.50'
         self.external_ip = '198.51.100.5'
 
-        from apps.attendance.models import Shift, EmployeeShiftAssignment
+        from apps.attendance.models import Shift
         from datetime import time
         self.shift = Shift.objects.create(
             branch=self.branch,
@@ -41,19 +41,9 @@ class AttendanceAPITests(TestCase):
             half_day_hours=timedelta(hours=4),
             work_days='0,1,2,3,4,5,6'
         )
-        EmployeeShiftAssignment.objects.create(
-            employee=self.employee,
-            shift=self.shift,
-            effective_from=timezone.now().date() - timedelta(days=30)
-        )
 
         self.super_user = User.objects.create_user(email='super@example.com', password='Password123!', status='active', is_superuser=True)
         self.super_employee = Employee.objects.create(user=self.super_user, employee_code='EMP02', organization=self.org, branch=self.branch)
-        EmployeeShiftAssignment.objects.create(
-            employee=self.super_employee,
-            shift=self.shift,
-            effective_from=timezone.now().date() - timedelta(days=30)
-        )
 
     def test_office_ip_check_in(self):
         self.client.force_authenticate(user=self.user)
