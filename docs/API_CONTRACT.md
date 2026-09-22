@@ -1777,3 +1777,82 @@ When provisioning or transferring, the backend auto-derives parent hierarchy if 
   4. If non-working or holiday, established as non-working without requiring a shift assignment.
   5. If date is a branch working day, resolves `EmployeeShiftAssignment` (rejects missing assignment with configuration error).
   6. Evaluates `Shift.work_days` against branch calendar. Both must permit the date for it to be a scheduled working day.
+
+---
+
+## 21. Recurring Working Calendar Rules (C5.5.4A)
+
+### Overview
+Allows branches to configure dynamic recurring monthly working and non-working rules (e.g. 1st & 3rd Saturday OFF, 5th Saturday working) tied to the branch's `WorkingCalendar`. The rules dynamically evaluate occurrences (1st–5th) across every month/year without creating yearly holiday rows.
+
+### Endpoints
+- **List Working Calendars:**
+  - `GET /api/v1/organization/working-calendars/`
+  - **Permission:** `organization.update`
+  - **Scope:** Returns only calendars for branches the user is authorized to update via `AuthorizationService.get_authorized_branches(user, 'organization.update')`.
+- **Retrieve Working Calendar:**
+  - `GET /api/v1/organization/working-calendars/{id}/`
+  - **Permission:** `organization.update`
+  - **Error:** `404 Not Found` if calendar belongs to an unauthorized branch (IDOR protection).
+- **Update Working Calendar & Recurring Rules:**
+  - `PATCH /api/v1/organization/working-calendars/{id}/`
+  - `PUT /api/v1/organization/working-calendars/{id}/`
+  - **Permission:** `organization.update`
+  - **Error:** `404 Not Found` if unauthorized branch; `400 Bad Request` on validation failure.
+
+### Request Payload Shape
+```json
+{
+  "work_days": "0,1,2,3,4,5",
+  "recurring_rules": [
+    {
+      "weekday": 5,
+      "occurrence": 1,
+      "is_working": false
+    },
+    {
+      "weekday": 5,
+      "occurrence": 3,
+      "is_working": false
+    }
+  ]
+}
+```
+
+### Response Payload Shape
+```json
+{
+  "id": 1,
+  "branch": 6,
+  "work_days": "0,1,2,3,4,5",
+  "recurring_rules": [
+    {
+      "id": 10,
+      "weekday": 5,
+      "occurrence": 1,
+      "is_working": false
+    },
+    {
+      "id": 11,
+      "weekday": 5,
+      "occurrence": 3,
+      "is_working": false
+    }
+  ]
+}
+```
+
+### Validation Rules
+- `weekday`: Integer strictly between `0` (Monday) and `6` (Sunday).
+- `occurrence`: Integer strictly between `1` (1st) and `5` (5th).
+- `is_working`: Boolean (`true` for working day, `false` for non-working day).
+- **No Duplicate Rules:** A calendar cannot contain duplicate rules with the same `(weekday, occurrence)`.
+- **Atomic Sync:** Updates are validated completely before existing rules are deleted and replaced in a single database transaction.
+
+### Authoritative Calculation Precedence
+The shared evaluation engine `WorkingCalendarService` evaluates dates in the following order:
+1. **Explicit Active Holiday:** If an active `Holiday` exists for the branch on the date, it is **non-working** (`is_working = false`).
+2. **Recurring WorkingCalendarRule:** If a rule exists on the branch's calendar for `(target_date.weekday(), (target_date.day - 1) // 7 + 1)`, it returns the rule's `is_working` value.
+3. **Base WorkingCalendar Weekday:** If no recurring rule exists for that occurrence, it evaluates `target_date.weekday() in work_days`.
+4. **Missing Calendar:** Raises `WorkingCalendarConfigurationError` if branch or calendar is missing (no silent Mon–Fri fallback).
+

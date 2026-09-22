@@ -1,4 +1,5 @@
 from django.db import models
+from django.core.validators import MinValueValidator, MaxValueValidator
 
 class Organization(models.Model):
     STATUS_CHOICES = [
@@ -36,18 +37,81 @@ class WorkingCalendar(models.Model):
                     raise ValidationError({'work_days': f"Invalid work day '{d_str}'. Must be integers between 0 and 6."})
 
     def get_work_days_list(self):
-        from apps.attendance.exceptions import AttendanceConfigurationError
+        from .exceptions import WorkingCalendarConfigurationError
         if not self.work_days or not self.work_days.strip():
-            raise AttendanceConfigurationError(f"Working calendar for branch {self.branch_id} has unconfigured work days.")
+            raise WorkingCalendarConfigurationError(f"Working calendar for branch {self.branch_id} has unconfigured work days.")
         days = []
         for d in self.work_days.split(','):
             d_str = d.strip()
             if not d_str.isdigit() or int(d_str) < 0 or int(d_str) > 6:
-                raise AttendanceConfigurationError(f"Invalid work day '{d_str}' in working calendar for branch {self.branch_id}.")
+                raise WorkingCalendarConfigurationError(f"Invalid work day '{d_str}' in working calendar for branch {self.branch_id}.")
             days.append(int(d_str))
         if not days:
-            raise AttendanceConfigurationError(f"Working calendar for branch {self.branch_id} has no valid work days.")
+            raise WorkingCalendarConfigurationError(f"Working calendar for branch {self.branch_id} has no valid work days.")
         return days
+
+    def get_recurring_rules_dict(self):
+        """Returns {(weekday, occurrence): is_working} for all configured recurring rules."""
+        return {(r.weekday, r.occurrence): r.is_working for r in self.recurring_rules.all()}
+
+    def is_working_day(self, target_date):
+        """
+        Determines whether target_date is a working day based on:
+        1. Specific recurring rule for (weekday, occurrence)
+        2. Base calendar work_days
+        Does NOT check holidays; holiday precedence is evaluated in WorkingCalendarService.
+        """
+        weekday = target_date.weekday()
+        occurrence = (target_date.day - 1) // 7 + 1
+        rule = self.recurring_rules.filter(weekday=weekday, occurrence=occurrence).first()
+        if rule is not None:
+            return rule.is_working
+        return weekday in self.get_work_days_list()
+
+
+class WorkingCalendarRule(models.Model):
+    working_calendar = models.ForeignKey(
+        WorkingCalendar,
+        on_delete=models.CASCADE,
+        related_name='recurring_rules'
+    )
+    weekday = models.IntegerField(
+        validators=[MinValueValidator(0), MaxValueValidator(6)],
+        help_text='0=Monday, 6=Sunday'
+    )
+    occurrence = models.IntegerField(
+        validators=[MinValueValidator(1), MaxValueValidator(5)],
+        help_text='1=1st, 2=2nd, 3=3rd, 4=4th, 5=5th occurrence in the month'
+    )
+    is_working = models.BooleanField(
+        default=False,
+        help_text='Whether this occurrence is a working day (True) or non-working day (False)'
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = ('working_calendar', 'weekday', 'occurrence')
+        ordering = ['weekday', 'occurrence']
+
+    def clean(self):
+        super().clean()
+        from django.core.exceptions import ValidationError
+        if self.weekday is not None and (self.weekday < 0 or self.weekday > 6):
+            raise ValidationError({'weekday': 'Weekday must be an integer between 0 (Monday) and 6 (Sunday).'})
+        if self.occurrence is not None and (self.occurrence < 1 or self.occurrence > 5):
+            raise ValidationError({'occurrence': 'Occurrence must be an integer between 1 and 5.'})
+
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        weekdays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+        wk = weekdays[self.weekday] if 0 <= self.weekday <= 6 else str(self.weekday)
+        status = 'Working' if self.is_working else 'Non-working'
+        return f"{self.working_calendar.branch.name} - {self.occurrence} {wk}: {status}"
+
 
 import ipaddress
 from django.core.exceptions import ValidationError

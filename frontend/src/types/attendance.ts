@@ -126,15 +126,25 @@ export interface UpdateShiftAssignmentPayload {
   effective_to?: string | null;
 }
 
+export interface WorkingCalendarRule {
+  id?: number;
+  weekday: number;
+  occurrence: number;
+  is_working: boolean;
+}
+
 export interface WorkingCalendar {
   id: number;
   branch: number;
   work_days: string;
+  recurring_rules?: WorkingCalendarRule[];
 }
 
 export interface UpdateWorkingCalendarPayload {
-  work_days: string;
+  work_days?: string;
+  recurring_rules?: WorkingCalendarRule[];
 }
+
 
 export interface AttendancePolicy {
   id: number;

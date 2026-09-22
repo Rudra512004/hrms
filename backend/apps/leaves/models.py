@@ -58,28 +58,20 @@ class LeaveRequest(models.Model):
 
     @property
     def duration_days(self):
-        from apps.attendance.models import Holiday
-        from datetime import timedelta
+        branch = getattr(self.employee, 'branch', None)
+        if not branch:
+            return 0
 
-        days = 0
-        current_date = self.start_date
-
-        holidays = set(
-            Holiday.objects.filter(
-                branch=self.employee.branch,
-                date__range=[self.start_date, self.end_date],
-                is_active=True
-            ).values_list('date', flat=True)
-        )
-
+        from apps.organization.services import WorkingCalendarService
         try:
-            work_days = self.employee.branch.working_calendar.get_work_days_list()
+            return WorkingCalendarService.count_working_days(branch, self.start_date, self.end_date)
         except Exception:
-            work_days = [0, 1, 2, 3, 4]
+            from datetime import timedelta
+            days = 0
+            current_date = self.start_date
+            while current_date <= self.end_date:
+                if current_date.weekday() < 5:
+                    days += 1
+                current_date += timedelta(days=1)
+            return days
 
-        while current_date <= self.end_date:
-            if current_date.weekday() in work_days and current_date not in holidays:
-                days += 1
-            current_date += timedelta(days=1)
-
-        return days

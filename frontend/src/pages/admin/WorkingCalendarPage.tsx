@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { workingCalendarService, type WorkingCalendar } from '../../services/workingCalendar';
+import { workingCalendarService, type WorkingCalendar, type WorkingCalendarRule } from '../../services/workingCalendar';
 import { Card } from '../../components/Card';
 import { PageHeader } from '../../components/PageHeader';
 import { AlertBanner } from '../../components/AlertBanner';
-import { CalendarDays, Loader2, Save } from 'lucide-react';
+import { CalendarDays, Loader2, Save, X, Calendar as CalendarIcon } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useBranchContext } from '../../contexts/BranchContext';
 
@@ -15,6 +15,14 @@ const DAYS_OF_WEEK = [
   { id: 4, label: 'Fri', fullLabel: 'Friday' },
   { id: 5, label: 'Sat', fullLabel: 'Saturday' },
   { id: 6, label: 'Sun', fullLabel: 'Sunday' },
+];
+
+const OCCURRENCES = [
+  { id: 1, label: '1st', fullLabel: '1st' },
+  { id: 2, label: '2nd', fullLabel: '2nd' },
+  { id: 3, label: '3rd', fullLabel: '3rd' },
+  { id: 4, label: '4th', fullLabel: '4th' },
+  { id: 5, label: '5th', fullLabel: '5th' },
 ];
 
 const parseWorkDays = (str: string | undefined): number[] => {
@@ -31,6 +39,8 @@ export const WorkingCalendarPage: React.FC = () => {
 
   const [calendar, setCalendar] = useState<WorkingCalendar | null>(null);
   const [selectedDays, setSelectedDays] = useState<number[]>([]);
+  const [recurringRules, setRecurringRules] = useState<WorkingCalendarRule[]>([]);
+  const [selectedRuleWeekday, setSelectedRuleWeekday] = useState<number>(5); // default Saturday
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -52,6 +62,7 @@ export const WorkingCalendarPage: React.FC = () => {
     if (branchId === null) {
       setCalendar(null);
       setSelectedDays([]);
+      setRecurringRules([]);
       setConfigMissing(false);
       setError(null);
       setLoading(false);
@@ -74,9 +85,11 @@ export const WorkingCalendarPage: React.FC = () => {
         if (branchCal) {
           setCalendar(branchCal);
           setSelectedDays(parseWorkDays(branchCal.work_days));
+          setRecurringRules(branchCal.recurring_rules || []);
         } else {
           setCalendar(null);
           setSelectedDays([]);
+          setRecurringRules([]);
           // Authoritative backend configuration problem - no Mon-Fri fallback!
           setConfigMissing(true);
         }
@@ -93,6 +106,7 @@ export const WorkingCalendarPage: React.FC = () => {
         }
         setCalendar(null);
         setSelectedDays([]);
+        setRecurringRules([]);
       }
     } finally {
       if (abortControllerRef.current === controller) {
@@ -104,6 +118,7 @@ export const WorkingCalendarPage: React.FC = () => {
   useEffect(() => {
     setCalendar(null);
     setSelectedDays([]);
+    setRecurringRules([]);
     loadCalendar();
 
     return () => {
@@ -119,6 +134,34 @@ export const WorkingCalendarPage: React.FC = () => {
       const exists = prev.includes(dayId);
       const updated = exists ? prev.filter((d) => d !== dayId) : [...prev, dayId].sort((a, b) => a - b);
       return updated;
+    });
+  };
+
+  const getRuleForOccurrence = (weekday: number, occurrence: number): WorkingCalendarRule | undefined => {
+    return recurringRules.find((r) => r.weekday === weekday && r.occurrence === occurrence);
+  };
+
+  const setOccurrenceRuleState = (
+    weekday: number,
+    occurrence: number,
+    state: 'default' | 'working' | 'non_working'
+  ) => {
+    if (!canManage || isAllLocations) return;
+
+    setRecurringRules((prev) => {
+      // Remove any existing rule for this (weekday, occurrence)
+      const filtered = prev.filter((r) => !(r.weekday === weekday && r.occurrence === occurrence));
+      if (state === 'default') {
+        return filtered;
+      }
+      return [
+        ...filtered,
+        {
+          weekday,
+          occurrence,
+          is_working: state === 'working',
+        },
+      ].sort((a, b) => (a.weekday !== b.weekday ? a.weekday - b.weekday : a.occurrence - b.occurrence));
     });
   };
 
@@ -139,15 +182,27 @@ export const WorkingCalendarPage: React.FC = () => {
     try {
       const updated = await workingCalendarService.updateWorkingCalendar(calendar.id, {
         work_days: serializedDays,
+        recurring_rules: recurringRules.map((r) => ({
+          weekday: r.weekday,
+          occurrence: r.occurrence,
+          is_working: r.is_working,
+        })),
       });
       setCalendar(updated);
       setSelectedDays(parseWorkDays(updated.work_days));
+      setRecurringRules(updated.recurring_rules || []);
       setSuccessMessage('Working calendar configuration updated successfully.');
     } catch (err: any) {
       if (err?.status === 403 || err?.response?.status === 403) {
         setError('403 Forbidden: You do not have permission to update the working calendar.');
       } else if (err?.errorData?.work_days) {
         setError(err.errorData.work_days[0]);
+      } else if (err?.errorData?.recurring_rules) {
+        setError(
+          typeof err.errorData.recurring_rules === 'string'
+            ? err.errorData.recurring_rules
+            : err.errorData.recurring_rules[0]
+        );
       } else if (err?.errorData?.detail) {
         setError(err.errorData.detail);
       } else {
@@ -167,15 +222,19 @@ export const WorkingCalendarPage: React.FC = () => {
     );
   }
 
-  const branchName = selectedBranch.type === 'branch' && selectedBranch.branch?.name
-    ? selectedBranch.branch.name
-    : 'Unknown Branch';
+  const branchName =
+    selectedBranch.type === 'branch' && selectedBranch.branch?.name
+      ? selectedBranch.branch.name
+      : 'Unknown Branch';
+
+  const baseWeekdayIsWorking = selectedDays.includes(selectedRuleWeekday);
+  const selectedWeekdayObj = DAYS_OF_WEEK.find((d) => d.id === selectedRuleWeekday) || DAYS_OF_WEEK[5];
 
   return (
     <div className="animate-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: 'var(--spacing-lg)' }}>
       <PageHeader
         title="Working Calendar"
-        subtitle="Configure the standard work days for the selected branch."
+        subtitle="Configure standard work days and recurring monthly rules for the selected branch."
       />
 
       {isAllLocations && (
@@ -203,7 +262,7 @@ export const WorkingCalendarPage: React.FC = () => {
               <span style={{ marginTop: '8px' }}>Loading working calendar…</span>
             </div>
           ) : calendar ? (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--spacing-lg)' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--spacing-xl)' }}>
               <div>
                 <h3 style={{ margin: '0 0 4px 0', fontSize: '1.1rem', color: 'var(--color-text-main)' }}>
                   Branch: {branchName}
@@ -213,6 +272,7 @@ export const WorkingCalendarPage: React.FC = () => {
                 </p>
               </div>
 
+              {/* Weekly Working Days */}
               <div>
                 <label className="input-label" style={{ marginBottom: '8px', display: 'block' }}>
                   Weekly Working Days
@@ -252,6 +312,246 @@ export const WorkingCalendarPage: React.FC = () => {
                 </div>
               </div>
 
+              {/* Recurring Monthly Rules */}
+              <div
+                style={{
+                  borderTop: '1px solid var(--color-border)',
+                  paddingTop: 'var(--spacing-lg)',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: 'var(--spacing-md)',
+                }}
+              >
+                <div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <CalendarIcon size={18} style={{ color: 'var(--color-primary)' }} />
+                    <h4 style={{ margin: 0, fontSize: '1rem', color: 'var(--color-text-main)' }}>
+                      Recurring Monthly Rules
+                    </h4>
+                  </div>
+                  <p style={{ margin: '4px 0 0 0', fontSize: 'var(--font-size-xs)', color: 'var(--color-text-muted)' }}>
+                    Configure monthly occurrence overrides (e.g. 1st & 3rd Saturday off). Occurrences without an explicit rule inherit the base weekly day behavior above.
+                  </p>
+                </div>
+
+                {/* Day selector for recurring rules */}
+                <div>
+                  <label className="input-label" style={{ marginBottom: '6px', display: 'block', fontSize: 'var(--font-size-xs)' }}>
+                    Select Weekday to Configure:
+                  </label>
+                  <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }} role="tablist" aria-label="Rule Weekdays">
+                    {DAYS_OF_WEEK.map((day) => {
+                      const hasRule = recurringRules.some((r) => r.weekday === day.id);
+                      const isTabSelected = selectedRuleWeekday === day.id;
+                      return (
+                        <button
+                          key={day.id}
+                          type="button"
+                          data-testid={`rule-tab-${day.id}`}
+                          onClick={() => setSelectedRuleWeekday(day.id)}
+                          className={`btn ${isTabSelected ? 'btn-primary' : 'btn-secondary'} btn-sm`}
+                          style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '4px',
+                            fontWeight: isTabSelected ? 600 : 400,
+                          }}
+                        >
+                          <span>{day.label}</span>
+                          {hasRule && (
+                            <span
+                              style={{
+                                width: '6px',
+                                height: '6px',
+                                borderRadius: '50%',
+                                backgroundColor: isTabSelected ? '#ffffff' : 'var(--color-primary)',
+                                display: 'inline-block',
+                              }}
+                            />
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Occurrence overrides for selected weekday */}
+                <div
+                  style={{
+                    backgroundColor: 'var(--color-bg-body)',
+                    border: '1px solid var(--color-border)',
+                    borderRadius: 'var(--radius-md)',
+                    padding: 'var(--spacing-md)',
+                  }}
+                >
+                  <div style={{ marginBottom: '12px', fontSize: 'var(--font-size-sm)', fontWeight: 600 }}>
+                    {selectedWeekdayObj.fullLabel} Rules{' '}
+                    <span style={{ fontWeight: 400, fontSize: 'var(--font-size-xs)', color: 'var(--color-text-muted)' }}>
+                      (Base: {baseWeekdayIsWorking ? 'Working' : 'Non-working'})
+                    </span>
+                  </div>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '12px' }}>
+                    {OCCURRENCES.map((occ) => {
+                      const activeRule = getRuleForOccurrence(selectedRuleWeekday, occ.id);
+                      const currentState =
+                        activeRule === undefined
+                          ? 'default'
+                          : activeRule.is_working
+                          ? 'working'
+                          : 'non_working';
+
+                      return (
+                        <div
+                          key={occ.id}
+                          style={{
+                            padding: '10px 12px',
+                            borderRadius: 'var(--radius-sm)',
+                            border: '1px solid var(--color-border)',
+                            backgroundColor: 'var(--color-bg-card)',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            gap: '8px',
+                          }}
+                        >
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <span style={{ fontWeight: 600, fontSize: 'var(--font-size-sm)' }}>
+                              {occ.fullLabel} {selectedWeekdayObj.label}
+                            </span>
+                            <span
+                              style={{
+                                fontSize: '11px',
+                                padding: '2px 6px',
+                                borderRadius: '4px',
+                                fontWeight: 500,
+                                backgroundColor:
+                                  currentState === 'default'
+                                    ? 'var(--color-bg-body)'
+                                    : currentState === 'working'
+                                    ? 'rgba(16, 185, 129, 0.15)'
+                                    : 'rgba(239, 68, 68, 0.15)',
+                                color:
+                                  currentState === 'default'
+                                    ? 'var(--color-text-muted)'
+                                    : currentState === 'working'
+                                    ? 'var(--color-status-success)'
+                                    : 'var(--color-status-danger)',
+                              }}
+                            >
+                              {currentState === 'default'
+                                ? baseWeekdayIsWorking ? 'Base: Working' : 'Base: Off'
+                                : currentState === 'working'
+                                ? 'Override: Working'
+                                : 'Override: Off'}
+                            </span>
+                          </div>
+
+                          <div style={{ display: 'flex', gap: '4px' }}>
+                            <button
+                              type="button"
+                              onClick={() => setOccurrenceRuleState(selectedRuleWeekday, occ.id, 'default')}
+                              disabled={!canManage || saving || isAllLocations}
+                              className={`btn btn-sm ${currentState === 'default' ? 'btn-primary' : 'btn-secondary'}`}
+                              style={{ flex: 1, padding: '4px 6px', fontSize: '12px' }}
+                              data-testid={`rule-${selectedRuleWeekday}-${occ.id}-default`}
+                            >
+                              Default
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setOccurrenceRuleState(selectedRuleWeekday, occ.id, 'working')}
+                              disabled={!canManage || saving || isAllLocations}
+                              className={`btn btn-sm ${currentState === 'working' ? 'btn-primary' : 'btn-secondary'}`}
+                              style={{
+                                flex: 1,
+                                padding: '4px 6px',
+                                fontSize: '12px',
+                                backgroundColor: currentState === 'working' ? 'var(--color-status-success)' : undefined,
+                                borderColor: currentState === 'working' ? 'var(--color-status-success)' : undefined,
+                              }}
+                              data-testid={`rule-${selectedRuleWeekday}-${occ.id}-working`}
+                            >
+                              Working
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setOccurrenceRuleState(selectedRuleWeekday, occ.id, 'non_working')}
+                              disabled={!canManage || saving || isAllLocations}
+                              className={`btn btn-sm ${currentState === 'non_working' ? 'btn-primary' : 'btn-secondary'}`}
+                              style={{
+                                flex: 1,
+                                padding: '4px 6px',
+                                fontSize: '12px',
+                                backgroundColor: currentState === 'non_working' ? 'var(--color-status-danger)' : undefined,
+                                borderColor: currentState === 'non_working' ? 'var(--color-status-danger)' : undefined,
+                              }}
+                              data-testid={`rule-${selectedRuleWeekday}-${occ.id}-off`}
+                            >
+                              Off
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Configured Rules Summary List */}
+                {recurringRules.length > 0 && (
+                  <div>
+                    <span style={{ fontSize: 'var(--font-size-xs)', fontWeight: 600, color: 'var(--color-text-main)', display: 'block', marginBottom: '6px' }}>
+                      Configured Monthly Overrides ({recurringRules.length}):
+                    </span>
+                    <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                      {recurringRules.map((rule) => {
+                        const wkLabel = DAYS_OF_WEEK.find((d) => d.id === rule.weekday)?.fullLabel || rule.weekday;
+                        const occLabel = OCCURRENCES.find((o) => o.id === rule.occurrence)?.label || `${rule.occurrence}`;
+                        return (
+                          <span
+                            key={`${rule.weekday}-${rule.occurrence}`}
+                            data-testid={`override-chip-${rule.weekday}-${rule.occurrence}`}
+                            style={{
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '6px',
+                              padding: '4px 8px',
+                              borderRadius: '4px',
+                              fontSize: '12px',
+                              backgroundColor: rule.is_working ? 'rgba(16, 185, 129, 0.1)' : 'rgba(239, 68, 68, 0.1)',
+                              color: rule.is_working ? 'var(--color-status-success)' : 'var(--color-status-danger)',
+                              border: `1px solid ${rule.is_working ? 'rgba(16, 185, 129, 0.3)' : 'rgba(239, 68, 68, 0.3)'}`,
+                            }}
+                          >
+                            <span>
+                              {occLabel} {wkLabel}: <strong>{rule.is_working ? 'Working' : 'Off'}</strong>
+                            </span>
+                            {canManage && !isAllLocations && (
+                              <button
+                                type="button"
+                                onClick={() => setOccurrenceRuleState(rule.weekday, rule.occurrence, 'default')}
+                                style={{
+                                  background: 'none',
+                                  border: 'none',
+                                  padding: 0,
+                                  cursor: 'pointer',
+                                  color: 'inherit',
+                                  display: 'inline-flex',
+                                }}
+                                title="Remove override"
+                                aria-label={`Remove ${occLabel} ${wkLabel} rule`}
+                              >
+                                <X size={12} />
+                              </button>
+                            )}
+                          </span>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Save Button */}
               <div style={{ display: 'flex', justifyContent: 'flex-start', paddingTop: 'var(--spacing-md)', borderTop: '1px solid var(--color-border)' }}>
                 <button
                   type="button"

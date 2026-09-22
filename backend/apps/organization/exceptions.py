@@ -1,17 +1,17 @@
+from rest_framework.exceptions import APIException
 from rest_framework import status
-from apps.organization.exceptions import WorkingCalendarConfigurationError
 
 
-class AttendanceConfigurationError(WorkingCalendarConfigurationError):
+class WorkingCalendarConfigurationError(APIException):
     """
-    Domain-level attendance configuration exception.
-    Raised when required working calendar, shift assignments, or configuration
-    rules are missing or invalid for attendance calculations.
+    Domain-level working calendar configuration exception.
+    Raised when required working calendar or configuration
+    rules are missing or invalid for calendar evaluations.
     Maps to HTTP 400 Bad Request in DRF views.
     """
     status_code = status.HTTP_400_BAD_REQUEST
-    default_detail = 'Attendance configuration error.'
-    default_code = 'attendance_configuration_error'
+    default_detail = 'Working calendar configuration error.'
+    default_code = 'working_calendar_configuration_error'
 
     def __init__(self, detail=None, code=None):
         if detail is not None:

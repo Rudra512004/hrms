@@ -1,26 +1,98 @@
 from rest_framework import serializers
-from .models import OfficeNetwork, Organization, Department, Designation, Branch, WorkingCalendar, Team, AttendancePolicy
+from django.db import transaction
+from .models import (
+    OfficeNetwork, Organization, Department, Designation, Branch,
+    WorkingCalendar, WorkingCalendarRule, Team, AttendancePolicy
+)
+
+class WorkingCalendarRuleSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = WorkingCalendarRule
+        fields = ['id', 'weekday', 'occurrence', 'is_working']
+        read_only_fields = ['id']
+
+    def validate_weekday(self, value):
+        if value is None or not (0 <= value <= 6):
+            raise serializers.ValidationError("Weekday must be an integer between 0 (Monday) and 6 (Sunday).")
+        return value
+
+    def validate_occurrence(self, value):
+        if value is None or not (1 <= value <= 5):
+            raise serializers.ValidationError("Occurrence must be an integer between 1 and 5.")
+        return value
+
+    def validate(self, attrs):
+        weekday = attrs.get('weekday')
+        occurrence = attrs.get('occurrence')
+        if weekday is not None and not (0 <= weekday <= 6):
+            raise serializers.ValidationError({'weekday': "Weekday must be between 0 and 6."})
+        if occurrence is not None and not (1 <= occurrence <= 5):
+            raise serializers.ValidationError({'occurrence': "Occurrence must be between 1 and 5."})
+        return attrs
+
 
 class WorkingCalendarSerializer(serializers.ModelSerializer):
+    recurring_rules = WorkingCalendarRuleSerializer(many=True, required=False)
+
     class Meta:
         model = WorkingCalendar
-        fields = ['id', 'branch', 'work_days']
+        fields = ['id', 'branch', 'work_days', 'recurring_rules']
         read_only_fields = ['id', 'branch']
 
     def validate_work_days(self, value):
-        # Ensure only 0-6 are used, comma separated
-        try:
-            days = [int(d.strip()) for d in value.split(',')]
-            if not all(0 <= d <= 6 for d in days):
-                raise serializers.ValidationError("Work days must be between 0 and 6.")
-            if len(days) != len(set(days)):
-                raise serializers.ValidationError("Duplicate work days are not allowed.")
-        except Exception:
-            raise serializers.ValidationError("Invalid format. Use comma separated integers (e.g. '0,1,2,3,4').")
+        if value is not None:
+            if not value.strip():
+                raise serializers.ValidationError("work_days cannot be empty.")
+            try:
+                days = [int(d.strip()) for d in value.split(',')]
+                if not all(0 <= d <= 6 for d in days):
+                    raise serializers.ValidationError("Work days must be between 0 and 6.")
+                if len(days) != len(set(days)):
+                    raise serializers.ValidationError("Duplicate work days are not allowed.")
+            except Exception:
+                raise serializers.ValidationError("Invalid format. Use comma separated integers (e.g. '0,1,2,3,4').")
         return value
 
+    def validate_recurring_rules(self, value):
+        seen = set()
+        for idx, rule in enumerate(value):
+            wd = rule.get('weekday')
+            occ = rule.get('occurrence')
+            if wd is None or not (0 <= wd <= 6):
+                raise serializers.ValidationError(
+                    f"Rule at index {idx}: weekday must be an integer between 0 (Monday) and 6 (Sunday)."
+                )
+            if occ is None or not (1 <= occ <= 5):
+                raise serializers.ValidationError(
+                    f"Rule at index {idx}: occurrence must be an integer between 1 and 5."
+                )
+            key = (wd, occ)
+            if key in seen:
+                raise serializers.ValidationError(
+                    f"Duplicate recurring rule for weekday {wd} and occurrence {occ}."
+                )
+            seen.add(key)
+        return value
 
-from django.db import transaction
+    @transaction.atomic
+    def update(self, instance, validated_data):
+        recurring_rules_data = validated_data.pop('recurring_rules', None)
+
+        if 'work_days' in validated_data:
+            instance.work_days = validated_data['work_days']
+            instance.clean()
+            instance.save()
+
+        if recurring_rules_data is not None:
+            # Full validation complete: replace existing rules atomically
+            instance.recurring_rules.all().delete()
+            for rule_data in recurring_rules_data:
+                rule = WorkingCalendarRule(working_calendar=instance, **rule_data)
+                rule.full_clean()
+                rule.save()
+
+        return instance
+
 
 class OrganizationSetupSerializer(serializers.ModelSerializer):
     branches = serializers.ListField(

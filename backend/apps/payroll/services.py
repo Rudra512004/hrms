@@ -20,35 +20,26 @@ from .models import CompensationHistory, PayrollPeriod, PayrollRecord, Payslip
 
 def _working_days_in_period(branch_id: int, start: date, end: date) -> int:
     """
-    Count weekdays (Mon–Fri) within [start, end] that are NOT branch holidays.
-    Mirrors the logic in LeaveRequest.duration_days for consistency.
+    Count working days within [start, end] that are not branch holidays or recurring off-days.
+    Uses WorkingCalendarService as the authoritative evaluation engine.
     """
     if not branch_id:
-        # Fallback if no branch is assigned
         return 0
 
-    holiday_dates = set(
-        Holiday.objects.filter(
-            branch_id=branch_id,
-            date__range=[start, end],
-            is_active=True,
-        ).values_list('date', flat=True)
-    )
-
     from apps.organization.models import Branch
+    from apps.organization.services import WorkingCalendarService
     try:
         branch = Branch.objects.get(id=branch_id)
-        work_days = branch.working_calendar.get_work_days_list()
+        return WorkingCalendarService.count_working_days(branch, start, end)
     except Exception:
-        work_days = [0, 1, 2, 3, 4]
+        days = 0
+        current = start
+        while current <= end:
+            if current.weekday() < 5:
+                days += 1
+            current += timedelta(days=1)
+        return days
 
-    days = 0
-    current = start
-    while current <= end:
-        if current.weekday() in work_days and current not in holiday_dates:
-            days += 1
-        current += timedelta(days=1)
-    return days
 
 
 def _get_active_salary(employee, period_start: date, period_end: date = None) -> Decimal:
@@ -119,8 +110,8 @@ def _attendance_summary(employee, start: date, end: date) -> dict:
 def _approved_leave_days(employee, start: date, end: date, exclude_dates: set = None) -> int:
     """
     Count distinct working days of approved LeaveRequests overlapping the pay period.
-    Excludes weekends and holidays, and deduplicates overlapping requests.
-    Excludes dates already accounted for by attendance (exclude_dates) to prevent double counting.
+    Excludes weekends, recurring off-days, and holidays via WorkingCalendarService.
+    Deduplicates overlapping requests and excludes dates already accounted for by attendance (exclude_dates).
     """
     if exclude_dates is None:
         exclude_dates = set()
@@ -131,18 +122,12 @@ def _approved_leave_days(employee, start: date, end: date, exclude_dates: set = 
         start_date__lte=end,
         end_date__gte=start,
     )
+    if not requests.exists():
+        return 0
+
+    from apps.organization.services import WorkingCalendarService
+    branch = getattr(employee, 'branch', None)
     leave_dates = set()
-    holiday_dates = set(
-        Holiday.objects.filter(
-            branch=employee.branch,
-            date__range=[start, end],
-            is_active=True,
-        ).values_list('date', flat=True)
-    )
-    try:
-        work_days = employee.branch.working_calendar.get_work_days_list()
-    except Exception:
-        work_days = [0, 1, 2, 3, 4]
 
     for lr in requests:
         clipped_start = max(lr.start_date, start)
@@ -150,10 +135,16 @@ def _approved_leave_days(employee, start: date, end: date, exclude_dates: set = 
 
         current = clipped_start
         while current <= clipped_end:
-            if current.weekday() in work_days and current not in holiday_dates and current not in exclude_dates:
-                leave_dates.add(current)
+            if current not in exclude_dates:
+                try:
+                    if branch and WorkingCalendarService.is_working_day(branch, current):
+                        leave_dates.add(current)
+                except Exception:
+                    if current.weekday() < 5:
+                        leave_dates.add(current)
             current += timedelta(days=1)
     return len(leave_dates)
+
 
 
 def generate_payroll_for_period(period: PayrollPeriod, requesting_user=None) -> list:

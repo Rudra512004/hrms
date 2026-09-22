@@ -48,15 +48,16 @@ class AttendanceCalculationService:
     def is_branch_working_day(branch: Optional[Branch], target_date: date) -> bool:
         """
         Determine if target_date is normally a working day for the branch,
-        taking both the branch WorkingCalendar and active branch Holidays into account.
+        taking both the branch WorkingCalendar, recurring rules, and active branch Holidays into account.
         Raises AttendanceConfigurationError if working calendar is missing or invalid.
         """
-        if not branch:
-            raise AttendanceConfigurationError("Branch is required to determine working day.")
-        if AttendanceCalculationService.is_branch_holiday(branch, target_date):
-            return False
-        work_days = AttendanceCalculationService.get_branch_work_days(branch)
-        return target_date.weekday() in work_days
+        from apps.organization.services import WorkingCalendarService
+        from apps.organization.exceptions import WorkingCalendarConfigurationError
+        try:
+            return WorkingCalendarService.is_working_day(branch, target_date)
+        except WorkingCalendarConfigurationError as exc:
+            raise AttendanceConfigurationError(str(exc)) from exc
+
 
     @staticmethod
     def get_effective_shift(employee: Employee, target_date: date) -> Optional[Shift]:
@@ -108,21 +109,10 @@ class AttendanceCalculationService:
                 f"Branch is not configured for employee {employee.id if employee else 'None'}."
             )
 
-        wc = getattr(employee.branch, 'working_calendar', None)
-        if not wc:
-            raise AttendanceConfigurationError(
-                f"Working calendar is not configured for branch {employee.branch_id}."
-            )
-
-        work_days = wc.get_work_days_list()
-
-        # Step 3: Check branch working day
-        if target_date.weekday() not in work_days:
+        # Steps 2-4: Check authoritative branch working day (accounts for holiday, recurring rules, and base calendar)
+        if not AttendanceCalculationService.is_branch_working_day(employee.branch, target_date):
             return None
 
-        # Step 4: Check active holiday
-        if AttendanceCalculationService.is_branch_holiday(employee.branch, target_date):
-            return None
 
         # Step 6: Resolve effective assignment
         shift = AttendanceCalculationService.get_effective_shift(employee, target_date)

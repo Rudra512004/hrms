@@ -125,6 +125,7 @@ describe('WorkingCalendarPage (C5.5.4)', () => {
     await waitFor(() => {
       expect(workingCalendarService.updateWorkingCalendar).toHaveBeenCalledWith(10, {
         work_days: '0,1,2,3,4,5',
+        recurring_rules: [],
       });
     });
   });
@@ -179,5 +180,111 @@ describe('WorkingCalendarPage (C5.5.4)', () => {
     expect(
       screen.getByText(/You do not have permission to access working calendar configuration/i)
     ).toBeInTheDocument();
+  });
+
+  it('7. Renders recurring rules section and existing recurring overrides', async () => {
+    (workingCalendarService.listWorkingCalendars as any).mockResolvedValue([
+      {
+        id: 10,
+        branch: 1,
+        work_days: '0,1,2,3,4,5',
+        recurring_rules: [
+          { id: 101, weekday: 5, occurrence: 1, is_working: false },
+          { id: 102, weekday: 5, occurrence: 3, is_working: false },
+        ],
+      },
+    ]);
+
+    render(
+      <MemoryRouter>
+        <WorkingCalendarPage />
+      </MemoryRouter>
+    );
+
+    await screen.findByText(/Recurring Monthly Rules/i);
+    expect(screen.getByText(/Configured Monthly Overrides/i)).toBeInTheDocument();
+    expect(screen.getByTestId('override-chip-5-1')).toHaveTextContent(/1st Saturday/i);
+    expect(screen.getByTestId('override-chip-5-3')).toHaveTextContent(/3rd Saturday/i);
+  });
+
+  it('8. Configures recurring rule and saves complete payload with recurring_rules', async () => {
+    render(
+      <MemoryRouter>
+        <WorkingCalendarPage />
+      </MemoryRouter>
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText(/Recurring Monthly Rules/i)).toBeInTheDocument();
+    });
+
+    // Select Saturday tab for recurring rules
+    const satRuleTab = screen.getByTestId('rule-tab-5');
+    fireEvent.click(satRuleTab);
+
+    // Toggle 1st Saturday to "Off"
+    const firstSatOffBtn = screen.getByTestId('rule-5-1-off');
+    fireEvent.click(firstSatOffBtn);
+
+    // Verify configured override chip appeared
+    expect(screen.getByTestId('override-chip-5-1')).toHaveTextContent(/1st Saturday/i);
+
+    // Click save
+    const saveBtn = screen.getByRole('button', { name: /save working calendar/i });
+    fireEvent.click(saveBtn);
+
+    await waitFor(() => {
+      expect(workingCalendarService.updateWorkingCalendar).toHaveBeenCalledWith(10, {
+        work_days: '0,1,2,3,4',
+        recurring_rules: [
+          { weekday: 5, occurrence: 1, is_working: false },
+        ],
+      });
+    });
+  });
+
+  it('9. Removes recurring override when toggled back to default', async () => {
+    (workingCalendarService.listWorkingCalendars as any).mockResolvedValue([
+      {
+        id: 10,
+        branch: 1,
+        work_days: '0,1,2,3,4,5',
+        recurring_rules: [
+          { id: 101, weekday: 5, occurrence: 1, is_working: false },
+        ],
+      },
+    ]);
+
+    render(
+      <MemoryRouter>
+        <WorkingCalendarPage />
+      </MemoryRouter>
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText(/Configured Monthly Overrides \(1\):/i)).toBeInTheDocument();
+    });
+
+    // Select Saturday tab
+    const satRuleTab = screen.getByTestId('rule-tab-5');
+    fireEvent.click(satRuleTab);
+
+    // Click Default for 1st Saturday
+    const firstSatDefaultBtn = screen.getByTestId('rule-5-1-default');
+    fireEvent.click(firstSatDefaultBtn);
+
+    // Override chip should be gone
+    expect(screen.queryByText(/Configured Monthly Overrides/i)).toBeNull();
+
+    // Click save
+    const saveBtn = screen.getByRole('button', { name: /save working calendar/i });
+    fireEvent.click(saveBtn);
+
+    await waitFor(() => {
+      expect(workingCalendarService.updateWorkingCalendar).toHaveBeenCalledWith(10, {
+        work_days: '0,1,2,3,4,5',
+        recurring_rules: [],
+      });
+    });
   });
 });

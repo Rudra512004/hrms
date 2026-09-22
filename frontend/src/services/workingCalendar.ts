@@ -1,10 +1,11 @@
 import { ApiError } from './employeeManagement';
 import type {
   WorkingCalendar,
+  WorkingCalendarRule,
   UpdateWorkingCalendarPayload,
 } from '../types/attendance';
 
-export type { WorkingCalendar, UpdateWorkingCalendarPayload };
+export type { WorkingCalendar, WorkingCalendarRule, UpdateWorkingCalendarPayload };
 export { ApiError };
 
 const getHeaders = (includeContentType = true): HeadersInit => {
