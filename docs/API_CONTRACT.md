@@ -1705,7 +1705,7 @@ When provisioning or transferring, the backend auto-derives parent hierarchy if 
 ### Employee Shift Assignment
 - **Endpoints:** `/api/v1/attendance/shift-assignments/` (`GET`, `POST`, `PUT`, `PATCH`, `DELETE`)
 - **Authorization:**
-  - Read: `shift.view`
+  - Read: `shift_assignment.view`
   - Write/Mutation: `shift_assignment.manage`
 - **Validation:**
   - Target employee must belong to the caller's authorized branches.
