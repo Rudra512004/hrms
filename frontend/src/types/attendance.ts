@@ -102,30 +102,6 @@ export interface UpdateShiftPayload {
   is_active?: boolean;
 }
 
-export interface EmployeeShiftAssignment {
-  id: number;
-  employee: number;
-  shift: number;
-  effective_from: string;
-  effective_to: string | null;
-  created_at: string;
-  updated_at: string;
-}
-
-export interface CreateShiftAssignmentPayload {
-  employee: number;
-  shift: number;
-  effective_from: string;
-  effective_to?: string | null;
-}
-
-export interface UpdateShiftAssignmentPayload {
-  employee?: number;
-  shift?: number;
-  effective_from?: string;
-  effective_to?: string | null;
-}
-
 export interface WorkingCalendarRule {
   id?: number;
   weekday: number;

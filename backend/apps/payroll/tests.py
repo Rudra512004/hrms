@@ -46,6 +46,68 @@ class WorkingDaysTest(TestCase):
         days = _working_days_in_period(self.branch.id, date(2024, 9, 2), date(2024, 9, 6))
         self.assertEqual(days, 5)
 
+    def test_6_day_calendar_respected(self):
+        """6-day working calendar (Mon-Sat) is respected by payroll working days."""
+        cal = getattr(self.branch, 'working_calendar', None)
+        cal.work_days = '0,1,2,3,4,5'
+        cal.save()
+        # 2024-09-02 (Mon) to 2024-09-08 (Sun) → 6 working days
+        days = _working_days_in_period(self.branch.id, date(2024, 9, 2), date(2024, 9, 8))
+        self.assertEqual(days, 6)
+
+    def test_non_standard_calendar_respected(self):
+        """Non-standard 4-day working calendar (Mon-Thu) is respected by payroll working days."""
+        cal = getattr(self.branch, 'working_calendar', None)
+        cal.work_days = '0,1,2,3'
+        cal.save()
+        # 2024-09-02 (Mon) to 2024-09-08 (Sun) → 4 working days
+        days = _working_days_in_period(self.branch.id, date(2024, 9, 2), date(2024, 9, 8))
+        self.assertEqual(days, 4)
+
+    def test_missing_calendar_does_not_become_monday_friday(self):
+        """Missing working calendar raises WorkingCalendarConfigurationError, not defaulting to Mon-Fri."""
+        from apps.organization.models import WorkingCalendar
+        from apps.organization.exceptions import WorkingCalendarConfigurationError
+        WorkingCalendar.objects.filter(branch=self.branch).delete()
+        self.branch.refresh_from_db()
+        with self.assertRaises(WorkingCalendarConfigurationError):
+            _working_days_in_period(self.branch.id, date(2024, 9, 2), date(2024, 9, 8))
+
+    def test_invalid_calendar_does_not_become_monday_friday(self):
+        """Invalid working calendar raises WorkingCalendarConfigurationError, not defaulting to Mon-Fri."""
+        from apps.organization.exceptions import WorkingCalendarConfigurationError
+        cal = getattr(self.branch, 'working_calendar', None)
+        cal.work_days = ''
+        cal.save()
+        with self.assertRaises(WorkingCalendarConfigurationError):
+            _working_days_in_period(self.branch.id, date(2024, 9, 2), date(2024, 9, 8))
+
+    def test_payroll_and_leave_agree_with_working_calendar(self):
+        """Payroll approved leave days and LeaveRequest duration_days agree with WorkingCalendarService."""
+        from apps.organization.services import WorkingCalendarService
+        cal = getattr(self.branch, 'working_calendar', None)
+        cal.work_days = '0,1,2,3,4,5'  # Mon-Sat
+        cal.save()
+
+        user = User.objects.create_user(email='wd_emp@org.com', password='Pass123!', status='active')
+        emp = Employee.objects.create(user=user, employee_code='WDE01', organization=self.org, branch=self.branch)
+        leave_type = LeaveType.objects.create(organization=self.org, name='Paid Leave', annual_allocation=20)
+
+        # Leave from 2024-09-02 (Mon) to 2024-09-08 (Sun)
+        lr = LeaveRequest.objects.create(
+            employee=emp,
+            leave_type=leave_type,
+            start_date=date(2024, 9, 2),
+            end_date=date(2024, 9, 8),
+            status='approved'
+        )
+
+        expected_count = WorkingCalendarService.count_working_days(self.branch, date(2024, 9, 2), date(2024, 9, 8))
+        self.assertEqual(expected_count, 6)
+        self.assertEqual(lr.duration_days, 6)
+        leave_days_payroll = _approved_leave_days(emp, date(2024, 9, 1), date(2024, 9, 30))
+        self.assertEqual(leave_days_payroll, 6)
+
 
 class CompensationHistoryTest(TestCase):
     def setUp(self):
@@ -308,7 +370,7 @@ class PayslipSecurityAndSelfServiceTest(TestCase):
             email='emp3@org2.com', password='Pass123!', first_name='Charlie', last_name='Brown', status='active'
         )
         self.emp3 = Employee.objects.create(
-            user=self.user3, employee_code='E003', organization=self.org2, employment_status=EmploymentStatus.ACTIVE
+            user=self.user3, employee_code='E003', organization=self.org2, branch=self.branch2, employment_status=EmploymentStatus.ACTIVE
         )
         CompensationHistory.objects.create(
             employee=self.emp3, effective_from=date(2024, 7, 1), basic_salary=Decimal('50000.00')

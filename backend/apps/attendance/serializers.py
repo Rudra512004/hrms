@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Attendance, AttendanceBreak, Holiday, Shift, EmployeeShiftAssignment
+from .models import Attendance, AttendanceBreak, Holiday, Shift
 
 class AttendanceBreakSerializer(serializers.ModelSerializer):
     class Meta:
@@ -22,7 +22,9 @@ class AttendanceSerializer(serializers.ModelSerializer):
         return obj.breaks.filter(ended_at__isnull=True).exists()
 
     def get_employee_name(self, obj):
-        return f"{obj.employee.user.first_name} {obj.employee.user.last_name}".strip() or obj.employee.user.email
+        if not obj.employee or not obj.employee.user:
+            return None
+        return f"{obj.employee.user.first_name} {obj.employee.user.last_name}".strip()
 
 class HolidaySerializer(serializers.ModelSerializer):
     class Meta:
@@ -49,58 +51,16 @@ class ShiftSerializer(serializers.ModelSerializer):
                 seen.add(day_stripped)
         return value
 
-class EmployeeShiftAssignmentSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = EmployeeShiftAssignment
-        fields = ['id', 'employee', 'shift', 'effective_from', 'effective_to', 'created_at', 'updated_at']
-        read_only_fields = ['id', 'created_at', 'updated_at']
-
     def validate(self, attrs):
-        employee = attrs.get('employee', getattr(self.instance, 'employee', None))
-        shift = attrs.get('shift', getattr(self.instance, 'shift', None))
+        branch = attrs.get('branch', getattr(self.instance, 'branch', None))
+        is_active = attrs.get('is_active', getattr(self.instance, 'is_active', True) if self.instance else True)
 
-        # Verify cross-tenant
-        if employee and shift and employee.branch_id and shift.branch_id and employee.branch_id != shift.branch_id:
-            raise serializers.ValidationError({"employee": "Employee and Shift must belong to the same branch."})
-
-        # Ensure we do not allow assigning an employee from another tenant or unauthorized branch
-        request = self.context.get('request')
-        if request and not getattr(request.user, 'is_superuser', False) and hasattr(request.user, 'employee') and request.user.employee:
-            from apps.authorization.services import AuthorizationService
-            user_org_id = request.user.employee.organization_id
-            if employee and employee.organization_id != user_org_id:
-                raise serializers.ValidationError({"employee": "Cannot assign employee from another organization."})
-            if shift and shift.branch.organization_id != user_org_id:
-                raise serializers.ValidationError({"shift": "Cannot assign shift from another organization."})
-            if employee and not AuthorizationService.has_permission(request.user, 'shift_assignment.manage', employee.branch_id):
-                raise serializers.ValidationError({"employee": "You do not have permission to assign shifts in this branch."})
-
-        effective_from = attrs.get('effective_from', getattr(self.instance, 'effective_from', None))
-        effective_to = attrs.get('effective_to', getattr(self.instance, 'effective_to', None))
-
-        if effective_to and effective_from and effective_to < effective_from:
-            raise serializers.ValidationError({"effective_to": "effective_to cannot be earlier than effective_from."})
-
-        # Model clean for overlap validation
-        instance = EmployeeShiftAssignment(**attrs)
-        if self.instance:
-            instance.pk = self.instance.pk
-            if 'employee' not in attrs:
-                instance.employee = self.instance.employee
-            if 'shift' not in attrs:
-                instance.shift = self.instance.shift
-            if 'effective_from' not in attrs:
-                instance.effective_from = self.instance.effective_from
-
-        try:
-            instance.clean()
-        except serializers.ValidationError as e:
-            raise e
-        except Exception as e:
-            # Django ValidationError
-            from django.core.exceptions import ValidationError as DjangoValidationError
-            if isinstance(e, DjangoValidationError):
-                raise serializers.ValidationError(e.message_dict if hasattr(e, 'message_dict') else list(e.messages))
-            raise e
-
+        if is_active and branch:
+            active_shifts = Shift.objects.filter(branch=branch, is_active=True)
+            if self.instance and self.instance.pk:
+                active_shifts = active_shifts.exclude(pk=self.instance.pk)
+            if active_shifts.exists():
+                raise serializers.ValidationError(
+                    "An active shift is already configured for this branch. Deactivate the existing shift before activating a new one."
+                )
         return attrs

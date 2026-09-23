@@ -135,15 +135,15 @@ class AttendanceCalculationService:
 
     @staticmethod
     def get_shift_work_days(shift: Optional[Shift]) -> List[int]:
-        """Return the scheduled work days for a shift."""
+        """
+        Return the scheduled work days for a shift.
+        Delegates directly to shift.get_work_days_list() as the authoritative single source of truth.
+        Raises AttendanceConfigurationError if shift is None.
+        Does not fall back to Mon-Fri.
+        """
         if not shift:
-            return [0, 1, 2, 3, 4]
-        if hasattr(shift, 'get_work_days_list'):
-            return shift.get_work_days_list()
-        try:
-            return [int(d.strip()) for d in shift.work_days.split(',') if d.strip().isdigit()]
-        except Exception:
-            return [0, 1, 2, 3, 4]
+            raise AttendanceConfigurationError("Shift is required to determine shift work days.")
+        return shift.get_work_days_list()
 
     @staticmethod
     def is_shift_working_day(shift: Optional[Shift], target_date: date) -> bool:

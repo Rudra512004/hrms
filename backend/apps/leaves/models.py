@@ -60,18 +60,9 @@ class LeaveRequest(models.Model):
     def duration_days(self):
         branch = getattr(self.employee, 'branch', None)
         if not branch:
-            return 0
+            from apps.organization.exceptions import WorkingCalendarConfigurationError
+            raise WorkingCalendarConfigurationError("Branch is required to determine leave duration.")
 
         from apps.organization.services import WorkingCalendarService
-        try:
-            return WorkingCalendarService.count_working_days(branch, self.start_date, self.end_date)
-        except Exception:
-            from datetime import timedelta
-            days = 0
-            current_date = self.start_date
-            while current_date <= self.end_date:
-                if current_date.weekday() < 5:
-                    days += 1
-                current_date += timedelta(days=1)
-            return days
+        return WorkingCalendarService.count_working_days(branch, self.start_date, self.end_date)
 

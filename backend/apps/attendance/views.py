@@ -8,8 +8,8 @@ from django.db import transaction, IntegrityError
 from django.db.models import Q
 from datetime import timedelta
 from apps.authorization.permissions import IsNetworkAllowed, require_permission
-from .models import Attendance, AttendanceBreak, Holiday, Shift, EmployeeShiftAssignment
-from .serializers import AttendanceSerializer, HolidaySerializer, ShiftSerializer, EmployeeShiftAssignmentSerializer
+from .models import Attendance, AttendanceBreak, Holiday, Shift
+from .serializers import AttendanceSerializer, HolidaySerializer, ShiftSerializer
 
 from .utils import calculate_haversine_distance
 
@@ -449,70 +449,4 @@ class ShiftViewSet(viewsets.ModelViewSet):
             from apps.authorization.services import AuthorizationService
             if not AuthorizationService.has_permission(user, 'shift.manage', instance.branch_id):
                 raise ValidationError({"branch": "You do not have permission to delete shifts for this branch."})
-        instance.delete()
-
-
-class EmployeeShiftAssignmentViewSet(viewsets.ModelViewSet):
-    serializer_class = EmployeeShiftAssignmentSerializer
-
-    def get_queryset(self):
-        user = self.request.user
-        qs = EmployeeShiftAssignment.objects.all()
-        if user.is_superuser:
-            pass
-        elif hasattr(user, 'employee') and user.employee:
-            from apps.authorization.services import AuthorizationService
-            perm = 'shift_assignment.view' if self.action in ['list', 'retrieve'] else 'shift_assignment.manage'
-            authorized_branches = AuthorizationService.get_authorized_branches(user, perm)
-            qs = qs.filter(employee__branch__in=authorized_branches)
-        else:
-            return EmployeeShiftAssignment.objects.none()
-
-        branch_id = self.request.query_params.get('branch_id')
-        if branch_id:
-            qs = qs.filter(employee__branch_id=branch_id)
-        return qs
-
-    def get_permissions(self):
-        if self.action in ['list', 'retrieve']:
-            permission = require_permission('shift_assignment.view')
-        else:
-            permission = require_permission('shift_assignment.manage')
-        return [IsAuthenticated(), permission()]
-
-    def perform_create(self, serializer):
-        from rest_framework.exceptions import ValidationError
-        user = self.request.user
-        employee = serializer.validated_data.get('employee')
-        if not user.is_superuser:
-            if hasattr(user, 'employee') and user.employee and employee.organization_id != user.employee.organization_id:
-                raise ValidationError({"employee": "Cannot assign shifts for an employee in another organization."})
-            from apps.authorization.services import AuthorizationService
-            if not AuthorizationService.has_permission(user, 'shift_assignment.manage', employee.branch_id):
-                raise ValidationError({"employee": "You do not have permission to manage shift assignments for this branch."})
-        serializer.save()
-
-    def perform_update(self, serializer):
-        from rest_framework.exceptions import ValidationError
-        user = self.request.user
-        instance = serializer.instance
-        if not user.is_superuser:
-            from apps.authorization.services import AuthorizationService
-            if not AuthorizationService.has_permission(user, 'shift_assignment.manage', instance.employee.branch_id):
-                raise ValidationError({"employee": "You do not have permission to manage shift assignments for this branch."})
-            target_employee = serializer.validated_data.get('employee')
-            if target_employee and target_employee != instance.employee:
-                if hasattr(user, 'employee') and user.employee and target_employee.organization_id != user.employee.organization_id:
-                    raise ValidationError({"employee": "Cannot move shift assignment to another organization."})
-                if not AuthorizationService.has_permission(user, 'shift_assignment.manage', target_employee.branch_id):
-                    raise ValidationError({"employee": "You do not have permission to manage shift assignments for the target branch."})
-        serializer.save()
-
-    def perform_destroy(self, instance):
-        from rest_framework.exceptions import ValidationError
-        user = self.request.user
-        if not user.is_superuser:
-            from apps.authorization.services import AuthorizationService
-            if not AuthorizationService.has_permission(user, 'shift_assignment.manage', instance.employee.branch_id):
-                raise ValidationError({"employee": "You do not have permission to delete shift assignments for this branch."})
         instance.delete()

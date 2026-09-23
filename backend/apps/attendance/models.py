@@ -85,11 +85,33 @@ class Shift(models.Model):
     def __str__(self):
         return f"{self.name} ({self.start_time} - {self.end_time})"
 
+    def clean(self):
+        super().clean()
+        if self.is_active and self.branch_id:
+            active_shifts = Shift.objects.filter(branch_id=self.branch_id, is_active=True)
+            if self.pk:
+                active_shifts = active_shifts.exclude(pk=self.pk)
+            if active_shifts.exists():
+                from django.core.exceptions import ValidationError
+                raise ValidationError(
+                    "An active shift is already configured for this branch. Deactivate the existing shift before activating a new one."
+                )
+
     def get_work_days_list(self):
-        try:
-            return [int(d.strip()) for d in self.work_days.split(',') if d.strip().isdigit()]
-        except (ValueError, AttributeError):
-            return [0, 1, 2, 3, 4]
+        from apps.attendance.exceptions import AttendanceConfigurationError
+        if not self.work_days or not self.work_days.strip():
+            raise AttendanceConfigurationError(f"Shift '{self.name}' has unconfigured work days.")
+        days = []
+        for d in self.work_days.split(','):
+            d_str = d.strip()
+            if not d_str.isdigit() or int(d_str) < 0 or int(d_str) > 6:
+                raise AttendanceConfigurationError(f"Invalid work day '{d_str}' in shift '{self.name}'.")
+            day_int = int(d_str)
+            if day_int not in days:
+                days.append(day_int)
+        if not days:
+            raise AttendanceConfigurationError(f"Shift '{self.name}' has no valid work days.")
+        return days
 
 
 class EmployeeShiftAssignment(models.Model):

@@ -28,17 +28,8 @@ def _working_days_in_period(branch_id: int, start: date, end: date) -> int:
 
     from apps.organization.models import Branch
     from apps.organization.services import WorkingCalendarService
-    try:
-        branch = Branch.objects.get(id=branch_id)
-        return WorkingCalendarService.count_working_days(branch, start, end)
-    except Exception:
-        days = 0
-        current = start
-        while current <= end:
-            if current.weekday() < 5:
-                days += 1
-            current += timedelta(days=1)
-        return days
+    branch = Branch.objects.get(id=branch_id)
+    return WorkingCalendarService.count_working_days(branch, start, end)
 
 
 
@@ -132,16 +123,11 @@ def _approved_leave_days(employee, start: date, end: date, exclude_dates: set = 
     for lr in requests:
         clipped_start = max(lr.start_date, start)
         clipped_end = min(lr.end_date, end)
-
         current = clipped_start
         while current <= clipped_end:
             if current not in exclude_dates:
-                try:
-                    if branch and WorkingCalendarService.is_working_day(branch, current):
-                        leave_dates.add(current)
-                except Exception:
-                    if current.weekday() < 5:
-                        leave_dates.add(current)
+                if branch and WorkingCalendarService.is_working_day(branch, current):
+                    leave_dates.add(current)
             current += timedelta(days=1)
     return len(leave_dates)
 
