@@ -18,7 +18,7 @@ class LeaveBalanceSerializer(serializers.ModelSerializer):
         read_only_fields = ['employee', 'allocated', 'used']
 
 class LeaveRequestSerializer(serializers.ModelSerializer):
-    duration_days = serializers.IntegerField(read_only=True)
+    duration_days = serializers.IntegerField(read_only=True, allow_null=True)
     leave_type_name = serializers.CharField(source='leave_type.name', read_only=True)
 
     class Meta:

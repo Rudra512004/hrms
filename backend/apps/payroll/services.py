@@ -126,7 +126,10 @@ def _approved_leave_days(employee, start: date, end: date, exclude_dates: set = 
         current = clipped_start
         while current <= clipped_end:
             if current not in exclude_dates:
-                if branch and WorkingCalendarService.is_working_day(branch, current):
+                if not branch:
+                    from apps.organization.exceptions import WorkingCalendarConfigurationError
+                    raise WorkingCalendarConfigurationError("Branch is required to determine leave duration.")
+                if WorkingCalendarService.is_working_day(branch, current):
                     leave_dates.add(current)
             current += timedelta(days=1)
     return len(leave_dates)

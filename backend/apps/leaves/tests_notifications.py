@@ -40,7 +40,8 @@ class LeaveNotificationIntegrationTests(TransactionTestCase):
         )
 
         self.client.force_authenticate(user=self.manager_user)
-        response = self.client.post(reverse('leave-requests-approve', kwargs={'pk': leave.pk}))
+        url = reverse('leave-requests-approve', kwargs={'pk': leave.pk}) + f"?organization_id={self.org.id}"
+        response = self.client.post(url)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
 
         # Verify notification
@@ -64,7 +65,8 @@ class LeaveNotificationIntegrationTests(TransactionTestCase):
         )
 
         self.client.force_authenticate(user=self.manager_user)
-        response = self.client.post(reverse('leave-requests-reject', kwargs={'pk': leave.pk}))
+        url = reverse('leave-requests-reject', kwargs={'pk': leave.pk}) + f"?organization_id={self.org.id}"
+        response = self.client.post(url)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
 
         notifs = Notification.objects.filter(recipient=self.user)
@@ -83,7 +85,8 @@ class LeaveNotificationIntegrationTests(TransactionTestCase):
         )
 
         self.client.force_authenticate(user=self.manager_user)
-        response = self.client.post(reverse('leave-requests-cancel', kwargs={'pk': leave.pk}))
+        url = reverse('leave-requests-cancel', kwargs={'pk': leave.pk}) + f"?organization_id={self.org.id}"
+        response = self.client.post(url)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
 
         notifs = Notification.objects.filter(recipient=self.user)

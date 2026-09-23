@@ -1851,3 +1851,68 @@ The shared evaluation engine `WorkingCalendarService` evaluates dates in the fol
 3. **Base WorkingCalendar Weekday:** If no recurring rule exists for that occurrence, it evaluates `target_date.weekday() in work_days`.
 4. **Missing Calendar:** Raises `WorkingCalendarConfigurationError` if branch or calendar is missing (no silent Mon–Fri fallback).
 
+---
+
+## 8. Leave APIs
+
+### Leave Types
+*   **Method:** `GET`
+*   **Path:** `/leaves/types/`
+*   **Authentication:** Required (Token)
+*   **Permission:** None (Requires active employee profile)
+*   **Response:** `200 OK`
+*   **Scope:** Active leave types for the employee's organization.
+
+### Leave Balances
+*   **Method:** `GET`
+*   **Path:** `/leaves/balances/`
+*   **Authentication:** Required (Token)
+*   **Permission:** None (Requires active employee profile)
+*   **Response:** `200 OK`
+*   **Scope:** Balances assigned to the authenticated employee.
+
+### List Leave Requests
+*   **Method:** `GET`
+*   **Path:** `/leaves/requests/`
+*   **Authentication:** Required (Token)
+*   **Permission:** Base users see their own leaves. Users with `leave.view` see leaves in their authorized branches. Super Admins must provide `organization_id`, `branch_id`, or `employee` filter.
+*   **Response:** `200 OK`
+
+### Create Leave Request
+*   **Method:** `POST`
+*   **Path:** `/leaves/requests/`
+*   **Authentication:** Required (Token)
+*   **Permission:** `leave.request`
+*   **Request:**
+    ```json
+    {
+      "leave_type": 1,
+      "start_date": "2026-10-01",
+      "end_date": "2026-10-05",
+      "reason": "Vacation"
+    }
+    ```
+*   **Response:** `201 Created`
+*   **Scope:** Fails with `400 Bad Request` if branch is unassigned (`WorkingCalendarConfigurationError`). Fails if balance is insufficient (currently handled on approval, though duration is calculated).
+
+### Approve Leave Request
+*   **Method:** `POST`
+*   **Path:** `/leaves/requests/{id}/approve/`
+*   **Authentication:** Required (Token)
+*   **Permission:** `leave.approve`
+*   **Response:** `200 OK`
+
+### Reject Leave Request
+*   **Method:** `POST`
+*   **Path:** `/leaves/requests/{id}/reject/`
+*   **Authentication:** Required (Token)
+*   **Permission:** `leave.reject`
+*   **Response:** `200 OK`
+
+### Cancel Leave Request
+*   **Method:** `POST`
+*   **Path:** `/leaves/requests/{id}/cancel/`
+*   **Authentication:** Required (Token)
+*   **Permission:** `leave.cancel` or Employee self-cancellation.
+*   **Response:** `200 OK`
+*   **Details:** Allows cancellation of `pending` or `approved` requests. Approved requests atomically refund `duration_days` to `LeaveBalance.used`.
