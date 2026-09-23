@@ -222,7 +222,9 @@ class DesignationViewSet(viewsets.ModelViewSet):
                 except Organization.DoesNotExist:
                     raise ValidationError({"organization": "Specified organization does not exist."})
             else:
-                org = _get_request_user_org(self.request) or Organization.objects.first()
+                org = _get_request_user_org(self.request)
+                if not org:
+                    raise ValidationError({"organization": "Organization context is required."})
         else:
             org = _get_request_user_org(self.request)
             if not org:
@@ -337,7 +339,9 @@ class BranchViewSet(viewsets.ModelViewSet):
                 except Organization.DoesNotExist:
                     raise ValidationError({"organization": "Specified organization does not exist."})
             else:
-                org = _get_request_user_org(self.request) or Organization.objects.first()
+                org = _get_request_user_org(self.request)
+                if not org:
+                    raise ValidationError({"organization": "Organization context is required."})
         else:
             org = _get_request_user_org(self.request)
             if not org:

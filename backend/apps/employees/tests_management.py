@@ -578,8 +578,10 @@ class EmployeeIDGenerationTests(TestCase):
         User.objects.all().delete()
 
         self.client = APIClient()
+        from apps.organization.models import Organization
+        self.org = Organization.objects.create(name='Test Org')
         self.super_user = User.objects.create_user(email='super@example.com', is_superuser=True, status='active')
-        self.super_employee = Employee.objects.create(user=self.super_user, employee_code='EMPBS000')
+        self.super_employee = Employee.objects.create(user=self.super_user, employee_code='EMPBS000', organization=self.org)
         self.client.force_authenticate(user=self.super_user)
 
     def test_first_employee_generation(self):

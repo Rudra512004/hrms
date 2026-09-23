@@ -594,16 +594,16 @@ class PayrollWorkflowRegressionTest(TestCase):
         period_id = create_resp.data['id']
 
         # 2. View periods
-        list_resp = self.client.get('/api/v1/payroll/periods/')
+        list_resp = self.client.get(f'/api/v1/payroll/periods/?organization={self.org.id}')
         self.assertEqual(list_resp.status_code, status.HTTP_200_OK)
         self.assertTrue(any(p['id'] == period_id for p in list_resp.data))
 
         # 3. Generate payroll
-        gen_resp = self.client.post(f'/api/v1/payroll/periods/{period_id}/generate/')
+        gen_resp = self.client.post(f'/api/v1/payroll/periods/{period_id}/generate/', {'organization': self.org.id})
         self.assertEqual(gen_resp.status_code, status.HTTP_200_OK)
 
         # 4. View records and verify calculation
-        rec_resp = self.client.get(f'/api/v1/payroll/records/?period={period_id}')
+        rec_resp = self.client.get(f'/api/v1/payroll/records/?period={period_id}&organization={self.org.id}')
         self.assertEqual(rec_resp.status_code, status.HTTP_200_OK)
         self.assertEqual(len(rec_resp.data), 1)
         record = rec_resp.data[0]
@@ -615,12 +615,12 @@ class PayrollWorkflowRegressionTest(TestCase):
         # 5. Approve payroll (mock time to after period close)
         with patch('django.utils.timezone.now') as mock_now:
             mock_now.return_value = datetime(2026, 10, 1, 12, 0, tzinfo=dt_timezone.utc)
-            appr_resp = self.client.post(f'/api/v1/payroll/periods/{period_id}/approve/')
+            appr_resp = self.client.post(f'/api/v1/payroll/periods/{period_id}/approve/', {'organization': self.org.id})
         self.assertEqual(appr_resp.status_code, status.HTTP_200_OK)
         self.assertEqual(appr_resp.data['status'], 'approved')
 
         # 6. Verify period locked
-        gen_again = self.client.post(f'/api/v1/payroll/periods/{period_id}/generate/')
+        gen_again = self.client.post(f'/api/v1/payroll/periods/{period_id}/generate/', {'organization': self.org.id})
         self.assertEqual(gen_again.status_code, status.HTTP_400_BAD_REQUEST)
 
         # 7. Verify payslip created and accessible to employee
@@ -637,6 +637,7 @@ class PayrollWorkflowRegressionTest(TestCase):
             'employee': self.emp.id,
             'basic_salary': '75000.00',
             'effective_from': '2026-10-01',
+            'organization': self.org.id
         })
         self.assertEqual(resp.status_code, status.HTTP_201_CREATED)
         self.assertEqual(resp.data['basic_salary'], '75000.00')
@@ -666,11 +667,11 @@ class PayrollWorkflowRegressionTest(TestCase):
         oct_period_id = oct_resp.data['id']
 
         # Generate October payroll
-        gen_oct = self.client.post(f'/api/v1/payroll/periods/{oct_period_id}/generate/')
+        gen_oct = self.client.post(f'/api/v1/payroll/periods/{oct_period_id}/generate/', {'organization': self.org.id})
         self.assertEqual(gen_oct.status_code, status.HTTP_200_OK)
 
         # Verify October record values
-        rec_oct = self.client.get(f'/api/v1/payroll/records/?period={oct_period_id}')
+        rec_oct = self.client.get(f'/api/v1/payroll/records/?period={oct_period_id}&organization={self.org.id}')
         self.assertEqual(rec_oct.status_code, status.HTTP_200_OK)
         record = rec_oct.data[0]
         self.assertEqual(record['present_days'], 0)
@@ -678,7 +679,7 @@ class PayrollWorkflowRegressionTest(TestCase):
         self.assertEqual(Decimal(record['net_salary']), Decimal('0.00'))
 
         # Check October reporting: 0 payout, full LOP, FULL_ABSENCE exception
-        summary_resp = self.client.get(f'/api/v1/payroll/reports/period-summary/?period={oct_period_id}')
+        summary_resp = self.client.get(f'/api/v1/payroll/reports/period-summary/?period={oct_period_id}&organization={self.org.id}')
         self.assertEqual(summary_resp.status_code, status.HTTP_200_OK)
         self.assertEqual(Decimal(summary_resp.data['summary']['total_net_salary']), Decimal('0.00'))
         self.assertEqual(Decimal(summary_resp.data['summary']['total_effective_paid_days']), Decimal('0.0'))
@@ -687,7 +688,7 @@ class PayrollWorkflowRegressionTest(TestCase):
             Decimal(record['basic_salary'])
         )
 
-        exc_resp = self.client.get(f'/api/v1/payroll/reports/exceptions/?period={oct_period_id}')
+        exc_resp = self.client.get(f'/api/v1/payroll/reports/exceptions/?period={oct_period_id}&organization={self.org.id}')
         self.assertEqual(exc_resp.status_code, status.HTTP_200_OK)
         exc_types = [e['type'] for e in exc_resp.data['exceptions']]
         self.assertIn('FULL_ABSENCE', exc_types)
@@ -703,10 +704,10 @@ class PayrollWorkflowRegressionTest(TestCase):
         self.assertEqual(sep_resp.status_code, status.HTTP_201_CREATED)
         sep_period_id = sep_resp.data['id']
 
-        gen_sep = self.client.post(f'/api/v1/payroll/periods/{sep_period_id}/generate/')
+        gen_sep = self.client.post(f'/api/v1/payroll/periods/{sep_period_id}/generate/', {'organization': self.org.id})
         self.assertEqual(gen_sep.status_code, status.HTTP_200_OK)
 
-        rec_sep = self.client.get(f'/api/v1/payroll/records/?period={sep_period_id}')
+        rec_sep = self.client.get(f'/api/v1/payroll/records/?period={sep_period_id}&organization={self.org.id}')
         self.assertEqual(rec_sep.status_code, status.HTTP_200_OK)
         sep_record = rec_sep.data[0]
         self.assertEqual(sep_record['present_days'], 10)
@@ -716,11 +717,11 @@ class PayrollWorkflowRegressionTest(TestCase):
         # Approve September and check payslip & locked period (mock time to after period close)
         with patch('django.utils.timezone.now') as mock_now:
             mock_now.return_value = datetime(2026, 10, 1, 12, 0, tzinfo=dt_timezone.utc)
-            appr_sep = self.client.post(f'/api/v1/payroll/periods/{sep_period_id}/approve/')
+            appr_sep = self.client.post(f'/api/v1/payroll/periods/{sep_period_id}/approve/', {'organization': self.org.id})
         self.assertEqual(appr_sep.status_code, status.HTTP_200_OK)
 
         # Re-generate locked period rejected
-        regen_resp = self.client.post(f'/api/v1/payroll/periods/{sep_period_id}/generate/')
+        regen_resp = self.client.post(f'/api/v1/payroll/periods/{sep_period_id}/generate/', {'organization': self.org.id})
         self.assertEqual(regen_resp.status_code, status.HTTP_400_BAD_REQUEST)
 
         # Employee self-service payslip matches finalized payroll

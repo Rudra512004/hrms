@@ -254,6 +254,15 @@ class EmployeeDocumentTests(TestCase):
         response = client.get(LIST_URL)
         self.assertIn(response.status_code, [status.HTTP_401_UNAUTHORIZED, status.HTTP_403_FORBIDDEN])
 
+    def test_14b_superadmin_without_employee_can_list_administrative_documents(self):
+        # Create a pure super admin
+        superadmin = User.objects.create_user(email='pure_super@admin.com', password='pw', is_superuser=True, status='active')
+        client = auth_client(superadmin)
+        response = client.get(LIST_URL)
+        # Super admin should be able to view documents administratively, 200 OK.
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertTrue(len(response.data) >= 1) # should see existing docs
+
     def test_15_audit_log_generated_on_upload_and_delete(self):
         client = auth_client(self.hr_user)
         before_upload = AuditLog.objects.filter(action='employee_document_uploaded').count()

@@ -80,7 +80,7 @@ class RoleViewSet(viewsets.ModelViewSet):
             elif hasattr(user, 'employee') and user.employee.organization_id:
                 org = user.employee.organization
             else:
-                org = Organization.objects.first()
+                raise ValidationError({'organization': 'Organization context is required.'})
         else:
             if hasattr(user, 'employee') and user.employee.organization_id:
                 org = user.employee.organization

@@ -45,12 +45,10 @@ def _employee_org(request):
             try:
                 return Organization.objects.get(id=org_id)
             except (Organization.DoesNotExist, ValueError):
-                pass
-        return (
-            Organization.objects.filter(employees__isnull=False).distinct().first()
-            or Organization.objects.filter(status='active').first()
-            or Organization.objects.first()
-        )
+                from rest_framework.exceptions import ValidationError
+                raise ValidationError({"organization": "Specified organization does not exist."})
+        from rest_framework.exceptions import ValidationError
+        raise ValidationError({"organization": "Organization context is required."})
 
     return None
 

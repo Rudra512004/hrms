@@ -154,7 +154,8 @@ class AdminLeaveTypeAPITests(TestCase):
                 'name': 'New Leave',
                 'description': 'Description',
                 'annual_allocation': 15,
-                'is_active': True
+                'is_active': True,
+                'organization': self.org.id
             })
             self.assertEqual(response.status_code, status.HTTP_201_CREATED)
             self.assertEqual(LeaveType.objects.count(), 2)

@@ -42,16 +42,24 @@ class AdminLeaveTypeViewSet(viewsets.ModelViewSet):
         from django.db import IntegrityError
         from rest_framework.exceptions import ValidationError
 
-        # Enforce organization isolation
+        org_id = self.request.data.get('organization')
         if self.request.user.is_superuser and not hasattr(self.request.user, 'employee'):
-            # Fallback for superadmin without an employee profile
-            org = Organization.objects.first()
+            if org_id:
+                try:
+                    from apps.organization.models import Organization
+                    org = Organization.objects.get(id=org_id)
+                except (Organization.DoesNotExist, ValueError):
+                    raise ValidationError({"organization": "Specified organization does not exist."})
+            else:
+                org = None
         else:
             emp = getattr(self.request.user, 'employee', None)
             org = emp.organization if emp else None
+            if org_id and org and str(org.id) != str(org_id):
+                raise ValidationError({"organization": "Cannot create resources for another organization."})
 
         if not org:
-            raise ValidationError({"organization": "User does not belong to an organization."})
+            raise ValidationError({"organization": "Organization context is required."})
 
         try:
             leave_type = serializer.save(organization=org)
@@ -150,7 +158,10 @@ class LeaveRequestViewSet(viewsets.ModelViewSet):
     def perform_create(self, serializer):
         from rest_framework.exceptions import ValidationError
         employee = getattr(self.request.user, 'employee', None)
-        if employee and getattr(employee, 'employment_status', None) == 'exited':
+        if not employee:
+            raise ValidationError({"detail": "Employee profile not found."})
+
+        if getattr(employee, 'employment_status', None) == 'exited':
             raise ValidationError({"detail": "Exited employees cannot request leave."})
 
         leave = serializer.save(employee=employee)

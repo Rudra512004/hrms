@@ -665,6 +665,9 @@ class WFHRequestViewSet(viewsets.ModelViewSet):
         return [IsAuthenticated()]
 
     def perform_create(self, serializer):
+        from rest_framework.exceptions import ValidationError
+        if not hasattr(self.request.user, 'employee'):
+            raise ValidationError({"detail": "Employee profile not found."})
         wfh = serializer.save(employee=self.request.user.employee)
         AuditService.log(
             action='wfh_request_created',
@@ -801,10 +804,8 @@ class EmployeeDocumentViewSet(viewsets.GenericViewSet):
             return Response(status=status.HTTP_404_NOT_FOUND)
 
         # Employees may view their own documents
-        is_own = (
-            hasattr(request.user, 'employee') and
-            doc.employee_id == request.user.employee.id
-        )
+        emp = getattr(request.user, 'employee', None)
+        is_own = (emp is not None and doc.employee_id == emp.id)
         if not is_own and not (
             AuthorizationService.has_permission(request.user, 'employee.document.view') or
             request.user.is_superuser
@@ -913,10 +914,8 @@ class EmployeeDocumentViewSet(viewsets.GenericViewSet):
         except EmployeeDocument.DoesNotExist:
             return Response(status=status.HTTP_404_NOT_FOUND)
 
-        is_own = (
-            hasattr(request.user, 'employee') and
-            doc.employee_id == request.user.employee.id
-        )
+        emp = getattr(request.user, 'employee', None)
+        is_own = (emp is not None and doc.employee_id == emp.id)
         if not is_own and not (
             AuthorizationService.has_permission(request.user, 'employee.document.view') or
             request.user.is_superuser
@@ -951,10 +950,8 @@ class EmployeeDocumentViewSet(viewsets.GenericViewSet):
         except EmployeeDocument.DoesNotExist:
             return Response(status=status.HTTP_404_NOT_FOUND)
 
-        is_own = (
-            hasattr(request.user, 'employee') and
-            doc.employee_id == request.user.employee.id
-        )
+        emp = getattr(request.user, 'employee', None)
+        is_own = (emp is not None and doc.employee_id == emp.id)
         if not is_own and not (
             AuthorizationService.has_permission(request.user, 'employee.document.view') or
             request.user.is_superuser
