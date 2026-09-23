@@ -5,17 +5,17 @@ from django.utils import timezone
 class LeaveTypeSerializer(serializers.ModelSerializer):
     class Meta:
         model = LeaveType
-        fields = ['id', 'organization', 'name', 'description', 'annual_allocation', 'is_active']
+        fields = ['id', 'organization', 'name', 'description', 'is_active']
         read_only_fields = ['organization']
 
 class LeaveBalanceSerializer(serializers.ModelSerializer):
-    remaining = serializers.IntegerField(read_only=True)
+    remaining = serializers.DecimalField(max_digits=8, decimal_places=2, read_only=True)
     leave_type_name = serializers.CharField(source='leave_type.name', read_only=True)
 
     class Meta:
         model = LeaveBalance
-        fields = ['id', 'employee', 'leave_type', 'leave_type_name', 'allocated', 'used', 'remaining']
-        read_only_fields = ['employee', 'allocated', 'used']
+        fields = ['id', 'employee', 'leave_type', 'leave_type_name', 'branch', 'leave_cycle', 'allocated', 'used', 'carried_forward', 'adjustment', 'remaining']
+        read_only_fields = ['employee', 'allocated', 'used', 'carried_forward', 'adjustment']
 
 class LeaveRequestSerializer(serializers.ModelSerializer):
     duration_days = serializers.IntegerField(read_only=True, allow_null=True)
@@ -25,6 +25,7 @@ class LeaveRequestSerializer(serializers.ModelSerializer):
         model = LeaveRequest
         fields = [
             'id', 'employee', 'leave_type', 'leave_type_name', 'start_date', 'end_date', 'reason',
+            'is_half_day', 'half_day_period', 'supporting_document',
             'status', 'reviewed_by', 'reviewed_at', 'reviewer_comment', 'created_at', 'updated_at', 'duration_days'
         ]
         read_only_fields = ['employee', 'status', 'reviewed_by', 'reviewed_at', 'reviewer_comment']

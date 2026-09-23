@@ -26,7 +26,11 @@ class LeaveNotificationIntegrationTests(TransactionTestCase):
 
         self.manager_user = User.objects.create_user(email='manager@example.com', password='Password123!', status='active', is_superuser=True)
 
-        self.leave_type = LeaveType.objects.create(organization=self.org, name='Sick Leave', annual_allocation=10)
+        self.leave_type = LeaveType.objects.create(organization=self.org, name='Sick Leave')
+        from apps.leaves.models import LeaveCycle, LeaveBalance
+        from datetime import date
+        self.cycle = LeaveCycle.objects.create(branch=self.branch, name='C', start_date=date(2026,1,1), end_date=date(2026,12,31), is_active=True)
+        self.balance = LeaveBalance.objects.create(employee=self.employee, leave_type=self.leave_type, branch=self.branch, leave_cycle=self.cycle, allocated=10, used=0)
 
     @patch('apps.authorization.services.AuthorizationService.has_permission', return_value=True)
     @patch('apps.authorization.services.AuthorizationService.get_authorized_branches')
@@ -42,7 +46,7 @@ class LeaveNotificationIntegrationTests(TransactionTestCase):
         self.client.force_authenticate(user=self.manager_user)
         url = reverse('leave-requests-approve', kwargs={'pk': leave.pk}) + f"?organization_id={self.org.id}"
         response = self.client.post(url)
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
 
         # Verify notification
         notifs = Notification.objects.filter(recipient=self.user)

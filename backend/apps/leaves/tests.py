@@ -25,8 +25,11 @@ class LeaveAPITests(TestCase):
         self.manager_user = User.objects.create_user(email='manager@example.com', password='Password123!', status='active')
         self.manager_employee = Employee.objects.create(user=self.manager_user, employee_code='MGR01', organization=self.org, branch=self.branch)
 
-        self.leave_type = LeaveType.objects.create(organization=self.org, name='Sick Leave', annual_allocation=10)
-        self.balance = LeaveBalance.objects.get(employee=self.employee, leave_type=self.leave_type)
+        self.leave_type = LeaveType.objects.create(organization=self.org, name='Sick Leave')
+        from apps.leaves.models import LeaveCycle
+        from datetime import date
+        self.cycle = LeaveCycle.objects.create(branch=self.branch, name='C', start_date=date(2026,1,1), end_date=date(2026,12,31), is_active=True)
+        self.balance = LeaveBalance.objects.create(employee=self.employee, leave_type=self.leave_type, branch=self.branch, leave_cycle=self.cycle, allocated=10, used=0)
 
         self.external_ip = '198.51.100.5'
 
@@ -143,7 +146,11 @@ class AdminLeaveTypeAPITests(TestCase):
         self.employee = User.objects.create_user(email='emp2@example.com', password='Password123!', status='active')
         self.emp_profile = Employee.objects.create(user=self.employee, employee_code='EMP02', organization=self.org, branch=self.branch)
 
-        self.leave_type = LeaveType.objects.create(organization=self.org, name='Initial Leave', annual_allocation=5)
+        self.leave_type = LeaveType.objects.create(organization=self.org, name='Initial Leave')
+        from apps.leaves.models import LeaveCycle, LeaveBalance
+        from datetime import date
+        self.cycle = LeaveCycle.objects.create(branch=self.branch, name='C', start_date=date(2026,1,1), end_date=date(2026,12,31), is_active=True)
+        self.balance = LeaveBalance.objects.create(employee=self.emp_profile, leave_type=self.leave_type, branch=self.branch, leave_cycle=self.cycle, allocated=10, used=0)
 
     def test_superadmin_can_create(self):
         self.client.force_authenticate(user=self.superadmin)
@@ -153,7 +160,6 @@ class AdminLeaveTypeAPITests(TestCase):
             response = self.client.post(reverse('admin-leave-types-list'), {
                 'name': 'New Leave',
                 'description': 'Description',
-                'annual_allocation': 15,
                 'is_active': True,
                 'organization': self.org.id
             })
@@ -166,8 +172,7 @@ class AdminLeaveTypeAPITests(TestCase):
         with patch('apps.authorization.services.AuthorizationService.has_permission', return_value=True), \
              patch('apps.authorization.services.AuthorizationService.get_authorized_branches', return_value=[self.branch]):
             response = self.client.post(reverse('admin-leave-types-list'), {
-                'name': 'Admin Leave',
-                'annual_allocation': 10
+                'name': 'Admin Leave'
             })
             self.assertEqual(response.status_code, status.HTTP_201_CREATED)
 
@@ -176,15 +181,13 @@ class AdminLeaveTypeAPITests(TestCase):
         from unittest.mock import patch
         with patch('apps.authorization.services.AuthorizationService.has_permission', return_value=False):
             response = self.client.post(reverse('admin-leave-types-list'), {
-                'name': 'Emp Leave',
-                'annual_allocation': 10
+                'name': 'Emp Leave'
             })
             self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
     def test_unauthenticated_request_returns_401(self):
         response = self.client.post(reverse('admin-leave-types-list'), {
-            'name': 'Anon Leave',
-            'annual_allocation': 10
+            'name': 'Anon Leave'
         })
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
 
@@ -194,21 +197,11 @@ class AdminLeaveTypeAPITests(TestCase):
         with patch('apps.authorization.services.AuthorizationService.has_permission', return_value=True), \
              patch('apps.authorization.services.AuthorizationService.get_authorized_branches', return_value=[self.branch]):
             response = self.client.post(reverse('admin-leave-types-list'), {
-                'name': 'Initial Leave',
-                'annual_allocation': 10
+                'name': 'Initial Leave'
             })
             self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
 
-    def test_invalid_allocation_rejected(self):
-        self.client.force_authenticate(user=self.superadmin)
-        from unittest.mock import patch
-        with patch('apps.authorization.services.AuthorizationService.has_permission', return_value=True), \
-             patch('apps.authorization.services.AuthorizationService.get_authorized_branches', return_value=[self.branch]):
-            response = self.client.post(reverse('admin-leave-types-list'), {
-                'name': 'Invalid Leave',
-                'annual_allocation': -5
-            })
-            self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
 
     def test_update_works(self):
         self.client.force_authenticate(user=self.superadmin)

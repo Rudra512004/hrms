@@ -47,12 +47,16 @@ class LeaveC61VerificationTests(TestCase):
         self.emp2 = Employee.objects.create(user=self.user2, employee_code='EMP02', organization=self.org2, branch=self.branch2)
 
         # Leave Types
-        self.leave_type1 = LeaveType.objects.create(organization=self.org1, name='Sick Leave', annual_allocation=10)
-        self.leave_type2 = LeaveType.objects.create(organization=self.org2, name='Sick Leave Beta', annual_allocation=10)
+        self.leave_type1 = LeaveType.objects.create(organization=self.org1, name='Sick Leave')
+        self.leave_type2 = LeaveType.objects.create(organization=self.org2, name='Sick Leave Beta')
 
         # Balances
-        self.balance1 = LeaveBalance.objects.get(employee=self.emp1, leave_type=self.leave_type1)
-        self.balance2 = LeaveBalance.objects.get(employee=self.emp2, leave_type=self.leave_type2)
+        from apps.leaves.models import LeaveCycle
+        from datetime import date
+        self.cycle1 = LeaveCycle.objects.create(branch=self.branch1, name='C1', start_date=date(2026,1,1), end_date=date(2026,12,31))
+        self.balance1 = LeaveBalance.objects.create(employee=self.emp1, leave_type=self.leave_type1, branch=self.branch1, leave_cycle=self.cycle1, allocated=10, used=0)
+        self.cycle2 = LeaveCycle.objects.create(branch=self.branch2, name='C2', start_date=date(2026,1,1), end_date=date(2026,12,31))
+        self.balance2 = LeaveBalance.objects.create(employee=self.emp2, leave_type=self.leave_type2, branch=self.branch2, leave_cycle=self.cycle2, allocated=10, used=0)
 
     # -------------------------------------------------------------------------
     # CASE A: approved 2-day leave + used=2 -> cancellation -> used=0
@@ -376,8 +380,11 @@ class LeaveConcurrencyTests(TransactionTestCase):
         self.branch = Branch.objects.create(organization=self.org, name='Main')
         self.user = User.objects.create_user(email='conc@example.com', password='Password123!', status='active')
         self.employee = Employee.objects.create(user=self.user, employee_code='CONC01', organization=self.org, branch=self.branch)
-        self.leave_type = LeaveType.objects.create(organization=self.org, name='Casual Leave', annual_allocation=10)
-        self.balance = LeaveBalance.objects.get(employee=self.employee, leave_type=self.leave_type)
+        self.leave_type = LeaveType.objects.create(organization=self.org, name='Casual Leave')
+        from apps.leaves.models import LeaveCycle
+        from datetime import date
+        self.cycle = LeaveCycle.objects.create(branch=self.branch, name='C', start_date=date(2026,1,1), end_date=date(2026,12,31))
+        self.balance = LeaveBalance.objects.create(employee=self.employee, leave_type=self.leave_type, branch=self.branch, leave_cycle=self.cycle, allocated=10, used=0)
         self.balance.used = 2
         self.balance.save()
 
