@@ -30,6 +30,17 @@ class LeaveAPITests(TestCase):
         from datetime import date
         self.cycle = LeaveCycle.objects.create(branch=self.branch, name='C', start_date=date(2026,1,1), end_date=date(2026,12,31), is_active=True)
         self.balance = LeaveBalance.objects.create(employee=self.employee, leave_type=self.leave_type, branch=self.branch, leave_cycle=self.cycle, allocated=10, used=0)
+        from apps.leaves.models import BranchLeavePolicy
+        if not BranchLeavePolicy.objects.filter(branch=self.branch, leave_type=self.leave_type).exists():
+            BranchLeavePolicy.objects.create(
+                branch=self.branch, leave_type=self.leave_type,
+                monthly_allocation=1,
+                half_day_allowed=True,
+                cancellation_allowed=True,
+                negative_balance_allowed=False,
+                advance_notice_days=0,
+                requires_supporting_document=False
+            )
 
         self.external_ip = '198.51.100.5'
 
@@ -151,6 +162,17 @@ class AdminLeaveTypeAPITests(TestCase):
         from datetime import date
         self.cycle = LeaveCycle.objects.create(branch=self.branch, name='C', start_date=date(2026,1,1), end_date=date(2026,12,31), is_active=True)
         self.balance = LeaveBalance.objects.create(employee=self.emp_profile, leave_type=self.leave_type, branch=self.branch, leave_cycle=self.cycle, allocated=10, used=0)
+        from apps.leaves.models import BranchLeavePolicy
+        if not BranchLeavePolicy.objects.filter(branch=self.branch, leave_type=self.leave_type).exists():
+            BranchLeavePolicy.objects.create(
+                branch=self.branch, leave_type=self.leave_type,
+                monthly_allocation=1,
+                half_day_allowed=True,
+                cancellation_allowed=True,
+                negative_balance_allowed=False,
+                advance_notice_days=0,
+                requires_supporting_document=False
+            )
 
     def test_superadmin_can_create(self):
         self.client.force_authenticate(user=self.superadmin)
@@ -278,28 +300,21 @@ class AdminLeaveTypeAPITests(TestCase):
             })
             self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
 
-    def test_deleting_approved_request_restores_balance(self):
-        # First ensure there's a balance record
+    def test_deleting_approved_request_does_not_restore_balance(self):
+        req = LeaveRequest.objects.create(
+            employee=self.emp_profile, leave_type=self.leave_type,
+            start_date=timezone.now().date(), end_date=timezone.now().date() + timedelta(days=1),
+            reason='Old approved request', status='approved'
+        )
         balance = LeaveBalance.objects.get(employee=self.emp_profile, leave_type=self.leave_type)
         balance.used = 5
         balance.save()
-
-        request = LeaveRequest.objects.create(
-            employee=self.emp_profile, leave_type=self.leave_type,
-            start_date=timezone.now().date() + timedelta(days=1),
-            end_date=timezone.now().date() + timedelta(days=2),
-            reason='Testing delete',
-            status='approved'
-        )
-
-        # duration is roughly 2 days (assuming not weekend)
-        duration = request.duration_days
-
-        # delete request
-        request.delete()
-
+        duration = req.duration_days
+        req.delete()
         balance.refresh_from_db()
-        self.assertEqual(balance.used, 5 - duration)
+        # In C6.5, silent balance mutation via deletion is completely removed.
+        # It must remain exactly as it was.
+        self.assertEqual(balance.used, 5)
 
     def test_cannot_delete_approved_request_via_api(self):
         self.client.force_authenticate(user=self.employee)

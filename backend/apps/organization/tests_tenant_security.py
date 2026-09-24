@@ -98,4 +98,4 @@ class SuperAdminIdentityTests(TestCase):
         }
         response = self.client.post(reverse('leave-requests-list'), data, format='json')
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertIn('Employee profile not found.', str(response.data))
+        self.assertIn('Employee identity is required.', str(response.data))

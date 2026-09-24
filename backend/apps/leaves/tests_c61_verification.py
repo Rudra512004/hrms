@@ -63,7 +63,7 @@ class LeaveC61VerificationTests(TestCase):
     # -------------------------------------------------------------------------
     def test_case_a_approved_leave_cancellation_refunds_used(self):
         # Mon-Tue 2-day leave
-        base_date = date(2026, 9, 7)  # Monday
+        base_date = date(2026, 12, 7)  # Monday
         leave = LeaveRequest.objects.create(
             employee=self.emp1,
             leave_type=self.leave_type1,
@@ -92,7 +92,7 @@ class LeaveC61VerificationTests(TestCase):
     # CASE B: approved 2-day leave + used=1 -> cancellation rejected; leave remains approved; used remains 1
     # -------------------------------------------------------------------------
     def test_case_b_cancellation_rejected_when_used_less_than_refund(self):
-        base_date = date(2026, 9, 7)  # Monday
+        base_date = date(2026, 12, 7)  # Monday
         leave = LeaveRequest.objects.create(
             employee=self.emp1,
             leave_type=self.leave_type1,
@@ -119,7 +119,7 @@ class LeaveC61VerificationTests(TestCase):
         self.assertEqual(self.balance1.used, 1)
 
     def test_case_b_missing_leave_balance_rejected(self):
-        base_date = date(2026, 9, 7)
+        base_date = date(2026, 12, 7)
         leave = LeaveRequest.objects.create(
             employee=self.emp1,
             leave_type=self.leave_type1,
@@ -149,8 +149,8 @@ class LeaveC61VerificationTests(TestCase):
         leave = LeaveRequest.objects.create(
             employee=branchless_emp,
             leave_type=self.leave_type1,
-            start_date=date(2026, 9, 7),
-            end_date=date(2026, 9, 8),
+            start_date=date(2026, 12, 1),
+            end_date=date(2026, 12, 8),
             reason='Branchless cancel test',
             status='approved'
         )
@@ -170,7 +170,7 @@ class LeaveC61VerificationTests(TestCase):
     # CASE C: cancellation twice -> only one refund
     # -------------------------------------------------------------------------
     def test_case_c_cancellation_twice_only_one_refund(self):
-        base_date = date(2026, 9, 7)  # Monday
+        base_date = date(2026, 12, 7)  # Monday
         leave = LeaveRequest.objects.create(
             employee=self.emp1,
             leave_type=self.leave_type1,
@@ -226,8 +226,8 @@ class LeaveC61VerificationTests(TestCase):
         leave = LeaveRequest.objects.create(
             employee=branchless_emp,
             leave_type=self.leave_type1,
-            start_date=date(2026, 9, 8),
-            end_date=date(2026, 9, 9),
+            start_date=date(2026, 12, 8),
+            end_date=date(2026, 12, 9),
             reason='Historical request',
             status='pending'
         )
@@ -254,14 +254,14 @@ class LeaveC61VerificationTests(TestCase):
         LeaveRequest.objects.create(
             employee=branchless_emp,
             leave_type=self.leave_type1,
-            start_date=date(2026, 9, 7),
-            end_date=date(2026, 9, 8),
+            start_date=date(2026, 12, 1),
+            end_date=date(2026, 12, 8),
             reason='Approved without branch',
             status='approved'
         )
 
         with self.assertRaises(WorkingCalendarConfigurationError):
-            _approved_leave_days(branchless_emp, date(2026, 9, 1), date(2026, 9, 30))
+            _approved_leave_days(branchless_emp, date(2026, 12, 1), date(2026, 12, 30))
 
     # -------------------------------------------------------------------------
     # CASE H: Super Admin unfiltered leave list -> no global dataset
@@ -271,16 +271,16 @@ class LeaveC61VerificationTests(TestCase):
         LeaveRequest.objects.create(
             employee=self.emp1,
             leave_type=self.leave_type1,
-            start_date=date(2026, 9, 7),
-            end_date=date(2026, 9, 8),
+            start_date=date(2026, 12, 1),
+            end_date=date(2026, 12, 8),
             reason='Org 1 leave',
             status='approved'
         )
         LeaveRequest.objects.create(
             employee=self.emp2,
             leave_type=self.leave_type2,
-            start_date=date(2026, 9, 7),
-            end_date=date(2026, 9, 8),
+            start_date=date(2026, 12, 1),
+            end_date=date(2026, 12, 8),
             reason='Org 2 leave',
             status='approved'
         )
@@ -302,16 +302,16 @@ class LeaveC61VerificationTests(TestCase):
         lr1 = LeaveRequest.objects.create(
             employee=self.emp1,
             leave_type=self.leave_type1,
-            start_date=date(2026, 9, 7),
-            end_date=date(2026, 9, 8),
+            start_date=date(2026, 12, 1),
+            end_date=date(2026, 12, 8),
             reason='Org 1 leave',
             status='approved'
         )
         lr2 = LeaveRequest.objects.create(
             employee=self.emp2,
             leave_type=self.leave_type2,
-            start_date=date(2026, 9, 7),
-            end_date=date(2026, 9, 8),
+            start_date=date(2026, 12, 1),
+            end_date=date(2026, 12, 8),
             reason='Org 2 leave',
             status='approved'
         )
@@ -380,15 +380,25 @@ class LeaveConcurrencyTests(TransactionTestCase):
         self.branch = Branch.objects.create(organization=self.org, name='Main')
         self.user = User.objects.create_user(email='conc@example.com', password='Password123!', status='active')
         self.employee = Employee.objects.create(user=self.user, employee_code='CONC01', organization=self.org, branch=self.branch)
-        self.leave_type = LeaveType.objects.create(organization=self.org, name='Casual Leave')
+        self.leave_type = LeaveType.objects.create(organization=self.org, name='Casual Leave', is_active=True)
+        from apps.leaves.models import BranchLeavePolicy
+        BranchLeavePolicy.objects.create(branch=self.branch, leave_type=self.leave_type, negative_balance_allowed=True, cancellation_allowed=True)
         from apps.leaves.models import LeaveCycle
         from datetime import date
         self.cycle = LeaveCycle.objects.create(branch=self.branch, name='C', start_date=date(2026,1,1), end_date=date(2026,12,31))
         self.balance = LeaveBalance.objects.create(employee=self.employee, leave_type=self.leave_type, branch=self.branch, leave_cycle=self.cycle, allocated=10, used=0)
+        from apps.leaves.models import BranchLeavePolicy
+        if not BranchLeavePolicy.objects.filter(branch=self.branch, leave_type=self.leave_type).exists():
+            BranchLeavePolicy.objects.create(
+                branch=self.branch, leave_type=self.leave_type,
+                monthly_allocation=1, half_day_allowed=True,
+                cancellation_allowed=True, negative_balance_allowed=False,
+                advance_notice_days=0, requires_supporting_document=False
+            )
         self.balance.used = 2
         self.balance.save()
 
-        base_date = date(2026, 9, 7)  # Monday
+        base_date = date(2026, 12, 7)  # Monday
         self.leave = LeaveRequest.objects.create(
             employee=self.employee,
             leave_type=self.leave_type,

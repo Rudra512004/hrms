@@ -270,6 +270,7 @@ class LeaveRequestViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=['post'])
     def approve(self, request, pk=None):
+        from .models import LeaveCycle, BranchLeavePolicy, LeaveBalanceTransaction
         if not AuthorizationService.has_permission(request.user, 'leave.approve'):
             return Response(status=status.HTTP_403_FORBIDDEN)
 
@@ -287,7 +288,6 @@ class LeaveRequestViewSet(viewsets.ModelViewSet):
             if leave.status != 'pending':
                 return Response({"detail": "Only pending requests can be approved."}, status=status.HTTP_400_BAD_REQUEST)
 
-            # Defensive check against overlapping approved leaves
             overlap = LeaveRequest.objects.filter(
                 employee=leave.employee,
                 status='approved',
@@ -303,18 +303,52 @@ class LeaveRequestViewSet(viewsets.ModelViewSet):
             serializer = LeaveRequestReviewSerializer(data=request.data)
             serializer.is_valid(raise_exception=True)
 
-            # Check balance
+            # Revalidate cycle and policy
+            branch = leave.employee.branch
+            policy = BranchLeavePolicy.objects.filter(branch=branch, leave_type=leave.leave_type).first()
+            if not policy:
+                return Response({"detail": "Leave policy not found."}, status=status.HTTP_400_BAD_REQUEST)
+
+            active_cycles = LeaveCycle.objects.filter(
+                branch=branch,
+                is_active=True,
+                start_date__lte=leave.end_date,
+                end_date__gte=leave.start_date
+            )
+            if not active_cycles.exists():
+                return Response({"detail": "No active leave cycle found for the requested dates."}, status=status.HTTP_400_BAD_REQUEST)
+            if active_cycles.count() > 1:
+                return Response({"detail": "Multiple overlapping active leave cycles found, cannot resolve balance."}, status=status.HTTP_400_BAD_REQUEST)
+
+            cycle = active_cycles.first()
+
             try:
-                balance = LeaveBalance.objects.select_for_update().get(employee=leave.employee, leave_type=leave.leave_type)
+                balance = LeaveBalance.objects.select_for_update().get(employee=leave.employee, leave_type=leave.leave_type, leave_cycle=cycle, branch=branch)
             except LeaveBalance.DoesNotExist:
-                return Response({"detail": "Leave balance record not found."}, status=status.HTTP_400_BAD_REQUEST)
+                return Response({"detail": "Leave balance record not found for the active cycle."}, status=status.HTTP_400_BAD_REQUEST)
 
-            if balance.remaining < leave.duration_days:
-                return Response({"detail": "Insufficient leave balance."}, status=status.HTTP_400_BAD_REQUEST)
+            duration = leave.duration_days
+            if duration is None or duration <= 0:
+                return Response({"detail": "Invalid leave duration."}, status=status.HTTP_400_BAD_REQUEST)
 
-            # Update balance
-            balance.used += leave.duration_days
-            balance.save()
+            if not policy.negative_balance_allowed and balance.remaining < duration:
+                return Response({"detail": "Insufficient leave balance and negative balance is not allowed."}, status=status.HTTP_400_BAD_REQUEST)
+
+            balance.used += duration
+            balance.save(update_fields=['used'])
+
+            LeaveBalanceTransaction.objects.create(
+                balance=balance,
+                employee=leave.employee,
+                leave_type=leave.leave_type,
+                leave_cycle=cycle,
+                leave_request=leave,
+                actor=request.user,
+                transaction_type='usage',
+                amount=-duration,
+                effective_date=timezone.now().date(),
+                reference=f"USAGE-REQ-{leave.id}"
+            )
 
             leave.status = 'approved'
             leave.reviewed_by = request.user
@@ -385,6 +419,7 @@ class LeaveRequestViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=['post'])
     def cancel(self, request, pk=None):
+        from .models import LeaveCycle, BranchLeavePolicy, LeaveBalanceTransaction
         with transaction.atomic():
             leave = LeaveRequest.objects.select_for_update().get(pk=self.get_object().pk)
             if not request.user.is_superuser:
@@ -402,6 +437,14 @@ class LeaveRequestViewSet(viewsets.ModelViewSet):
             if leave.status not in ['pending', 'approved']:
                 return Response({"detail": "Only pending or approved requests can be cancelled."}, status=status.HTTP_400_BAD_REQUEST)
 
+            branch = leave.employee.branch
+            policy = BranchLeavePolicy.objects.filter(branch=branch, leave_type=leave.leave_type).first()
+            if policy and not policy.cancellation_allowed:
+                return Response({"detail": "Cancellation is not allowed for this leave type."}, status=status.HTTP_400_BAD_REQUEST)
+
+            if timezone.localdate() > leave.start_date:
+                return Response({"detail": "Cannot cancel leave after its start date."}, status=status.HTTP_400_BAD_REQUEST)
+
             was_approved = leave.status == 'approved'
 
             if was_approved:
@@ -409,8 +452,18 @@ class LeaveRequestViewSet(viewsets.ModelViewSet):
                 if refund_amount is None:
                     return Response({"detail": "Cannot determine leave duration for cancellation."}, status=status.HTTP_400_BAD_REQUEST)
 
+                active_cycles = LeaveCycle.objects.filter(
+                    branch=branch,
+                    is_active=True,
+                    start_date__lte=leave.end_date,
+                    end_date__gte=leave.start_date
+                )
+                cycle = active_cycles.first()
+                if not cycle:
+                    return Response({"detail": "No active leave cycle found for the requested dates."}, status=status.HTTP_400_BAD_REQUEST)
+
                 try:
-                    balance = LeaveBalance.objects.select_for_update().get(employee=leave.employee, leave_type=leave.leave_type)
+                    balance = LeaveBalance.objects.select_for_update().get(employee=leave.employee, leave_type=leave.leave_type, leave_cycle=cycle, branch=branch)
                 except LeaveBalance.DoesNotExist:
                     return Response({"detail": "Leave balance record not found."}, status=status.HTTP_400_BAD_REQUEST)
 
@@ -418,7 +471,20 @@ class LeaveRequestViewSet(viewsets.ModelViewSet):
                     return Response({"detail": "Leave balance used count is less than refund amount."}, status=status.HTTP_400_BAD_REQUEST)
 
                 balance.used -= refund_amount
-                balance.save()
+                balance.save(update_fields=['used'])
+
+                LeaveBalanceTransaction.objects.create(
+                    balance=balance,
+                    employee=leave.employee,
+                    leave_type=leave.leave_type,
+                    leave_cycle=cycle,
+                    leave_request=leave,
+                    actor=request.user,
+                    transaction_type='refund',
+                    amount=refund_amount,
+                    effective_date=timezone.now().date(),
+                    reference=f"REFUND-REQ-{leave.id}"
+                )
 
             leave.status = 'cancelled'
             leave.save()

@@ -30,6 +30,18 @@ class LeaveNotificationIntegrationTests(TransactionTestCase):
         from apps.leaves.models import LeaveCycle, LeaveBalance
         from datetime import date
         self.cycle = LeaveCycle.objects.create(branch=self.branch, name='C', start_date=date(2026,1,1), end_date=date(2026,12,31), is_active=True)
+
+        from apps.leaves.models import BranchLeavePolicy
+        if not BranchLeavePolicy.objects.filter(branch=self.branch, leave_type=self.leave_type).exists():
+            BranchLeavePolicy.objects.create(
+                branch=self.branch, leave_type=self.leave_type,
+                monthly_allocation=1,
+                half_day_allowed=True,
+                cancellation_allowed=True,
+                negative_balance_allowed=False,
+                advance_notice_days=0,
+                requires_supporting_document=False
+            )
         self.balance = LeaveBalance.objects.create(employee=self.employee, leave_type=self.leave_type, branch=self.branch, leave_cycle=self.cycle, allocated=10, used=0)
 
     @patch('apps.authorization.services.AuthorizationService.has_permission', return_value=True)

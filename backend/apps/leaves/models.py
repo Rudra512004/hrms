@@ -183,5 +183,11 @@ class LeaveRequest(models.Model):
             return None
 
         from apps.organization.services import WorkingCalendarService
-        return WorkingCalendarService.count_working_days(branch, self.start_date, self.end_date)
+        from decimal import Decimal
+        days = WorkingCalendarService.count_working_days(branch, self.start_date, self.end_date)
+        if days == 0:
+            return Decimal('0.0')
+        if self.is_half_day:
+            return Decimal(str(days)) - Decimal('0.5')
+        return Decimal(str(days))
 
