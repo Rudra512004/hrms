@@ -1,7 +1,11 @@
 from django.core.management.base import BaseCommand
 from apps.authorization.models import Permission, Role, RolePermission, UserRole
-from apps.leaves.models import LeaveType
-from apps.organization.models import Organization
+
+
+from apps.organization.models import Organization, Branch
+from apps.leaves.models import LeaveType, BranchLeavePolicy, LeaveCycle
+from datetime import date
+
 from apps.employees.models import Employee
 from apps.payroll.models import CompensationHistory
 from apps.attendance.models import Attendance
@@ -16,12 +20,23 @@ class Command(BaseCommand):
 
     @transaction.atomic
     def handle(self, *args, **kwargs):
+
         # 1. Ensure a default organization exists
         org, _ = Organization.objects.get_or_create(
             name='Default Org',
             defaults={'status': 'active'}
         )
         self.stdout.write(self.style.SUCCESS(f'Organization: {org.name}'))
+
+        branch, _ = Branch.objects.get_or_create(
+            organization=org,
+            name='Headquarters',
+            defaults={
+                'is_active': True
+            }
+        )
+        self.stdout.write(self.style.SUCCESS(f'Branch: {branch.name}'))
+
 
         # 2. Permissions
         permissions_data = [
@@ -138,24 +153,45 @@ class Command(BaseCommand):
 
         self.stdout.write(self.style.SUCCESS('Seeded Roles and RolePermissions'))
 
-        # 4. Leave Types
+        # 4. Leave Types & Branch Policies
         leave_types = [
-            {'name': 'Annual Leave', 'description': 'Standard paid time off', 'annual_allocation': 20},
-            {'name': 'Sick Leave', 'description': 'Medical leave', 'annual_allocation': 10},
-            {'name': 'Unpaid Leave', 'description': 'Leave without pay', 'annual_allocation': 30},
+            {'name': 'Annual Leave', 'description': 'Standard paid time off', 'yearly_allowance': 20},
+            {'name': 'Sick Leave', 'description': 'Medical leave', 'yearly_allowance': 10},
+            {'name': 'Unpaid Leave', 'description': 'Leave without pay', 'yearly_allowance': 30},
         ]
         
         for lt_data in leave_types:
-            LeaveType.objects.update_or_create(
+            lt, _ = LeaveType.objects.update_or_create(
                 name=lt_data['name'],
                 organization=org,
                 defaults={
                     'description': lt_data['description'],
-                    'annual_allocation': lt_data['annual_allocation'],
                     'is_active': True
                 }
             )
-        self.stdout.write(self.style.SUCCESS(f'Seeded {len(leave_types)} Leave Types'))
+            # Create Branch Leave Policy
+            BranchLeavePolicy.objects.update_or_create(
+                branch=branch,
+                leave_type=lt,
+                defaults={
+                    'monthly_allocation': round(Decimal(lt_data['yearly_allowance']) / Decimal('12'), 2),
+                    'carry_forward_limit': 5
+                }
+            )
+
+        # Seed a Leave Cycle so policies can be actively utilized
+        current_year = date.today().year
+        LeaveCycle.objects.update_or_create(
+            branch=branch,
+            name=f'Annual {current_year}',
+            defaults={
+                'start_date': date(current_year, 1, 1),
+                'end_date': date(current_year, 12, 31),
+                'is_active': True
+            }
+        )
+
+        self.stdout.write(self.style.SUCCESS(f'Seeded {len(leave_types)} Leave Types and Branch Policies'))
 
         # 5. Demo Users
         User = get_user_model()
@@ -183,11 +219,15 @@ class Command(BaseCommand):
             emp, _ = Employee.objects.get_or_create(user=user, defaults={
                 'employee_code': data['code'],
                 'organization': org,
+                'branch': branch,
                 'personal_email': data['email'].replace('@demo.local', '@personal.local'),
                 'employment_status': 'active'
             })
             if emp.employee_code.startswith('DEMO-') or emp.employee_code != data['code']:
                 emp.employee_code = data['code']
+                emp.save()
+            if not emp.branch:
+                emp.branch = branch
                 emp.save()
             # Ensure compensation is configured
             CompensationHistory.objects.get_or_create(
@@ -207,12 +247,16 @@ class Command(BaseCommand):
                 defaults={
                     'employee_code': 'EMPBS005',
                     'organization': org,
+                'branch': branch,
                     'personal_email': superuser.email,
                     'employment_status': 'active',
                 }
             )
             if admin_emp.employee_code == 'ADMIN-001':
                 admin_emp.employee_code = 'EMPBS005'
+                admin_emp.save()
+            if not admin_emp.branch:
+                admin_emp.branch = branch
                 admin_emp.save()
 
             CompensationHistory.objects.get_or_create(
