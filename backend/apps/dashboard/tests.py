@@ -130,9 +130,12 @@ class DashboardOverviewTests(TestCase):
             check_in=timezone.now()
         )
         leave_type = LeaveType.objects.create(
-            organization=self.org1, name="Casual Leave", annual_allocation=12
+            organization=self.org1, name="Casual Leave"
         )
-        balance = LeaveBalance.objects.get(employee=self.emp_profile, leave_type=leave_type)
+        from apps.leaves.models import LeaveCycle
+        from datetime import date
+        cycle = LeaveCycle.objects.create(branch=self.branch1, name='C1', start_date=date(2026,1,1), end_date=date(2026,12,31), is_active=True)
+        balance = LeaveBalance.objects.create(employee=self.emp_profile, leave_type=leave_type, branch=self.branch1, leave_cycle=cycle, allocated=10, used=0)
         balance.used = 2
         balance.save()
         Holiday.objects.create(
@@ -153,7 +156,7 @@ class DashboardOverviewTests(TestCase):
         self.assertIsNotNone(personal)
         self.assertEqual(personal['attendance_today']['status'], 'present')
         self.assertEqual(len(personal['leave_balances']), 1)
-        self.assertEqual(personal['leave_balances'][0]['remaining'], 10)
+        self.assertEqual(personal['leave_balances'][0]['remaining'], 8)
         self.assertEqual(len(personal['upcoming_holidays']), 1)
         self.assertEqual(personal['upcoming_holidays'][0]['name'], 'Independence Day')
 
@@ -171,7 +174,7 @@ class DashboardOverviewTests(TestCase):
             check_in=timezone.now()
         )
         leave_type = LeaveType.objects.create(
-            organization=self.org1, name="Sick Leave", annual_allocation=10
+            organization=self.org1, name="Sick Leave"
         )
         LeaveRequest.objects.create(
             employee=self.report_profile,
@@ -331,7 +334,7 @@ class DashboardOverviewTests(TestCase):
 
     def test_attendance_rate_employees_on_approved_leave(self):
         """1 employee on approved leave and 3 present -> net expected_working is 3, 100% rate."""
-        leave_type = LeaveType.objects.create(organization=self.org1, name="Annual Leave", annual_allocation=15)
+        leave_type = LeaveType.objects.create(organization=self.org1, name="Annual Leave")
         LeaveRequest.objects.create(
             employee=self.emp_profile,
             leave_type=leave_type,
@@ -401,7 +404,7 @@ class DashboardOverviewTests(TestCase):
 
     def test_attendance_rate_approved_leave_plus_attendance_edge_case(self):
         """Employee has approved leave but punches in anyway: counted once as present, not on leave."""
-        leave_type = LeaveType.objects.create(organization=self.org1, name="Sick Leave", annual_allocation=10)
+        leave_type = LeaveType.objects.create(organization=self.org1, name="Sick Leave")
         LeaveRequest.objects.create(
             employee=self.emp_profile,
             leave_type=leave_type,
@@ -428,7 +431,7 @@ class DashboardOverviewTests(TestCase):
 
     def test_attendance_rate_zero_expected_workforce(self):
         """All active employees are on approved leave -> expected_working is 0, percentage is 0.0%."""
-        leave_type = LeaveType.objects.create(organization=self.org1, name="Company Vacation", annual_allocation=20)
+        leave_type = LeaveType.objects.create(organization=self.org1, name="Company Vacation")
         for emp in [self.emp_profile, self.mgr_profile, self.report_profile, self.hr_profile]:
             LeaveRequest.objects.create(
                 employee=emp,
@@ -796,7 +799,7 @@ class DashboardTrendsTests(TestCase):
                 break
 
         if target_date:
-            leave_type = LeaveType.objects.create(organization=self.org1, name="Paid Vacation", annual_allocation=15)
+            leave_type = LeaveType.objects.create(organization=self.org1, name="Paid Vacation")
             LeaveRequest.objects.create(
                 employee=self.emp_profile, leave_type=leave_type,
                 start_date=target_date, end_date=target_date, status='approved'
@@ -824,7 +827,7 @@ class DashboardTrendsTests(TestCase):
                 break
 
         if target_date:
-            leave_type = LeaveType.objects.create(organization=self.org1, name="Casual Leave", annual_allocation=10)
+            leave_type = LeaveType.objects.create(organization=self.org1, name="Casual Leave")
             LeaveRequest.objects.create(
                 employee=self.emp_profile, leave_type=leave_type,
                 start_date=target_date, end_date=target_date, status='approved'

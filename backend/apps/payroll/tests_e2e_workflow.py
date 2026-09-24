@@ -82,9 +82,12 @@ class EndToEndHRMSWorkflowTests(TestCase):
         self.leave_type = LeaveType.objects.create(
             organization=self.org,
             name='Annual Leave',
-            annual_allocation=12,
             is_active=True,
         )
+
+        from apps.leaves.models import BranchLeavePolicy, LeaveCycle
+        cycle = LeaveCycle.objects.create(branch=self.branch, name='C1', start_date=date(2025,1,1), end_date=date(2025,12,31), is_active=True)
+        BranchLeavePolicy.objects.create(branch=self.branch, leave_type=self.leave_type, monthly_allocation=1.5, cancellation_allowed=True)
 
         # 7. Employee 1: Primary active lifecycle subject
         self.user1 = User.objects.create_user(
@@ -105,6 +108,10 @@ class EndToEndHRMSWorkflowTests(TestCase):
         )
 
         # 8. HR / Admin User with RBAC capabilities
+        from apps.leaves.models import LeaveBalance
+        cycle = LeaveCycle.objects.filter(branch=self.branch).first()
+        LeaveBalance.objects.create(employee=self.emp1, leave_type=self.leave_type, leave_cycle=cycle, branch=self.branch, allocated=12)
+
         self.hr_user = User.objects.create_user(
             email='hr.admin@acme.com',
             password='Password123!',
@@ -190,7 +197,7 @@ class EndToEndHRMSWorkflowTests(TestCase):
             resp = self.client.post(reverse('leave-requests-approve', kwargs={'pk': leave.id}), {
                 'reviewer_comment': 'Approved by HR'
             })
-            self.assertEqual(resp.status_code, status.HTTP_200_OK)
+            self.assertEqual(resp.status_code, status.HTTP_200_OK, resp.data)
         leave.refresh_from_db()
         self.assertEqual(leave.status, 'approved')
 
@@ -215,7 +222,7 @@ class EndToEndHRMSWorkflowTests(TestCase):
         # Step E: HR Generates Draft Payroll
         with self._auth_as(self.hr_user, permissions=['payroll.view', 'payroll.generate']):
             resp = self.client.post(f'/api/v1/payroll/periods/{period_id}/generate/')
-            self.assertEqual(resp.status_code, status.HTTP_200_OK)
+            self.assertEqual(resp.status_code, status.HTTP_200_OK, resp.data)
 
         record = PayrollRecord.objects.get(period=period, employee=self.emp1)
         self.assertEqual(record.status, PayrollRecord.STATUS_DRAFT)
@@ -238,7 +245,7 @@ class EndToEndHRMSWorkflowTests(TestCase):
         # Step F: HR Approves Payroll Period
         with self._auth_as(self.hr_user, permissions=['payroll.view', 'payroll.approve']):
             resp = self.client.post(f'/api/v1/payroll/periods/{period_id}/approve/')
-            self.assertEqual(resp.status_code, status.HTTP_200_OK)
+            self.assertEqual(resp.status_code, status.HTTP_200_OK, resp.data)
 
         period.refresh_from_db()
         record.refresh_from_db()
@@ -254,7 +261,7 @@ class EndToEndHRMSWorkflowTests(TestCase):
         # Step H: Employee views own payslip (/my/)
         with self._auth_as(self.user1):
             resp = self.client.get('/api/v1/payroll/payslips/my/')
-            self.assertEqual(resp.status_code, status.HTTP_200_OK)
+            self.assertEqual(resp.status_code, status.HTTP_200_OK, resp.data)
             self.assertEqual(len(resp.data), 1)
             self.assertEqual(resp.data[0]['payslip_number'], 'PAY-202501-EMP001')
             self.assertEqual(resp.data[0]['net_salary'], str(expected_gross))
@@ -287,7 +294,7 @@ class EndToEndHRMSWorkflowTests(TestCase):
         # Exception detector identifies MISSING_COMPENSATION
         with self._auth_as(self.hr_user, permissions=['payroll.view_reports']):
             resp = self.client.get(f'/api/v1/payroll/reports/exceptions/?period={period.id}')
-            self.assertEqual(resp.status_code, status.HTTP_200_OK)
+            self.assertEqual(resp.status_code, status.HTTP_200_OK, resp.data)
             ex_types = [e['type'] for e in resp.data['exceptions'] if e['employee_id'] == self.emp1.id]
             self.assertIn('MISSING_COMPENSATION', ex_types)
 
@@ -307,7 +314,7 @@ class EndToEndHRMSWorkflowTests(TestCase):
 
         with self._auth_as(self.hr_user, permissions=['payroll.view_reports']):
             resp = self.client.get(f'/api/v1/payroll/reports/exceptions/?period={period.id}')
-            self.assertEqual(resp.status_code, status.HTTP_200_OK)
+            self.assertEqual(resp.status_code, status.HTTP_200_OK, resp.data)
             ex_types = [e['type'] for e in resp.data['exceptions'] if e['employee_id'] == self.emp1.id]
             self.assertIn('FULL_ABSENCE', ex_types)
 
@@ -330,7 +337,7 @@ class EndToEndHRMSWorkflowTests(TestCase):
 
         with self._auth_as(self.hr_user, permissions=['payroll.view_reports']):
             resp = self.client.get(f'/api/v1/payroll/reports/exceptions/?period={period.id}')
-            self.assertEqual(resp.status_code, status.HTTP_200_OK)
+            self.assertEqual(resp.status_code, status.HTTP_200_OK, resp.data)
             ex_types = [e['type'] for e in resp.data['exceptions'] if e['employee_id'] == self.emp1.id]
             self.assertIn('PENDING_LEAVE', ex_types)
 
@@ -351,7 +358,7 @@ class EndToEndHRMSWorkflowTests(TestCase):
 
         with self._auth_as(self.hr_user, permissions=['payroll.view_reports']):
             resp = self.client.get(f'/api/v1/payroll/reports/exceptions/?period={period.id}')
-            self.assertEqual(resp.status_code, status.HTTP_200_OK)
+            self.assertEqual(resp.status_code, status.HTTP_200_OK, resp.data)
             ex_types = [e['type'] for e in resp.data['exceptions'] if e['employee_id'] == self.emp1.id]
             self.assertIn('ATTENDANCE_INCOMPLETE', ex_types)
 
@@ -388,7 +395,7 @@ class EndToEndHRMSWorkflowTests(TestCase):
 
         with self._auth_as(self.hr_user, permissions=['payroll.view_reports']):
             resp = self.client.get(f'/api/v1/payroll/reports/period-summary/?period={period.id}')
-            self.assertEqual(resp.status_code, status.HTTP_200_OK)
+            self.assertEqual(resp.status_code, status.HTTP_200_OK, resp.data)
             self.assertIsNone(resp.data['summary']['total_net_salary'])
             self.assertIsNone(resp.data['summary']['total_basic_salary'])
 

@@ -230,7 +230,7 @@ class AuditCoverageTests(TestCase):
         make_office_network(self.branch)
 
         self.admin = User.objects.create_superuser(email='admin3@co.com', password='Admin3Pass!')
-        admin_emp = Employee.objects.create(user=self.admin, employee_code='ADM003', personal_email='admin3.personal@ext.com', organization=self.org, branch=self.branch)
+        self.admin_emp = Employee.objects.create(user=self.admin, employee_code='ADM003', personal_email='admin3.personal@ext.com', organization=self.org, branch=self.branch)
 
         # Second user for WFH approve (can't approve own request)
         self.approver = User.objects.create_superuser(email='approver@co.com', password='Approver123!')
@@ -398,9 +398,13 @@ class AuditCoverageTests(TestCase):
         lt = LeaveType.objects.create(
             organization=self.org,
             name='Annual',
-            annual_allocation=20,
             is_active=True
         )
+        from apps.leaves.models import BranchLeavePolicy, LeaveCycle, LeaveBalance
+        from datetime import date
+        cycle = LeaveCycle.objects.create(branch=self.branch, name='C1', start_date=date(2026,1,1), end_date=date(2026,12,31), is_active=True)
+        BranchLeavePolicy.objects.create(branch=self.branch, leave_type=lt, monthly_allocation=1.5, cancellation_allowed=True)
+        LeaveBalance.objects.create(employee=self.admin_emp, leave_type=lt, leave_cycle=cycle, branch=self.branch, allocated=20)
         today = datetime.date.today()
 
         def ds(delta):

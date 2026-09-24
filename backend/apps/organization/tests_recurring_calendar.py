@@ -131,7 +131,7 @@ class RecurringWorkingCalendarTests(TestCase):
 
         # Leave Type
         self.leave_type = LeaveType.objects.create(
-            organization=self.org_a, name='Annual Leave', annual_allocation=20, is_active=True
+            organization=self.org_a, name='Annual Leave', is_active=True
         )
 
     # -------------------------------------------------------------------------

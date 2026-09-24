@@ -193,7 +193,7 @@ class EmployeeLifecycleComprehensiveTests(TestCase):
 
     # 8. Transfer preserves leave
     def test_transfer_preserves_leave(self, mock_net):
-        lt = LeaveType.objects.create(organization=self.org, name='Vacation', annual_allocation=20)
+        lt = LeaveType.objects.create(organization=self.org, name='Vacation')
         lr = LeaveRequest.objects.create(
             employee=self.employee, leave_type=lt, start_date=date(2026, 5, 1),
             end_date=date(2026, 5, 2), status='approved', reason='Trip'
@@ -360,7 +360,14 @@ class EmployeeLifecycleComprehensiveTests(TestCase):
 
     # 16. EXITED employee cannot create inappropriate future leave
     def test_exited_employee_cannot_create_future_leave(self, mock_net):
-        lt = LeaveType.objects.create(organization=self.org, name='Annual', annual_allocation=20)
+        lt = LeaveType.objects.create(organization=self.org, name='Annual')
+
+        from apps.leaves.models import BranchLeavePolicy, LeaveCycle, LeaveBalance
+        from datetime import date
+        cycle = LeaveCycle.objects.create(branch=self.branch1, name='C1', start_date=date(2026,1,1), end_date=date(2026,12,31), is_active=True)
+        BranchLeavePolicy.objects.create(branch=self.branch1, leave_type=lt, monthly_allocation=1.5, cancellation_allowed=True)
+        LeaveBalance.objects.create(employee=self.employee, leave_type=lt, leave_cycle=cycle, branch=self.branch1, allocated=20)
+
         self.employee.employment_status = EmploymentStatus.EXITED
         self.employee.save()
 

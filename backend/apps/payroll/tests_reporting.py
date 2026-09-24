@@ -219,7 +219,7 @@ class PayrollReportingTests(TestCase):
         self.assertTrue(len(absent_ex) > 0)
 
     def test_pending_leave_detection(self):
-        lt = LeaveType.objects.create(organization=self.org1, name='Casual', annual_allocation=12)
+        lt = LeaveType.objects.create(organization=self.org1, name='Casual')
         LeaveRequest.objects.create(
             employee=self.emp1, leave_type=lt,
             start_date=date(2025, 1, 10), end_date=date(2025, 1, 12),

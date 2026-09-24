@@ -91,7 +91,7 @@ class WorkingDaysTest(TestCase):
 
         user = User.objects.create_user(email='wd_emp@org.com', password='Pass123!', status='active')
         emp = Employee.objects.create(user=user, employee_code='WDE01', organization=self.org, branch=self.branch)
-        leave_type = LeaveType.objects.create(organization=self.org, name='Paid Leave', annual_allocation=20)
+        leave_type = LeaveType.objects.create(organization=self.org, name='Paid Leave')
 
         # Leave from 2024-09-02 (Mon) to 2024-09-08 (Sun)
         lr = LeaveRequest.objects.create(
@@ -223,7 +223,7 @@ class ApprovedLeaveInPayrollTest(TestCase):
             employment_status=EmploymentStatus.ACTIVE,
         )
         self.leave_type = LeaveType.objects.create(
-            organization=self.org, name='Annual', annual_allocation=20
+            organization=self.org, name='Annual'
         )
 
     def test_approved_leave_counted_in_period(self):
@@ -906,7 +906,6 @@ class PayrollCalculationSemanticsRegressionTests(TestCase):
         self.leave_type = LeaveType.objects.create(
             organization=self.org,
             name='Earned Leave',
-            annual_allocation=15,
         )
         # List of the 22 scheduled working dates in Jan 2025
         self.working_dates = [
