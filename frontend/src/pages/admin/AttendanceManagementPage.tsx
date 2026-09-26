@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import { usePagination } from '../../hooks/usePagination';
 import { Card } from '../../components/Card';
 import { Table } from '../../components/Table';
 import { StatusBadge } from '../../components/StatusBadge';
@@ -51,6 +52,25 @@ export const AttendanceManagementPage: React.FC = () => {
   const [teams, setTeams] = useState<Team[]>([]);
   const [teamsLoading, setTeamsLoading] = useState(false);
 
+  // Pagination state with URL synchronization
+  const {
+    page,
+    pageSize,
+    totalCount,
+    setTotalCount,
+    handlePageChange,
+    resetPage,
+  } = usePagination({ defaultPageSize: 20 });
+
+  // Reset page to 1 if branch changes
+  const prevBranchIdRef = useRef(branchId);
+  useEffect(() => {
+    if (prevBranchIdRef.current !== branchId) {
+      prevBranchIdRef.current = branchId;
+      resetPage();
+    }
+  }, [branchId, resetPage]);
+
   // Request cancellation ref
   const abortControllerRef = useRef<AbortController | null>(null);
 
@@ -94,7 +114,11 @@ export const AttendanceManagementPage: React.FC = () => {
       setLoading(true);
       setError(null);
 
-      const params: ManagementAttendanceParams = {};
+      const params: ManagementAttendanceParams = {
+        paginate: true,
+        page,
+        page_size: pageSize,
+      };
 
       // Only pass branch_id when a specific branch is selected; omit for All Locations
       if (branchId !== null && branchId !== undefined) {
@@ -113,7 +137,16 @@ export const AttendanceManagementPage: React.FC = () => {
 
       const data = await attendanceService.getManagementHistory(params, { signal: controller.signal });
       if (abortControllerRef.current === controller) {
-        setHistory(Array.isArray(data) ? data : []);
+        if (Array.isArray(data)) {
+          setHistory(data);
+          setTotalCount(data.length);
+        } else if (data && Array.isArray(data.results)) {
+          setHistory(data.results);
+          setTotalCount(data.count);
+        } else {
+          setHistory([]);
+          setTotalCount(0);
+        }
       }
     } catch (err: any) {
       if (err.name === 'AbortError') {
@@ -130,13 +163,14 @@ export const AttendanceManagementPage: React.FC = () => {
           setError('Failed to load attendance history. Please try again.');
         }
         setHistory([]);
+        setTotalCount(0);
       }
     } finally {
       if (abortControllerRef.current === controller) {
         setLoading(false);
       }
     }
-  }, [hasPermission, branchId, teamFilter, dateFilter]);
+  }, [hasPermission, branchId, teamFilter, dateFilter, page, pageSize, setTotalCount]);
 
   // Refetch whenever branchId, teamFilter, or dateFilter changes
   useEffect(() => {
@@ -314,7 +348,10 @@ export const AttendanceManagementPage: React.FC = () => {
               style={{ paddingLeft: '34px' }}
               placeholder="Search by name or code…"
               value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
+              onChange={(e) => {
+                setSearchQuery(e.target.value);
+                resetPage();
+              }}
               aria-label="Search employees"
             />
           </div>
@@ -326,7 +363,10 @@ export const AttendanceManagementPage: React.FC = () => {
               type="date"
               className="input-field"
               value={dateFilter}
-              onChange={(e) => setDateFilter(e.target.value)}
+              onChange={(e) => {
+                setDateFilter(e.target.value);
+                resetPage();
+              }}
               aria-label="Filter by date"
             />
           </div>
@@ -337,7 +377,10 @@ export const AttendanceManagementPage: React.FC = () => {
             <select
               className="input-field"
               value={teamFilter}
-              onChange={(e) => setTeamFilter(e.target.value)}
+              onChange={(e) => {
+                setTeamFilter(e.target.value);
+                resetPage();
+              }}
               aria-label="Filter by team"
               disabled={teamsLoading}
             >
@@ -355,7 +398,10 @@ export const AttendanceManagementPage: React.FC = () => {
             <select
               className="input-field"
               value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
+              onChange={(e) => {
+                setStatusFilter(e.target.value);
+                resetPage();
+              }}
               aria-label="Filter by status"
             >
               <option value="all">All Statuses</option>
@@ -368,7 +414,10 @@ export const AttendanceManagementPage: React.FC = () => {
           {dateFilter && (
             <button
               className="btn btn-secondary btn-sm"
-              onClick={() => setDateFilter('')}
+              onClick={() => {
+                setDateFilter('');
+                resetPage();
+              }}
               type="button"
             >
               Clear Date
@@ -376,7 +425,7 @@ export const AttendanceManagementPage: React.FC = () => {
           )}
         </div>
 
-        {loading ? (
+        {loading && history.length === 0 ? (
           <div className="loading-center" style={{ padding: 'var(--spacing-2xl)' }}>
             <Loader2 size={28} className="animate-spin" style={{ color: 'var(--color-primary)' }} />
             <span style={{ marginTop: '8px' }}>Loading attendance records…</span>
@@ -393,6 +442,12 @@ export const AttendanceManagementPage: React.FC = () => {
                 ? `No attendance records found for ${dateFilter}.`
                 : 'No attendance records match the current filters.'
             }
+            pagination
+            count={totalCount}
+            page={page}
+            pageSize={pageSize}
+            onPageChange={handlePageChange}
+            loading={loading}
           />
         )}
       </Card>

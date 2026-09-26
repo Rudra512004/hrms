@@ -35,6 +35,11 @@ export interface ManagementAttendanceParams {
   branch_id?: number | string | null;
   team_id?: number | string | null;
   date?: string | null;
+  paginate?: boolean;
+  page?: number;
+  page_size?: number;
+  search?: string;
+  status?: string;
 }
 
 export interface Holiday {

@@ -1,9 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Card } from '../../components/Card';
 import { Table } from '../../components/Table';
-
 import { ShieldAlert, Search, Loader2 } from 'lucide-react';
 import { auditService, type AuditLog } from '../../services/audit';
+import { usePagination } from '../../hooks/usePagination';
 
 const styles = {
   header: {
@@ -63,17 +63,48 @@ export const AuditLogsPage: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    loadLogs();
-  }, []);
+  const {
+    page,
+    pageSize,
+    totalCount,
+    setTotalCount,
+    handlePageChange,
+    resetPage,
+  } = usePagination({ defaultPageSize: 20 });
 
-  const loadLogs = async () => {
+  const abortControllerRef = useRef<AbortController | null>(null);
+
+  const loadLogs = useCallback(async () => {
+    abortControllerRef.current?.abort();
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+
     try {
       setLoading(true);
       setError(null);
-      const data = await auditService.getLogs();
-      setLogs(data);
+      const data = await auditService.getLogs(
+        {
+          paginate: true,
+          page,
+          page_size: pageSize,
+        },
+        { signal: controller.signal }
+      );
+
+      if (abortControllerRef.current === controller) {
+        if (Array.isArray(data)) {
+          setLogs(data);
+          setTotalCount(data.length);
+        } else if (data && Array.isArray(data.results)) {
+          setLogs(data.results);
+          setTotalCount(data.count);
+        } else {
+          setLogs([]);
+          setTotalCount(0);
+        }
+      }
     } catch (err: any) {
+      if (err.name === 'AbortError') return;
       if (err.message && err.message.includes('403')) {
         setError('403 / Access Denied. You do not have permission to view audit logs.');
       } else if (err.message && err.message.includes('401')) {
@@ -82,8 +113,22 @@ export const AuditLogsPage: React.FC = () => {
         setError('A server error occurred while fetching audit logs.');
       }
     } finally {
-      setLoading(false);
+      if (abortControllerRef.current === controller) {
+        setLoading(false);
+      }
     }
+  }, [page, pageSize, setTotalCount]);
+
+  useEffect(() => {
+    loadLogs();
+    return () => {
+      abortControllerRef.current?.abort();
+    };
+  }, [loadLogs]);
+
+  const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setSearchTerm(e.target.value);
+    resetPage();
   };
 
   const filteredLogs = logs.filter(log => {
@@ -144,7 +189,7 @@ export const AuditLogsPage: React.FC = () => {
             className="input-neumorphic"
             style={styles.searchInput}
             value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
+            onChange={handleSearchChange}
           />
         </div>
       </div>
@@ -159,7 +204,7 @@ export const AuditLogsPage: React.FC = () => {
             </div>
           </div>
         </Card>
-      ) : loading ? (
+      ) : loading && logs.length === 0 ? (
         <Card>
           <div style={{ padding: 'var(--spacing-xl)', display: 'flex', justifyContent: 'center' }}>
             <Loader2 size={32} style={{ animation: 'spin 1s linear infinite', color: 'var(--color-primary)' }} />
@@ -173,7 +218,17 @@ export const AuditLogsPage: React.FC = () => {
         </Card>
       ) : (
         <Card>
-          <Table data={filteredLogs} columns={columns} keyExtractor={(log) => log.id.toString()} />
+          <Table
+            data={filteredLogs}
+            columns={columns}
+            keyExtractor={(log) => log.id.toString()}
+            pagination={true}
+            page={page}
+            pageSize={pageSize}
+            count={totalCount}
+            onPageChange={handlePageChange}
+            loading={loading}
+          />
         </Card>
       )}
     </div>

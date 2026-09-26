@@ -1,5 +1,6 @@
 from rest_framework import viewsets, mixins
 from rest_framework.permissions import IsAuthenticated
+from apps.common.pagination import StandardResultsSetPagination
 from .models import AuditLog
 from .serializers import AuditLogSerializer
 from apps.authorization.permissions import IsNetworkAllowed, require_permission
@@ -7,6 +8,7 @@ from apps.authorization.services import AuthorizationService
 
 class AuditLogViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = AuditLogSerializer
+    pagination_class = StandardResultsSetPagination
     queryset = AuditLog.objects.all()
 
     def get_permissions(self):

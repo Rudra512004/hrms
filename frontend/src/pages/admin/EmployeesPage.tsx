@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { usePagination } from '../../hooks/usePagination';
 import { employeeManagementService, type ListEmployeesParams } from '../../services/employeeManagement';
 import { type EmployeeProfile } from '../../services/employee';
 import {
@@ -171,6 +172,25 @@ export const EmployeesPage: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [departmentFilter, setDepartmentFilter] = useState('all');
 
+  // Pagination state with URL synchronization
+  const {
+    page,
+    pageSize,
+    totalCount,
+    setTotalCount,
+    handlePageChange,
+    resetPage,
+  } = usePagination({ defaultPageSize: 20 });
+
+  // Reset page to 1 if branch changes
+  const prevBranchIdRef = useRef(branchId);
+  useEffect(() => {
+    if (prevBranchIdRef.current !== branchId) {
+      prevBranchIdRef.current = branchId;
+      resetPage();
+    }
+  }, [branchId, resetPage]);
+
   // Form State
   const [formData, setFormData] = useState({
     email: '',
@@ -208,7 +228,11 @@ export const EmployeesPage: React.FC = () => {
 
     setLoading(true);
     try {
-      const params: ListEmployeesParams = {};
+      const params: ListEmployeesParams = {
+        paginate: true,
+        page,
+        page_size: pageSize,
+      };
       if (branchId !== null && branchId !== undefined) {
         params.branch_id = branchId;
       }
@@ -221,7 +245,16 @@ export const EmployeesPage: React.FC = () => {
 
       const data = await employeeManagementService.listEmployees(params, { signal: controller.signal });
       if (employeeAbortRef.current === controller) {
-        setEmployees(data || []);
+        if (Array.isArray(data)) {
+          setEmployees(data);
+          setTotalCount(data.length);
+        } else if (data && Array.isArray(data.results)) {
+          setEmployees(data.results);
+          setTotalCount(data.count);
+        } else {
+          setEmployees([]);
+          setTotalCount(0);
+        }
         setError(null);
       }
     } catch (err: any) {
@@ -238,7 +271,7 @@ export const EmployeesPage: React.FC = () => {
         setLoading(false);
       }
     }
-  }, [branchId, searchQuery, statusFilter]);
+  }, [branchId, searchQuery, statusFilter, page, pageSize, setTotalCount]);
 
   useEffect(() => {
     loadEmployees();
@@ -747,14 +780,20 @@ export const EmployeesPage: React.FC = () => {
               style={{...styles.input, paddingLeft: '38px'}} 
               placeholder="Search by name, code, or email..." 
               value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
+              onChange={(e) => {
+                setSearchQuery(e.target.value);
+                resetPage();
+              }}
               data-testid="search-input"
             />
           </div>
           <select
             style={{...styles.input, width: '200px'}}
             value={departmentFilter}
-            onChange={(e) => setDepartmentFilter(e.target.value)}
+            onChange={(e) => {
+              setDepartmentFilter(e.target.value);
+              resetPage();
+            }}
             data-testid="department-filter"
           >
             <option value="all">All Departments</option>
@@ -765,7 +804,10 @@ export const EmployeesPage: React.FC = () => {
           <select
             style={{...styles.input, width: '200px'}}
             value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
+            onChange={(e) => {
+              setStatusFilter(e.target.value);
+              resetPage();
+            }}
             data-testid="status-filter"
           >
             <option value="all">All Statuses</option>
@@ -776,7 +818,17 @@ export const EmployeesPage: React.FC = () => {
           </select>
         </div>
         <div style={{ overflowX: 'auto' }}>
-          <Table data={filteredEmployees} columns={columns} keyExtractor={(e) => e.id} />
+          <Table
+            data={filteredEmployees}
+            columns={columns}
+            keyExtractor={(e) => e.id}
+            pagination
+            count={totalCount}
+            page={page}
+            pageSize={pageSize}
+            onPageChange={handlePageChange}
+            loading={loading}
+          />
         </div>
       </Card>
 

@@ -1,4 +1,5 @@
 import { type EmployeeProfile } from './employee';
+import type { PaginatedResponse } from '../types/pagination';
 
 export interface ProvisionEmployeeData {
   email: string;
@@ -106,6 +107,9 @@ export interface ListEmployeesParams {
   branch_id?: number | string;
   search?: string;
   status?: string;
+  paginate?: boolean;
+  page?: number;
+  page_size?: number;
 }
 
 export class ApiError extends Error {
@@ -146,20 +150,29 @@ const handleResponse = async <T>(response: Response): Promise<T> => {
 };
 
 export const employeeManagementService = {
-  listEmployees: async (
+  listEmployees: (async (
     params?: ListEmployeesParams,
     options?: { signal?: AbortSignal }
-  ): Promise<EmployeeProfile[]> => {
+  ): Promise<any> => {
     let url = '/api/v1/employees/management/';
     if (params) {
       const query = new URLSearchParams();
-      if (params.branch_id !== undefined && params.branch_id !== null && params.branch_id !== '') {
+      if (params.paginate) {
+        query.set('paginate', 'true');
+      }
+      if (params.page !== undefined && params.page !== null) {
+        query.set('page', String(params.page));
+      }
+      if (params.page_size !== undefined && params.page_size !== null) {
+        query.set('page_size', String(params.page_size));
+      }
+      if (params.branch_id !== undefined && params.branch_id !== null && params.branch_id !== '' && params.branch_id !== 'all') {
         query.set('branch_id', String(params.branch_id));
       }
       if (params.search) {
         query.set('search', params.search);
       }
-      if (params.status) {
+      if (params.status && params.status !== 'all') {
         query.set('status', params.status);
       }
       const qs = query.toString();
@@ -171,7 +184,11 @@ export const employeeManagementService = {
       signal: options?.signal,
     });
 
-    return handleResponse<EmployeeProfile[]>(response);
+    return handleResponse<any>(response);
+  }) as {
+    (params: ListEmployeesParams & { paginate: true }, options?: { signal?: AbortSignal }): Promise<PaginatedResponse<EmployeeProfile>>;
+    (params?: ListEmployeesParams & { paginate?: false }, options?: { signal?: AbortSignal }): Promise<EmployeeProfile[]>;
+    (params?: ListEmployeesParams, options?: { signal?: AbortSignal }): Promise<PaginatedResponse<EmployeeProfile> | EmployeeProfile[]>;
   },
 
   getEmployee: async (id: number): Promise<EmployeeProfile> => {

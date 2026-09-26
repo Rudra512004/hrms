@@ -1,10 +1,12 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { usePagination } from '../../hooks/usePagination';
 import { Card } from '../../components/Card';
 import { Table } from '../../components/Table';
 import { StatusBadge } from '../../components/StatusBadge';
-import { leaveService, type LeaveRequest } from '../../services/leaves';
+import { leaveService, type LeaveRequest, type ListLeaveRequestsParams } from '../../services/leaves';
 import { AlertCircle, FileCheck2, Loader2, Check, X } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
+import { useBranchContext } from '../../contexts/BranchContext';
 
 const styles = {
   container: {
@@ -87,10 +89,37 @@ const styles = {
 };
 
 export function AdminLeavePage() {
+  const { user, hasPermission } = useAuth();
+  const { branchId } = useBranchContext();
+
   const [requests, setRequests] = useState<LeaveRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isDenied, setIsDenied] = useState(false);
+
+  // Filter state
+  const [statusFilter, setStatusFilter] = useState('all');
+
+  // Pagination state with URL synchronization
+  const {
+    page,
+    pageSize,
+    totalCount,
+    setTotalCount,
+    handlePageChange,
+    resetPage,
+  } = usePagination({ defaultPageSize: 20 });
+
+  // Reset page to 1 if branch changes
+  const prevBranchIdRef = useRef(branchId);
+  useEffect(() => {
+    if (prevBranchIdRef.current !== branchId) {
+      prevBranchIdRef.current = branchId;
+      resetPage();
+    }
+  }, [branchId, resetPage]);
+
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   // Review Modal State
   const [reviewModal, setReviewModal] = useState<{ isOpen: boolean; request: LeaveRequest | null; action: 'approve' | 'reject' | null }>({
@@ -101,29 +130,69 @@ export function AdminLeavePage() {
   const [reviewComment, setReviewComment] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const { user, hasPermission } = useAuth();
+  const loadRequests = useCallback(async () => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
 
-  const loadRequests = async () => {
     try {
       setLoading(true);
       setError(null);
       setIsDenied(false);
-      const data = await leaveService.getRequests();
-      setRequests(data);
+
+      const params: ListLeaveRequestsParams = {
+        paginate: true,
+        page,
+        page_size: pageSize,
+      };
+      if (branchId !== null && branchId !== undefined) {
+        params.branch_id = branchId;
+      }
+      if (statusFilter !== 'all') {
+        params.status = statusFilter;
+      }
+
+      const data = await leaveService.getRequests(params, { signal: controller.signal });
+      if (abortControllerRef.current === controller) {
+        if (Array.isArray(data)) {
+          setRequests(data);
+          setTotalCount(data.length);
+        } else if (data && Array.isArray(data.results)) {
+          setRequests(data.results);
+          setTotalCount(data.count);
+        } else {
+          setRequests([]);
+          setTotalCount(0);
+        }
+      }
     } catch (err: any) {
-      if (err.response?.status === 403) {
-        setIsDenied(true);
-      } else {
-        setError("Failed to load leave requests.");
+      if (err.name === 'AbortError') {
+        return;
+      }
+      if (abortControllerRef.current === controller) {
+        if (err.response?.status === 403 || err.status === 403) {
+          setIsDenied(true);
+        } else {
+          setError("Failed to load leave requests.");
+        }
+        setRequests([]);
+        setTotalCount(0);
       }
     } finally {
-      setLoading(false);
+      if (abortControllerRef.current === controller) {
+        setLoading(false);
+      }
     }
-  };
+  }, [branchId, statusFilter, page, pageSize, setTotalCount]);
 
   useEffect(() => {
     loadRequests();
-  }, []);
+    return () => {
+      abortControllerRef.current?.abort();
+    };
+  }, [loadRequests]);
 
   const openReviewModal = (request: LeaveRequest, action: 'approve' | 'reject') => {
     setReviewModal({ isOpen: true, request, action });
@@ -231,14 +300,58 @@ export function AdminLeavePage() {
 
       <Card>
         <div style={{ padding: 'var(--spacing-lg)' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--spacing-sm)', marginBottom: 'var(--spacing-lg)' }}>
-            <FileCheck2 size={20} style={{ color: 'var(--color-primary)' }} />
-            <h2 style={{ fontSize: '18px', fontWeight: 600, color: 'var(--color-text-main)' }}>All Leave Requests</h2>
+          <div
+            style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              marginBottom: 'var(--spacing-lg)',
+              flexWrap: 'wrap',
+              gap: '12px',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--spacing-sm)' }}>
+              <FileCheck2 size={20} style={{ color: 'var(--color-primary)' }} />
+              <h2 style={{ fontSize: '18px', fontWeight: 600, color: 'var(--color-text-main)', margin: 0 }}>
+                All Leave Requests
+              </h2>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <select
+                style={{
+                  padding: '6px 12px',
+                  borderRadius: 'var(--radius-md, 4px)',
+                  border: '1px solid var(--color-border)',
+                  backgroundColor: 'var(--color-bg-body)',
+                  color: 'var(--color-text-main)',
+                  fontSize: '14px',
+                }}
+                value={statusFilter}
+                onChange={(e) => {
+                  setStatusFilter(e.target.value);
+                  resetPage();
+                }}
+                aria-label="Filter by status"
+                data-testid="leave-status-filter"
+              >
+                <option value="all">All Statuses</option>
+                <option value="pending">Pending</option>
+                <option value="approved">Approved</option>
+                <option value="rejected">Rejected</option>
+                <option value="cancelled">Cancelled</option>
+              </select>
+            </div>
           </div>
           <Table
             columns={columns}
             data={requests}
             keyExtractor={(r) => r.id.toString()}
+            pagination
+            count={totalCount}
+            page={page}
+            pageSize={pageSize}
+            onPageChange={handlePageChange}
+            loading={loading}
           />
         </div>
       </Card>
