@@ -135,8 +135,19 @@ def _is_employee_authorized(emp_id, org, authorized_branches):
         branch_ids = [getattr(b, 'id', b) for b in authorized_branches]
     return Employee.objects.filter(id=emp_id, organization=org, branch_id__in=branch_ids).exists()
 
+from django_filters.rest_framework import DjangoFilterBackend
+from rest_framework.filters import SearchFilter, OrderingFilter
+from apps.common.pagination import StandardResultsSetPagination
+from .filters import LeaveRequestFilter
+
 class LeaveRequestViewSet(viewsets.ModelViewSet):
     serializer_class = LeaveRequestSerializer
+    pagination_class = StandardResultsSetPagination
+    filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
+    filterset_class = LeaveRequestFilter
+    search_fields = ['employee__user__first_name', 'employee__user__last_name', 'employee__employee_code', 'reason']
+    ordering_fields = ['created_at', 'start_date', 'status']
+    ordering = ['-created_at', 'id']
 
     def get_queryset(self):
         user = self.request.user
@@ -172,7 +183,8 @@ class LeaveRequestViewSet(viewsets.ModelViewSet):
                         raise PermissionDenied("You do not have permission to access leaves for this employee.")
 
                 from django.db.models import Q
-                qs = LeaveRequest.objects.filter(
+                base_qs = LeaveRequest.objects.select_related('employee', 'employee__user', 'leave_type', 'reviewed_by')
+                qs = base_qs.filter(
                     Q(employee=caller_emp) | Q(employee__organization=caller_org, employee__branch__in=authorized_branches)
                 )
                 if branch_id:
@@ -189,7 +201,8 @@ class LeaveRequestViewSet(viewsets.ModelViewSet):
                     if str(emp_id) != str(caller_emp.id):
                         raise PermissionDenied("You do not have permission to access leaves for another employee.")
 
-                qs = LeaveRequest.objects.filter(employee=caller_emp)
+                base_qs = LeaveRequest.objects.select_related('employee', 'employee__user', 'leave_type', 'reviewed_by')
+                qs = base_qs.filter(employee=caller_emp)
                 if branch_id:
                     qs = qs.filter(employee__branch_id=branch_id)
                 return qs
@@ -204,7 +217,8 @@ class LeaveRequestViewSet(viewsets.ModelViewSet):
             except (Organization.DoesNotExist, ValueError):
                 raise PermissionDenied("Specified organization does not exist.")
 
-            qs = LeaveRequest.objects.filter(employee__organization=target_org)
+            base_qs = LeaveRequest.objects.select_related('employee', 'employee__user', 'leave_type', 'reviewed_by')
+            qs = base_qs.filter(employee__organization=target_org)
 
             if branch_id:
                 if not Branch.objects.filter(id=branch_id, organization=target_org).exists():

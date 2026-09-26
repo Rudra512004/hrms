@@ -275,8 +275,18 @@ class AttendanceViewSet(viewsets.GenericViewSet):
         serializer = self.get_serializer(attendance)
         return Response(serializer.data, status=status.HTTP_200_OK)
 
+from django_filters.rest_framework import DjangoFilterBackend
+from rest_framework.filters import SearchFilter, OrderingFilter
+from apps.common.pagination import StandardResultsSetPagination
+from .filters import AttendanceFilter, HolidayFilter
+
 class AttendanceManagementViewSet(viewsets.GenericViewSet):
     serializer_class = AttendanceSerializer
+    pagination_class = StandardResultsSetPagination
+    filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
+    filterset_class = AttendanceFilter
+    ordering_fields = ['date', 'check_in']
+    ordering = ['-date', '-check_in']
 
     def get_permissions(self):
         return [IsAuthenticated(), IsNetworkAllowed(), require_permission('attendance.view_all')()]
@@ -319,6 +329,12 @@ class AttendanceManagementViewSet(viewsets.GenericViewSet):
 
 class HolidayViewSet(viewsets.ModelViewSet):
     serializer_class = HolidaySerializer
+    pagination_class = StandardResultsSetPagination
+    filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
+    filterset_class = HolidayFilter
+    search_fields = ['name']
+    ordering_fields = ['date']
+    ordering = ['date']
 
     def get_queryset(self):
         user = self.request.user

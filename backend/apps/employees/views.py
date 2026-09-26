@@ -95,8 +95,19 @@ class ProvisionEmployeeView(APIView):
 
         return Response(response_data, status=status.HTTP_201_CREATED)
 
+from django_filters.rest_framework import DjangoFilterBackend
+from rest_framework.filters import SearchFilter, OrderingFilter
+from apps.common.pagination import StandardResultsSetPagination
+from .filters import EmployeeFilter
+
 class EmployeeManagementViewSet(viewsets.ModelViewSet):
     http_method_names = ['get', 'post', 'put', 'patch', 'head', 'options']
+    pagination_class = StandardResultsSetPagination
+    filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
+    filterset_class = EmployeeFilter
+    search_fields = ['^employee_code', 'user__first_name', 'user__last_name', 'user__email']
+    ordering_fields = ['created_at', 'employee_code', 'joining_date']
+    ordering = ['-created_at', 'id']
 
     def get_serializer_class(self):
         if self.action == 'create':
@@ -121,9 +132,13 @@ class EmployeeManagementViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         user = self.request.user
-        qs = Employee.objects.all()
+        qs = Employee.objects.all().select_related('user', 'branch', 'department', 'team', 'designation')
+
+        # Superuser organization leakage fix based on audit report
         if user.is_superuser:
-            pass
+            org_id = self.request.query_params.get('organization_id')
+            if org_id:
+                qs = qs.filter(organization_id=org_id)
         elif hasattr(user, 'employee'):
             from django.db.models import Q
             authorized_branches = AuthorizationService.get_authorized_branches(user, 'employee.view')
@@ -138,10 +153,6 @@ class EmployeeManagementViewSet(viewsets.ModelViewSet):
                 qs = qs.filter(Q(branch__in=authorized_branches) | Q(team__in=authorized_teams))
         else:
             return Employee.objects.none()
-
-        branch_id = self.request.query_params.get('branch_id')
-        if branch_id:
-            qs = qs.filter(branch_id=branch_id)
 
         return qs
 
