@@ -2,6 +2,7 @@ from rest_framework import viewsets, status, permissions
 from apps.audit.services import AuditService
 from rest_framework.decorators import action
 from rest_framework.response import Response
+from rest_framework.views import APIView
 from rest_framework.permissions import IsAuthenticated
 from django.utils import timezone
 from django.db import transaction
@@ -507,3 +508,245 @@ class LeaveRequestViewSet(viewsets.ModelViewSet):
             request=request
         )
         return Response(LeaveRequestSerializer(leave).data)
+
+
+class EmployeeCalendarView(APIView):
+    """
+    Read-only employee calendar endpoint.
+
+    Aggregates data from:
+    - WorkingCalendarService (working-day evaluation per branch)
+    - Holiday model (branch-linked active holidays)
+    - LeaveRequest (approved leaves only)
+
+    GET /api/v1/leaves/calendar/?start_date=YYYY-MM-DD&end_date=YYYY-MM-DD[&employee_id=<id>]
+
+    Authorization:
+    - Authenticated employees can view their own calendar (default).
+    - Users with 'leave.view' permission can view calendars for employees
+      within their authorized branch scope.
+    - Superusers can view any employee's calendar.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        from datetime import date, timedelta
+        from apps.employees.models import Employee
+        from apps.attendance.models import Holiday
+        from apps.organization.services import WorkingCalendarService
+
+        # ── Date validation ──────────────────────────────────────────
+        start_date_str = request.query_params.get('start_date')
+        end_date_str = request.query_params.get('end_date')
+
+        if not start_date_str:
+            return Response(
+                {"detail": "start_date is required."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        if not end_date_str:
+            return Response(
+                {"detail": "end_date is required."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        try:
+            start_date = date.fromisoformat(start_date_str)
+        except (ValueError, TypeError):
+            return Response(
+                {"detail": "start_date must be a valid date in YYYY-MM-DD format."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        try:
+            end_date = date.fromisoformat(end_date_str)
+        except (ValueError, TypeError):
+            return Response(
+                {"detail": "end_date must be a valid date in YYYY-MM-DD format."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        if end_date < start_date:
+            return Response(
+                {"detail": "end_date cannot be before start_date."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        if (end_date - start_date).days > 60:
+            return Response(
+                {"detail": "Date range cannot exceed 60 days."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # ── Employee resolution & authorization ──────────────────────
+        user = request.user
+        caller_emp = getattr(user, 'employee', None)
+        employee_id_param = request.query_params.get('employee_id')
+
+        if employee_id_param:
+            # Requesting another employee's calendar
+            try:
+                target_employee = Employee.objects.select_related(
+                    'branch', 'organization'
+                ).get(id=employee_id_param)
+            except (Employee.DoesNotExist, ValueError, TypeError):
+                return Response(
+                    {"detail": "Employee not found."},
+                    status=status.HTTP_404_NOT_FOUND
+                )
+
+            if not caller_emp:
+                return Response(
+                    {"detail": "You must have an employee profile to establish an organization context."},
+                    status=status.HTTP_403_FORBIDDEN
+                )
+
+            if target_employee.organization_id != caller_emp.organization_id:
+                return Response(
+                    {"detail": "Cross-organization access is denied."},
+                    status=status.HTTP_403_FORBIDDEN
+                )
+
+            # Within the same organization, evaluate RBAC
+            if target_employee.id != caller_emp.id:
+                if not user.is_superuser:
+                    if not AuthorizationService.has_permission(user, 'leave.view'):
+                        return Response(
+                            {"detail": "You do not have permission to view this employee's calendar."},
+                            status=status.HTTP_403_FORBIDDEN
+                        )
+
+                    authorized_branches = AuthorizationService.get_authorized_branches(user, 'leave.view')
+                    if target_employee.branch_id and not authorized_branches.filter(id=target_employee.branch_id).exists():
+                        return Response(
+                            {"detail": "You do not have permission to view this employee's calendar."},
+                            status=status.HTTP_403_FORBIDDEN
+                        )
+
+            employee = target_employee
+        else:
+            # Default: own calendar
+            if not caller_emp:
+                return Response(
+                    {"detail": "Employee profile not found."},
+                    status=status.HTTP_404_NOT_FOUND
+                )
+            employee = caller_emp
+
+        # ── Branch validation ────────────────────────────────────────
+        branch = employee.branch
+        if not branch:
+            return Response(
+                {"detail": "Employee is not assigned to a branch."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # ── Pre-fetch Calendar Rules (O(1) Evaluation) ───────────────
+        try:
+            from apps.organization.models import WorkingCalendar
+            wc = WorkingCalendar.objects.prefetch_related('recurring_rules').get(branch=branch)
+            base_work_days = set(wc.get_work_days_list())
+            recurring_rules = wc.get_recurring_rules_dict()
+        except Exception:
+            base_work_days = set()
+            recurring_rules = {}
+
+        # ── Batch-fetch holidays in range ────────────────────────────
+        holidays_in_range = {
+            h.date: h
+            for h in Holiday.objects.filter(
+                branch=branch,
+                date__range=[start_date, end_date],
+                is_active=True
+            )
+        }
+
+        # ── Batch-fetch approved leaves overlapping range ────────────
+        approved_leaves = LeaveRequest.objects.filter(
+            employee=employee,
+            status='approved',
+            start_date__lte=end_date,
+            end_date__gte=start_date,
+        ).select_related('leave_type')
+
+        # Build a date -> leave lookup for O(1) per-day access
+        leave_date_map = {}
+        for leave in approved_leaves:
+            # Precompute duration_days in memory to avoid N+1 property accesses
+            working_day_count = 0
+            curr = leave.start_date
+            while curr <= leave.end_date:
+                if curr not in holidays_in_range:
+                    weekday = curr.weekday()
+                    occurrence = (curr.day - 1) // 7 + 1
+                    if (weekday, occurrence) in recurring_rules:
+                        is_working = recurring_rules[(weekday, occurrence)]
+                    else:
+                        is_working = weekday in base_work_days
+                    if is_working:
+                        working_day_count += 1
+                curr += timedelta(days=1)
+
+            if working_day_count == 0:
+                leave._cached_duration_days = 0.0
+            elif leave.is_half_day:
+                leave._cached_duration_days = working_day_count - 0.5
+            else:
+                leave._cached_duration_days = float(working_day_count)
+
+            # Map the leave to dates within the requested range
+            current = max(leave.start_date, start_date)
+            leave_end = min(leave.end_date, end_date)
+            while current <= leave_end:
+                # Only map this date if it's a working day (leaves don't apply to non-working days)
+                leave_date_map[current] = leave
+                current += timedelta(days=1)
+
+        # ── Build day-by-day response ────────────────────────────────
+        days = []
+        current = start_date
+        while current <= end_date:
+            day_entry = {
+                "date": current.isoformat(),
+                "is_working_day": True,
+                "holiday": None,
+                "leave": None,
+            }
+
+            # Precedence 1: Explicit active Holiday
+            holiday = holidays_in_range.get(current)
+            if holiday:
+                day_entry["is_working_day"] = False
+                day_entry["holiday"] = {
+                    "id": holiday.id,
+                    "name": holiday.name,
+                }
+            else:
+                # Precedence 2 & 3: Evaluate from pre-fetched authoritative semantics
+                weekday = current.weekday()
+                occurrence = (current.day - 1) // 7 + 1
+                if (weekday, occurrence) in recurring_rules:
+                    is_working = recurring_rules[(weekday, occurrence)]
+                else:
+                    is_working = weekday in base_work_days
+                day_entry["is_working_day"] = is_working
+
+            # Approved leave (only on working days, not holidays)
+            if day_entry["is_working_day"] and current in leave_date_map:
+                leave = leave_date_map[current]
+                day_entry["leave"] = {
+                    "id": leave.id,
+                    "leave_type_name": leave.leave_type.name,
+                    "duration_days": leave._cached_duration_days,
+                    "is_half_day": leave.is_half_day,
+                }
+
+            days.append(day_entry)
+            current += timedelta(days=1)
+
+        return Response({
+            "employee_id": employee.id,
+            "start_date": start_date.isoformat(),
+            "end_date": end_date.isoformat(),
+            "days": days,
+        })
