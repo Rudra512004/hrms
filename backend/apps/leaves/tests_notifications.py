@@ -7,7 +7,7 @@ from apps.employees.models import Employee
 from apps.organization.models import Organization
 from .models import LeaveType, LeaveRequest, LeaveBalance
 from apps.notifications.models import Notification
-from datetime import timedelta
+from datetime import timedelta, date
 from django.utils import timezone
 from unittest.mock import patch
 
@@ -48,7 +48,7 @@ class LeaveNotificationIntegrationTests(TransactionTestCase):
     @patch('apps.authorization.services.AuthorizationService.get_authorized_branches')
     def test_leave_approved_notification(self, mock_auth_branches, mock_perm):
         mock_auth_branches.return_value = [self.branch]
-        base_date = timezone.now().date()
+        base_date = date(2026, 10, 5)
         leave = LeaveRequest.objects.create(
             employee=self.employee, leave_type=self.leave_type,
             start_date=base_date, end_date=base_date + timedelta(days=1),
@@ -73,7 +73,7 @@ class LeaveNotificationIntegrationTests(TransactionTestCase):
     @patch('apps.authorization.services.AuthorizationService.get_authorized_branches')
     def test_leave_rejected_notification(self, mock_auth_branches, mock_perm):
         mock_auth_branches.return_value = [self.branch]
-        base_date = timezone.now().date()
+        base_date = date(2026, 10, 5)
         leave = LeaveRequest.objects.create(
             employee=self.employee, leave_type=self.leave_type,
             start_date=base_date, end_date=base_date + timedelta(days=1),
@@ -93,7 +93,7 @@ class LeaveNotificationIntegrationTests(TransactionTestCase):
     @patch('apps.authorization.services.AuthorizationService.get_authorized_branches')
     def test_leave_cancelled_by_admin_notification(self, mock_auth_branches, mock_perm):
         mock_auth_branches.return_value = [self.branch]
-        base_date = timezone.now().date()
+        base_date = date(2026, 10, 5)
         leave = LeaveRequest.objects.create(
             employee=self.employee, leave_type=self.leave_type,
             start_date=base_date, end_date=base_date + timedelta(days=1),
@@ -103,7 +103,7 @@ class LeaveNotificationIntegrationTests(TransactionTestCase):
         self.client.force_authenticate(user=self.manager_user)
         url = reverse('leave-requests-cancel', kwargs={'pk': leave.pk}) + f"?organization_id={self.org.id}"
         response = self.client.post(url)
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
 
         notifs = Notification.objects.filter(recipient=self.user)
         self.assertEqual(notifs.count(), 1)
@@ -113,7 +113,7 @@ class LeaveNotificationIntegrationTests(TransactionTestCase):
     @patch('apps.authorization.services.AuthorizationService.get_authorized_branches')
     def test_leave_cancelled_by_self_no_notification(self, mock_auth_branches, mock_perm):
         mock_auth_branches.return_value = [self.branch]
-        base_date = timezone.now().date()
+        base_date = date(2026, 10, 5)
         leave = LeaveRequest.objects.create(
             employee=self.employee, leave_type=self.leave_type,
             start_date=base_date, end_date=base_date + timedelta(days=1),
@@ -122,7 +122,7 @@ class LeaveNotificationIntegrationTests(TransactionTestCase):
 
         self.client.force_authenticate(user=self.user)
         response = self.client.post(reverse('leave-requests-cancel', kwargs={'pk': leave.pk}))
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
 
         notifs = Notification.objects.filter(recipient=self.user)
         self.assertEqual(notifs.count(), 0)
