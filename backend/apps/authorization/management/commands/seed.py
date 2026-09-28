@@ -252,11 +252,17 @@ class Command(BaseCommand):
                     'employment_status': 'active',
                 }
             )
+            needs_save = False
+            if admin_emp.organization != org:
+                admin_emp.organization = org
+                needs_save = True
+            if admin_emp.branch != branch:
+                admin_emp.branch = branch
+                needs_save = True
             if admin_emp.employee_code == 'ADMIN-001':
                 admin_emp.employee_code = 'EMPBS005'
-                admin_emp.save()
-            if not admin_emp.branch:
-                admin_emp.branch = branch
+                needs_save = True
+            if needs_save:
                 admin_emp.save()
 
             CompensationHistory.objects.get_or_create(
