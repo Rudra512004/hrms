@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import { Card } from '../components/Card';
 import { Table } from '../components/Table';
 import { StatusBadge } from '../components/StatusBadge';
@@ -174,10 +175,16 @@ export function LeavePage() {
         title="My Leave"
         subtitle="Manage your leave balances and requests."
         actions={
-          <button className="btn btn-primary" onClick={openModal} type="button">
-            <PlusCircle size={16} />
-            New Request
-          </button>
+          <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
+            <Link to="/calendar" className="btn btn-secondary" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <CalendarDays size={16} />
+              View Calendar
+            </Link>
+            <button className="btn btn-primary" onClick={openModal} type="button">
+              <PlusCircle size={16} />
+              New Request
+            </button>
+          </div>
         }
       />
 

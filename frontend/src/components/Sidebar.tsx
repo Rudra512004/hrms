@@ -65,6 +65,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen }) => {
         { path: '/attendance',         label: 'My Attendance',         icon: Clock },
         { path: '/admin/attendance',   label: 'Attendance Management', icon: CalendarDays, permission: 'attendance.view_all' },
         { path: '/leaves',             label: 'My Leave',              icon: Calendar },
+        { path: '/calendar',           label: 'Calendar',              icon: CalendarDays },
         { path: '/admin/leaves',       label: 'Leave Requests',        icon: Calendar,  permission: 'leave.view' },
         { path: '/admin/leave-types',  label: 'Leave Types',           icon: Settings,  permission: 'leave_type.manage' },
         { path: '/admin/wfh',          label: 'WFH Requests',          icon: Network,   permission: 'wfh.view' },

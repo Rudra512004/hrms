@@ -35,6 +35,38 @@ export interface LeaveRequest {
   reviewer_comment: string;
 }
 
+export interface CalendarHoliday {
+  id: number;
+  name: string;
+}
+
+export interface CalendarLeave {
+  id: number;
+  leave_type_name: string;
+  duration_days: number;
+  is_half_day: boolean;
+}
+
+export interface CalendarDay {
+  date: string;
+  is_working_day: boolean;
+  holiday: CalendarHoliday | null;
+  leave: CalendarLeave | null;
+}
+
+export interface EmployeeCalendarResponse {
+  employee_id: number;
+  start_date: string;
+  end_date: string;
+  days: CalendarDay[];
+}
+
+export interface GetCalendarParams {
+  start_date: string;
+  end_date: string;
+  employee_id?: number | string;
+}
+
 export interface ListLeaveRequestsParams {
   branch_id?: number | string;
   status?: string;
@@ -193,6 +225,20 @@ export const leaveService = {
     const response = await fetch(`/api/v1/leaves/requests/${id}/cancel/`, {
       method: 'POST',
       headers: getHeaders()
+    });
+    return handleResponse(response);
+  },
+
+  getCalendar: async (params: GetCalendarParams, options?: { signal?: AbortSignal }): Promise<EmployeeCalendarResponse> => {
+    const query = new URLSearchParams();
+    query.set('start_date', params.start_date);
+    query.set('end_date', params.end_date);
+    if (params.employee_id !== undefined && params.employee_id !== null && params.employee_id !== '') {
+      query.set('employee_id', String(params.employee_id));
+    }
+    const response = await fetch(`/api/v1/leaves/calendar/?${query.toString()}`, {
+      headers: getHeaders(),
+      signal: options?.signal,
     });
     return handleResponse(response);
   }

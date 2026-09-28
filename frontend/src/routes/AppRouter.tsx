@@ -17,6 +17,7 @@ import { ProfilePage } from '../pages/ProfilePage';
 import { AttendancePage } from '../pages/AttendancePage';
 import { AttendanceManagementPage } from '../pages/admin/AttendanceManagementPage';
 import { LeavePage } from '../pages/LeavePage';
+import { CalendarPage } from '../pages/CalendarPage';
 import { PayrollPage } from '../pages/PayrollPage';
 import { PayrollReportsPage } from '../pages/PayrollReportsPage';
 import { MyPayslipsPage } from '../pages/MyPayslipsPage';
@@ -66,6 +67,7 @@ export const AppRouter: React.FC = () => {
           <Route path="/dashboard" element={<DashboardPage />} />
           <Route path="/attendance" element={<AttendancePage />} />
           <Route path="/leaves" element={<LeavePage />} />
+          <Route path="/calendar" element={<CalendarPage />} />
           <Route path="/payslips" element={<MyPayslipsPage />} />
           <Route path="/profile" element={<ProfilePage />} />
 
