@@ -41,11 +41,16 @@ export const wfhService = {
     return await response.json();
   },
 
-  getAll: async (): Promise<WfhRequest[]> => {
+  getAll: async (params?: { status?: string }): Promise<WfhRequest[]> => {
     const token = localStorage.getItem('auth_token');
     if (!token) throw new Error('No authentication token');
     
-    const response = await fetch('/api/v1/employees/wfh-requests/', {
+    let url = '/api/v1/employees/wfh-requests/';
+    if (params?.status && params.status !== 'all') {
+      url += `?status=${encodeURIComponent(params.status)}`;
+    }
+
+    const response = await fetch(url, {
       headers: {
         'Authorization': `Token ${token}`
       }

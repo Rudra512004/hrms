@@ -659,15 +659,22 @@ class WFHRequestViewSet(viewsets.ModelViewSet):
             org_id = self.request.query_params.get('organization')
             if org_id:
                 qs = qs.filter(employee__organization_id=org_id)
-            return qs
-        if AuthorizationService.has_permission(user, 'wfh.view'):
+        elif AuthorizationService.has_permission(user, 'wfh.view'):
             emp = getattr(user, 'employee', None)
             if emp and emp.organization_id:
-                return WFHRequest.objects.filter(employee__organization=emp.organization)
+                qs = WFHRequest.objects.filter(employee__organization=emp.organization)
+            else:
+                return WFHRequest.objects.none()
+        elif hasattr(user, 'employee'):
+            qs = WFHRequest.objects.filter(employee=user.employee)
+        else:
             return WFHRequest.objects.none()
-        if hasattr(user, 'employee'):
-            return WFHRequest.objects.filter(employee=user.employee)
-        return WFHRequest.objects.none()
+
+        status_param = self.request.query_params.get('status')
+        if status_param and status_param != 'all':
+            qs = qs.filter(status=status_param)
+
+        return qs.order_by('-requested_at')
 
     def get_permissions(self):
         if self.action == 'create':

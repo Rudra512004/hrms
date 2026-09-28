@@ -123,6 +123,7 @@ export const WfhRequestsPage: React.FC = () => {
   const [requests, setRequests] = useState<WfhRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [statusFilter, setStatusFilter] = useState<'all' | 'pending' | 'approved' | 'rejected' | 'cancelled'>('all');
 
   const [modalState, setModalState] = useState<{ isOpen: boolean, type: 'approve' | 'reject', request: WfhRequest | null }>({ isOpen: false, type: 'approve', request: null });
   const [comment, setComment] = useState('');
@@ -137,7 +138,7 @@ export const WfhRequestsPage: React.FC = () => {
   const [newError, setNewError] = useState<string | null>(null);
 
   useEffect(() => {
-    loadRequests();
+    loadRequests('all');
   }, []);
 
   const handleCreateSubmit = async (e: React.FormEvent) => {
@@ -176,10 +177,10 @@ export const WfhRequestsPage: React.FC = () => {
     }
   };
 
-  const loadRequests = async () => {
+  const loadRequests = async (status = statusFilter) => {
     setLoading(true);
     try {
-      const data = await wfhService.getAll();
+      const data = await wfhService.getAll({ status: status === 'all' ? undefined : status });
       setRequests(data);
       setError(null);
     } catch (err: any) {
@@ -328,6 +329,23 @@ export const WfhRequestsPage: React.FC = () => {
             <span>New WFH Request</span>
           </button>
         )}
+      </div>
+
+      <div style={{ display: 'flex', gap: '8px', marginBottom: 'var(--spacing-md)' }}>
+        {(['all', 'pending', 'approved', 'rejected', 'cancelled'] as const).map((tab) => (
+          <button
+            key={tab}
+            type="button"
+            className={`btn ${statusFilter === tab ? 'btn-primary' : 'btn-secondary'}`}
+            style={{ textTransform: 'capitalize', fontSize: '0.85rem', padding: '6px 14px' }}
+            onClick={() => {
+              setStatusFilter(tab);
+              loadRequests(tab);
+            }}
+          >
+            {tab}
+          </button>
+        ))}
       </div>
 
       <Card>

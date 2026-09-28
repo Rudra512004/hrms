@@ -72,3 +72,24 @@ class WFHRequestTests(APITestCase):
         self.assertEqual(wfh.status, 'approved')
         self.assertEqual(wfh.reviewer_comment, 'OK')
         self.assertEqual(wfh.reviewed_by, self.manager_user)
+
+    def test_wfh_list_filtering_by_status(self):
+        now = timezone.now()
+        WFHRequest.objects.create(employee=self.employee, start_at=now, end_at=now+timedelta(days=1), status='pending')
+        WFHRequest.objects.create(employee=self.employee, start_at=now+timedelta(days=2), end_at=now+timedelta(days=3), status='approved')
+
+        self.client.force_authenticate(user=self.manager_user)
+        # All requests
+        res = self.client.get('/api/v1/employees/wfh-requests/')
+        self.assertEqual(res.status_code, 200)
+        self.assertEqual(len(res.data), 2)
+
+        # Pending filter
+        res_pending = self.client.get('/api/v1/employees/wfh-requests/?status=pending')
+        self.assertEqual(res_pending.status_code, 200)
+        self.assertEqual(len(res_pending.data), 1)
+        self.assertEqual(res_pending.data[0]['status'], 'pending')
+
+        # Serializer fields verification
+        self.assertEqual(res_pending.data[0]['employee_code'], 'EMP001')
+        self.assertIn('employee_name', res_pending.data[0])
