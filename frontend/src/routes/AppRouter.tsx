@@ -137,7 +137,7 @@ export const AppRouter: React.FC = () => {
             <Route path="/admin/attendance-policy" element={<AttendancePolicyPage />} />
           </Route>
 
-          <Route element={<ProtectedRoute requiredPermission="wfh.view" />}>
+          <Route element={<ProtectedRoute requiredPermission={['wfh.view', 'wfh.request']} />}>
             <Route path="/admin/wfh" element={<WfhRequestsPage />} />
           </Route>
 

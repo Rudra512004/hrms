@@ -7,7 +7,7 @@ import { PageHeader } from '../components/PageHeader';
 import { Modal } from '../components/Modal';
 import { AlertBanner } from '../components/AlertBanner';
 import { leaveService, type LeaveType, type LeaveBalance, type LeaveRequest } from '../services/leaves';
-import { Calendar, PlusCircle, Loader2, CalendarDays } from 'lucide-react';
+import { Calendar, PlusCircle, Loader2, CalendarDays, FileText } from 'lucide-react';
 import { EmptyState } from '../components/EmptyState';
 
 export function LeavePage() {
@@ -25,6 +25,9 @@ export function LeavePage() {
   const [formStart, setFormStart] = useState('');
   const [formEnd, setFormEnd] = useState('');
   const [formReason, setFormReason] = useState('');
+  const [formIsHalfDay, setFormIsHalfDay] = useState(false);
+  const [formHalfDayPeriod, setFormHalfDayPeriod] = useState<'first_half' | 'second_half'>('first_half');
+  const [formSupportingDoc, setFormSupportingDoc] = useState<File | null>(null);
   const [formSubmitting, setFormSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
 
@@ -56,14 +59,17 @@ export function LeavePage() {
     setFormStart('');
     setFormEnd('');
     setFormReason('');
+    setFormIsHalfDay(false);
+    setFormHalfDayPeriod('first_half');
+    setFormSupportingDoc(null);
     setFormError(null);
     setShowModal(true);
   };
 
   const handleCreateRequest = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formType || !formStart || !formEnd || !formReason) {
-      setFormError('All fields are required.');
+    if (!formType || !formStart || (!formIsHalfDay && !formEnd) || !formReason) {
+      setFormError('All required fields must be filled.');
       return;
     }
     try {
@@ -72,8 +78,11 @@ export function LeavePage() {
       await leaveService.createRequest({
         leave_type: parseInt(formType),
         start_date: formStart,
-        end_date: formEnd,
+        end_date: formIsHalfDay ? formStart : formEnd,
         reason: formReason,
+        is_half_day: formIsHalfDay,
+        half_day_period: formIsHalfDay ? formHalfDayPeriod : null,
+        supporting_document: formSupportingDoc,
       });
       setShowModal(false);
       await loadData();
@@ -114,20 +123,56 @@ export function LeavePage() {
       ),
     },
     {
+      key: 'duration_days',
+      title: 'Duration',
+      render: (r: LeaveRequest) => (
+        <span style={{ fontSize: 'var(--font-size-sm)', whiteSpace: 'nowrap' }}>
+          {r.is_half_day ? (
+            <span style={{ color: 'var(--color-primary)', fontWeight: 600 }}>
+              0.5d ({r.half_day_period === 'second_half' ? '2nd Half' : '1st Half'})
+            </span>
+          ) : r.duration_days !== null && r.duration_days !== undefined ? (
+            `${r.duration_days} ${Number(r.duration_days) === 1 ? 'day' : 'days'}`
+          ) : (
+            '—'
+          )}
+        </span>
+      ),
+    },
+    {
       key: 'reason',
       title: 'Reason',
       render: (r: LeaveRequest) => (
-        <span
-          style={{
-            display: '-webkit-box',
-            WebkitLineClamp: 2,
-            WebkitBoxOrient: 'vertical',
-            overflow: 'hidden',
-            maxWidth: 280,
-          }}
-        >
-          {r.reason}
-        </span>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+          <span
+            style={{
+              display: '-webkit-box',
+              WebkitLineClamp: 2,
+              WebkitBoxOrient: 'vertical',
+              overflow: 'hidden',
+              maxWidth: 280,
+            }}
+          >
+            {r.reason}
+          </span>
+          {r.supporting_document && (
+            <a
+              href={r.supporting_document}
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '4px',
+                fontSize: '0.75rem',
+                color: 'var(--color-primary)',
+                textDecoration: 'underline',
+              }}
+            >
+              <FileText size={12} /> View Document
+            </a>
+          )}
+        </div>
       ),
     },
     {
@@ -360,30 +405,81 @@ export function LeavePage() {
                 )}
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--spacing-md)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.625rem', padding: '0.25rem 0' }}>
+                <input
+                  id="leave-half-day"
+                  type="checkbox"
+                  checked={formIsHalfDay}
+                  onChange={(e) => {
+                    const checked = e.target.checked;
+                    setFormIsHalfDay(checked);
+                    if (checked && formStart) {
+                      setFormEnd(formStart);
+                    }
+                  }}
+                  style={{ width: '16px', height: '16px', cursor: 'pointer' }}
+                />
+                <label htmlFor="leave-half-day" style={{ margin: 0, fontWeight: 500, fontSize: '0.875rem', cursor: 'pointer' }}>
+                  Request as Half-Day Leave
+                </label>
+              </div>
+
+              {formIsHalfDay && (
                 <div className="form-group">
-                  <label className="form-label" htmlFor="leave-start">Start Date</label>
+                  <label className="form-label" htmlFor="leave-half-day-period">Half-Day Session</label>
+                  <select
+                    id="leave-half-day-period"
+                    className="input-field"
+                    value={formHalfDayPeriod}
+                    onChange={(e) => setFormHalfDayPeriod(e.target.value as 'first_half' | 'second_half')}
+                  >
+                    <option value="first_half">First Half (Morning Session)</option>
+                    <option value="second_half">Second Half (Afternoon Session)</option>
+                  </select>
+                </div>
+              )}
+
+              <div style={{ display: 'grid', gridTemplateColumns: formIsHalfDay ? '1fr' : '1fr 1fr', gap: 'var(--spacing-md)' }}>
+                <div className="form-group">
+                  <label className="form-label" htmlFor="leave-start">{formIsHalfDay ? 'Date' : 'Start Date'}</label>
                   <input
                     id="leave-start"
                     type="date"
                     className="input-field"
                     value={formStart}
-                    onChange={(e) => setFormStart(e.target.value)}
+                    onChange={(e) => {
+                      setFormStart(e.target.value);
+                      if (formIsHalfDay) {
+                        setFormEnd(e.target.value);
+                      }
+                    }}
                     required
                   />
                 </div>
-                <div className="form-group">
-                  <label className="form-label" htmlFor="leave-end">End Date</label>
-                  <input
-                    id="leave-end"
-                    type="date"
-                    className="input-field"
-                    value={formEnd}
-                    min={formStart}
-                    onChange={(e) => setFormEnd(e.target.value)}
-                    required
-                  />
-                </div>
+                {!formIsHalfDay && (
+                  <div className="form-group">
+                    <label className="form-label" htmlFor="leave-end">End Date</label>
+                    <input
+                      id="leave-end"
+                      type="date"
+                      className="input-field"
+                      value={formEnd}
+                      min={formStart}
+                      onChange={(e) => setFormEnd(e.target.value)}
+                      required
+                    />
+                  </div>
+                )}
+              </div>
+
+              <div className="form-group">
+                <label className="form-label" htmlFor="leave-doc">Supporting Document (Optional / If required by policy)</label>
+                <input
+                  id="leave-doc"
+                  type="file"
+                  className="input-field"
+                  onChange={(e) => setFormSupportingDoc(e.target.files?.[0] || null)}
+                />
               </div>
 
               <div className="form-group">

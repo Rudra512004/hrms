@@ -1,6 +1,8 @@
 export interface WfhRequest {
   id: number;
   employee: number;
+  employee_code?: string;
+  employee_name?: string;
   start_at: string;
   end_at: string;
   reason: string;
@@ -11,7 +13,34 @@ export interface WfhRequest {
   reviewer_comment: string;
 }
 
+export interface CreateWfhPayload {
+  start_at: string;
+  end_at: string;
+  reason: string;
+}
+
 export const wfhService = {
+  create: async (data: CreateWfhPayload): Promise<WfhRequest> => {
+    const token = localStorage.getItem('auth_token');
+    if (!token) throw new Error('No authentication token');
+
+    const response = await fetch('/api/v1/employees/wfh-requests/', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Token ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(data),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw { response, errorData };
+    }
+
+    return await response.json();
+  },
+
   getAll: async (): Promise<WfhRequest[]> => {
     const token = localStorage.getItem('auth_token');
     if (!token) throw new Error('No authentication token');

@@ -22,17 +22,32 @@ export interface LeaveBalance {
 export interface LeaveRequest {
   id: number;
   employee: number;
+  employee_code?: string;
+  employee_name?: string;
   leave_type: number;
   leave_type_name: string;
   start_date: string;
   end_date: string;
   reason: string;
   status: 'pending' | 'approved' | 'rejected' | 'cancelled';
-  duration_days: number;
+  duration_days: number | string | null;
+  is_half_day?: boolean;
+  half_day_period?: 'first_half' | 'second_half' | null;
+  supporting_document?: string | null;
   requested_at: string;
   reviewed_by: number | null;
   reviewed_at: string | null;
   reviewer_comment: string;
+}
+
+export interface CreateLeaveRequestPayload {
+  leave_type: number;
+  start_date: string;
+  end_date: string;
+  reason: string;
+  is_half_day?: boolean;
+  half_day_period?: 'first_half' | 'second_half' | null;
+  supporting_document?: File | null;
 }
 
 export interface CalendarHoliday {
@@ -194,11 +209,47 @@ export const leaveService = {
     (params?: ListLeaveRequestsParams, options?: { signal?: AbortSignal }): Promise<PaginatedResponse<LeaveRequest> | LeaveRequest[]>;
   },
 
-  createRequest: async (data: { leave_type: number, start_date: string, end_date: string, reason: string }): Promise<LeaveRequest> => {
+  createRequest: async (data: CreateLeaveRequestPayload): Promise<LeaveRequest> => {
+    const token = localStorage.getItem('auth_token');
+    if (!token) throw new Error('No authentication token');
+
+    let body: any;
+    const headers: Record<string, string> = {
+      'Authorization': `Token ${token}`,
+    };
+
+    if (data.supporting_document) {
+      const formData = new FormData();
+      formData.append('leave_type', String(data.leave_type));
+      formData.append('start_date', data.start_date);
+      formData.append('end_date', data.end_date);
+      formData.append('reason', data.reason);
+      if (data.is_half_day) {
+        formData.append('is_half_day', 'true');
+        if (data.half_day_period) {
+          formData.append('half_day_period', data.half_day_period);
+        }
+      } else {
+        formData.append('is_half_day', 'false');
+      }
+      formData.append('supporting_document', data.supporting_document);
+      body = formData;
+    } else {
+      headers['Content-Type'] = 'application/json';
+      body = JSON.stringify({
+        leave_type: data.leave_type,
+        start_date: data.start_date,
+        end_date: data.end_date,
+        reason: data.reason,
+        is_half_day: !!data.is_half_day,
+        ...(data.is_half_day && data.half_day_period ? { half_day_period: data.half_day_period } : {}),
+      });
+    }
+
     const response = await fetch('/api/v1/leaves/requests/', {
       method: 'POST',
-      headers: getHeaders(),
-      body: JSON.stringify(data)
+      headers,
+      body,
     });
     return handleResponse(response);
   },

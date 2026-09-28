@@ -3,8 +3,10 @@ import { wfhService, type WfhRequest } from '../../services/wfh';
 import { Card } from '../../components/Card';
 import { Table } from '../../components/Table';
 import { StatusBadge } from '../../components/StatusBadge';
-import { Check, X, Ban, AlertCircle, Loader2 } from 'lucide-react';
+import { Check, X, Ban, AlertCircle, Loader2, Plus } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
+import { Modal } from '../../components/Modal';
+import { AlertBanner } from '../../components/AlertBanner';
 
 
 const styles = {
@@ -126,9 +128,53 @@ export const WfhRequestsPage: React.FC = () => {
   const [comment, setComment] = useState('');
   const [actionLoading, setActionLoading] = useState(false);
 
+  // New WFH request state
+  const [isNewModalOpen, setIsNewModalOpen] = useState(false);
+  const [newStartAt, setNewStartAt] = useState('');
+  const [newEndAt, setNewEndAt] = useState('');
+  const [newReason, setNewReason] = useState('');
+  const [newSubmitting, setNewSubmitting] = useState(false);
+  const [newError, setNewError] = useState<string | null>(null);
+
   useEffect(() => {
     loadRequests();
   }, []);
+
+  const handleCreateSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newStartAt || !newEndAt || !newReason.trim()) {
+      setNewError('All fields are required.');
+      return;
+    }
+    const start = new Date(newStartAt);
+    const end = new Date(newEndAt);
+    if (end <= start) {
+      setNewError('End date/time must be strictly after start date/time.');
+      return;
+    }
+
+    try {
+      setNewSubmitting(true);
+      setNewError(null);
+      await wfhService.create({
+        start_at: start.toISOString(),
+        end_at: end.toISOString(),
+        reason: newReason.trim(),
+      });
+      setIsNewModalOpen(false);
+      setNewStartAt('');
+      setNewEndAt('');
+      setNewReason('');
+      await loadRequests();
+    } catch (err: any) {
+      const msgs = err.errorData
+        ? Object.values(err.errorData).flat().join(' ')
+        : 'Failed to submit WFH request.';
+      setNewError(msgs);
+    } finally {
+      setNewSubmitting(false);
+    }
+  };
 
   const loadRequests = async () => {
     setLoading(true);
@@ -177,16 +223,27 @@ export const WfhRequestsPage: React.FC = () => {
   };
 
   const columns = [
-    { key: 'employee', title: 'Employee ID' },
+    {
+      key: 'employee',
+      title: 'Employee',
+      render: (r: WfhRequest) => (
+        <div>
+          <div style={{ fontWeight: 500 }}>{r.employee_name || `Employee #${r.employee}`}</div>
+          {r.employee_code && (
+            <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>{r.employee_code}</div>
+          )}
+        </div>
+      ),
+    },
     {
       key: 'start_at',
-      title: 'Start Date',
-      render: (r: WfhRequest) => new Date(r.start_at).toLocaleDateString()
+      title: 'Start',
+      render: (r: WfhRequest) => new Date(r.start_at).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' }),
     },
     {
       key: 'end_at',
-      title: 'End Date',
-      render: (r: WfhRequest) => new Date(r.end_at).toLocaleDateString()
+      title: 'End',
+      render: (r: WfhRequest) => new Date(r.end_at).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' }),
     },
     { key: 'reason', title: 'Reason' },
     {
@@ -255,11 +312,99 @@ export const WfhRequestsPage: React.FC = () => {
     <div>
       <div style={styles.header}>
         <h1 style={styles.title}>WFH Requests</h1>
+        {hasPermission('wfh.request') && (
+          <button
+            className="btn btn-primary"
+            style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}
+            onClick={() => {
+              setNewStartAt('');
+              setNewEndAt('');
+              setNewReason('');
+              setNewError(null);
+              setIsNewModalOpen(true);
+            }}
+          >
+            <Plus size={16} />
+            <span>New WFH Request</span>
+          </button>
+        )}
       </div>
 
       <Card>
         <Table data={requests} columns={columns} keyExtractor={(r) => r.id} />
       </Card>
+
+      {isNewModalOpen && (
+        <Modal
+          onClose={() => setIsNewModalOpen(false)}
+          title="New WFH Request"
+          footer={
+            <>
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={() => setIsNewModalOpen(false)}
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                form="wfh-request-form"
+                className="btn btn-primary"
+                disabled={newSubmitting}
+              >
+                {newSubmitting ? <Loader2 size={16} className="animate-spin" /> : null}
+                Submit Request
+              </button>
+            </>
+          }
+        >
+          {newError && (
+            <AlertBanner type="error" message={newError} style={{ marginBottom: 'var(--spacing-md)' }} />
+          )}
+
+          <form id="wfh-request-form" onSubmit={handleCreateSubmit}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--spacing-md)' }}>
+              <div className="form-group">
+                <label className="form-label" htmlFor="wfh-start">Start Date &amp; Time</label>
+                <input
+                  id="wfh-start"
+                  type="datetime-local"
+                  className="form-control"
+                  value={newStartAt}
+                  onChange={(e) => setNewStartAt(e.target.value)}
+                  required
+                />
+              </div>
+
+              <div className="form-group">
+                <label className="form-label" htmlFor="wfh-end">End Date &amp; Time</label>
+                <input
+                  id="wfh-end"
+                  type="datetime-local"
+                  className="form-control"
+                  value={newEndAt}
+                  onChange={(e) => setNewEndAt(e.target.value)}
+                  required
+                />
+              </div>
+
+              <div className="form-group">
+                <label className="form-label" htmlFor="wfh-reason">Reason</label>
+                <textarea
+                  id="wfh-reason"
+                  className="form-control"
+                  rows={3}
+                  value={newReason}
+                  onChange={(e) => setNewReason(e.target.value)}
+                  placeholder="Provide a reason for working from home..."
+                  required
+                />
+              </div>
+            </div>
+          </form>
+        </Modal>
+      )}
 
       {modalState.isOpen && (
         <div style={styles.modalOverlay}>

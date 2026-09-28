@@ -23,15 +23,27 @@ class LeaveBalanceSerializer(serializers.ModelSerializer):
 class LeaveRequestSerializer(serializers.ModelSerializer):
     duration_days = serializers.DecimalField(max_digits=5, decimal_places=2, read_only=True, allow_null=True)
     leave_type_name = serializers.CharField(source='leave_type.name', read_only=True)
+    employee_code = serializers.CharField(source='employee.employee_code', read_only=True)
+    employee_name = serializers.SerializerMethodField(read_only=True)
 
     class Meta:
         model = LeaveRequest
         fields = [
-            'id', 'employee', 'leave_type', 'leave_type_name', 'start_date', 'end_date', 'reason',
+            'id', 'employee', 'employee_code', 'employee_name',
+            'leave_type', 'leave_type_name', 'start_date', 'end_date', 'reason',
             'is_half_day', 'half_day_period', 'supporting_document',
             'status', 'reviewed_by', 'reviewed_at', 'reviewer_comment', 'created_at', 'updated_at', 'duration_days'
         ]
         read_only_fields = ['employee', 'status', 'reviewed_by', 'reviewed_at', 'reviewer_comment']
+
+    def get_employee_name(self, obj):
+        if obj.employee and getattr(obj.employee, 'user', None):
+            u = obj.employee.user
+            if hasattr(u, 'get_full_name'):
+                return u.get_full_name()
+            full_name = f"{getattr(u, 'first_name', '')} {getattr(u, 'last_name', '')}".strip()
+            return full_name if full_name else getattr(u, 'email', str(obj.employee.id))
+        return None
 
     def validate(self, data):
         start_date = data.get('start_date', self.instance.start_date if self.instance else None)

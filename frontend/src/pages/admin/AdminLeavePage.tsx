@@ -243,11 +243,66 @@ export function AdminLeavePage() {
 
   const columns = [
     { key: 'id', title: 'ID', render: (r: LeaveRequest) => `#${r.id}` },
-    { key: 'employee', title: 'Employee ID' }, // In a real app we'd resolve employee name, but we only have ID here
+    {
+      key: 'employee',
+      title: 'Employee',
+      render: (r: LeaveRequest) => (
+        <div>
+          <div style={{ fontWeight: 500 }}>{r.employee_name || `Employee #${r.employee}`}</div>
+          {r.employee_code && (
+            <div style={{ fontSize: '11px', color: 'var(--color-text-muted)' }}>{r.employee_code}</div>
+          )}
+        </div>
+      ),
+    },
     { key: 'leave_type_name', title: 'Leave Type' },
     { key: 'start_date', title: 'Start' },
     { key: 'end_date', title: 'End' },
-    { key: 'duration_days', title: 'Days' },
+    {
+      key: 'duration_days',
+      title: 'Duration',
+      render: (r: LeaveRequest) => (
+        <span style={{ fontSize: '13px', whiteSpace: 'nowrap' }}>
+          {r.is_half_day ? (
+            <span style={{ color: 'var(--color-primary)', fontWeight: 600 }}>
+              0.5d ({r.half_day_period === 'second_half' ? '2nd Half' : '1st Half'})
+            </span>
+          ) : r.duration_days !== null && r.duration_days !== undefined ? (
+            `${r.duration_days}d`
+          ) : (
+            '—'
+          )}
+        </span>
+      ),
+    },
+    {
+      key: 'reason',
+      title: 'Reason & Docs',
+      render: (r: LeaveRequest) => (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+          <span style={{ maxWidth: '240px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {r.reason}
+          </span>
+          {r.supporting_document && (
+            <a
+              href={r.supporting_document}
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '4px',
+                fontSize: '12px',
+                color: 'var(--color-primary)',
+                textDecoration: 'underline',
+              }}
+            >
+              <FileCheck2 size={13} /> View Attached Document
+            </a>
+          )}
+        </div>
+      ),
+    },
     {
       key: 'status',
       title: 'Status',

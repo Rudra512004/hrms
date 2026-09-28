@@ -250,10 +250,26 @@ class ProvisionEmployeeSerializer(serializers.Serializer):
 from .models import WFHRequest
 
 class WFHRequestSerializer(serializers.ModelSerializer):
+    employee_code = serializers.CharField(source='employee.employee_code', read_only=True)
+    employee_name = serializers.SerializerMethodField(read_only=True)
+
     class Meta:
         model = WFHRequest
-        fields = ['id', 'employee', 'start_at', 'end_at', 'reason', 'status', 'requested_at', 'reviewed_by', 'reviewed_at', 'reviewer_comment']
+        fields = [
+            'id', 'employee', 'employee_code', 'employee_name',
+            'start_at', 'end_at', 'reason', 'status',
+            'requested_at', 'reviewed_by', 'reviewed_at', 'reviewer_comment'
+        ]
         read_only_fields = ['id', 'employee', 'status', 'requested_at', 'reviewed_by', 'reviewed_at', 'reviewer_comment']
+
+    def get_employee_name(self, obj):
+        if obj.employee and getattr(obj.employee, 'user', None):
+            u = obj.employee.user
+            if hasattr(u, 'get_full_name'):
+                return u.get_full_name()
+            full_name = f"{getattr(u, 'first_name', '')} {getattr(u, 'last_name', '')}".strip()
+            return full_name if full_name else getattr(u, 'email', str(obj.employee.id))
+        return None
 
     def validate(self, attrs):
         start_at = attrs.get('start_at')
