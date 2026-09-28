@@ -297,3 +297,68 @@ class HTTPStatusMatrixTests(TestCase):
         # Default test client has no REMOTE_ADDR unless specified, which means it evaluates as local/office by default!
         response = self.client.get(reverse('employee-me'))
         self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+
+class ChangePasswordAPITests(TestCase):
+    def setUp(self):
+        cache.clear()
+        self.client = APIClient()
+        self.user = User.objects.create_user(
+            email='testuser@company.com',
+            password='CurrentStrongPassword123!',
+            status='active'
+        )
+        self.employee = Employee.objects.create(user=self.user, employee_code='EMP999')
+        from rest_framework.authtoken.models import Token
+        self.token = Token.objects.create(user=self.user)
+        self.url = reverse('password_change')
+
+    def test_unauthenticated_cannot_change_password(self):
+        response = self.client.post(self.url, {
+            'old_password': 'CurrentStrongPassword123!',
+            'new_password': 'NewStrongPassword456!',
+            'confirm_password': 'NewStrongPassword456!'
+        })
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+
+    def test_authenticated_user_can_change_password(self):
+        self.client.credentials(HTTP_AUTHORIZATION=f'Token {self.token.key}')
+        response = self.client.post(self.url, {
+            'old_password': 'CurrentStrongPassword123!',
+            'new_password': 'NewStrongPassword456!',
+            'confirm_password': 'NewStrongPassword456!'
+        })
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIn('token', response.data)
+        self.user.refresh_from_db()
+        self.assertTrue(self.user.check_password('NewStrongPassword456!'))
+
+    def test_change_password_fails_with_incorrect_old_password(self):
+        self.client.credentials(HTTP_AUTHORIZATION=f'Token {self.token.key}')
+        response = self.client.post(self.url, {
+            'old_password': 'WrongPassword123!',
+            'new_password': 'NewStrongPassword456!',
+            'confirm_password': 'NewStrongPassword456!'
+        })
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('old_password', response.data)
+
+    def test_change_password_fails_with_mismatched_confirmation(self):
+        self.client.credentials(HTTP_AUTHORIZATION=f'Token {self.token.key}')
+        response = self.client.post(self.url, {
+            'old_password': 'CurrentStrongPassword123!',
+            'new_password': 'NewStrongPassword456!',
+            'confirm_password': 'DifferentPassword456!'
+        })
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('confirm_password', response.data)
+
+    def test_change_password_fails_if_same_as_old(self):
+        self.client.credentials(HTTP_AUTHORIZATION=f'Token {self.token.key}')
+        response = self.client.post(self.url, {
+            'old_password': 'CurrentStrongPassword123!',
+            'new_password': 'CurrentStrongPassword123!',
+            'confirm_password': 'CurrentStrongPassword123!'
+        })
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('new_password', response.data)

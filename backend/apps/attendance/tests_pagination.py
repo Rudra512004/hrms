@@ -149,3 +149,35 @@ class AttendancePaginationTests(TestCase):
         res_mgr = self.client.get(f'{self.url}?paginate=true')
         self.assertEqual(res_mgr.status_code, status.HTTP_200_OK)
         self.assertEqual(res_mgr.data['count'], 25)
+
+    def test_manager_can_adjust_attendance_for_authorized_branch(self):
+        self.client.force_authenticate(user=self.manager_user)
+        target_emp = Employee.objects.filter(branch=self.branch1).first()
+        adjust_url = f'{self.url}adjust/'
+        payload = {
+            'employee_id': target_emp.id,
+            'date': '2026-09-15',
+            'check_in': '09:00',
+            'check_out': '17:30',
+            'status': 'present',
+            'reason': 'System issue during morning punch'
+        }
+        res = self.client.post(adjust_url, payload)
+        self.assertIn(res.status_code, [status.HTTP_200_OK, status.HTTP_201_CREATED])
+        self.assertEqual(res.data['status'], 'present')
+        self.assertEqual(str(res.data['date']), '2026-09-15')
+
+    def test_manager_cannot_adjust_attendance_for_unauthorized_branch(self):
+        self.client.force_authenticate(user=self.manager_user)
+        target_emp_b2 = Employee.objects.filter(branch=self.branch2).first()
+        adjust_url = f'{self.url}adjust/'
+        payload = {
+            'employee_id': target_emp_b2.id,
+            'date': '2026-09-15',
+            'check_in': '09:00',
+            'check_out': '17:00',
+            'status': 'present',
+            'reason': 'Attempted unauthorized adjustment'
+        }
+        res = self.client.post(adjust_url, payload)
+        self.assertEqual(res.status_code, status.HTTP_403_FORBIDDEN)

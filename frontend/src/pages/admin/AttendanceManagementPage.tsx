@@ -5,9 +5,13 @@ import { Table } from '../../components/Table';
 import { StatusBadge } from '../../components/StatusBadge';
 import { PageHeader } from '../../components/PageHeader';
 import { AlertBanner } from '../../components/AlertBanner';
-import { Loader2, Search, Calendar as CalendarIcon, CalendarDays, Users, RefreshCw } from 'lucide-react';
+import { Loader2, Search, Calendar as CalendarIcon, CalendarDays, Users, RefreshCw, Download, Plus, Edit2, CheckCircle2, Save } from 'lucide-react';
+import { Modal } from '../../components/Modal';
 import { attendanceService, type AttendanceRecord, type ManagementAttendanceParams } from '../../services/attendance';
 import { organizationService, type Team } from '../../services/organization';
+import { employeeManagementService } from '../../services/employeeManagement';
+import { type EmployeeProfile } from '../../services/employee';
+import { exportToCsv, type CsvColumn } from '../../utils/exportCsv';
 import { useAuth } from '../../contexts/AuthContext';
 import { useBranchContext } from '../../contexts/BranchContext';
 
@@ -73,6 +77,104 @@ export const AttendanceManagementPage: React.FC = () => {
 
   // Request cancellation ref
   const abortControllerRef = useRef<AbortController | null>(null);
+
+  // Manual Adjustment state
+  const [showAdjustModal, setShowAdjustModal] = useState(false);
+  const [adjustSubmitting, setAdjustSubmitting] = useState(false);
+  const [adjustError, setAdjustError] = useState<string | null>(null);
+  const [adjustSuccess, setAdjustSuccess] = useState<string | null>(null);
+  const [employeeList, setEmployeeList] = useState<EmployeeProfile[]>([]);
+  const [employeesLoading, setEmployeesLoading] = useState(false);
+
+  const [adjustForm, setAdjustForm] = useState({
+    employee_id: '',
+    date: new Date().toISOString().split('T')[0],
+    check_in: '09:00',
+    check_out: '18:00',
+    status: 'present' as 'present' | 'absent' | 'half_day',
+    reason: '',
+    is_late: false,
+  });
+
+  const openAdjustModal = async (record?: AttendanceRecord) => {
+    setAdjustError(null);
+    setAdjustSuccess(null);
+    if (record) {
+      setAdjustForm({
+        employee_id: String(record.employee),
+        date: record.date,
+        check_in: record.check_in ? new Date(record.check_in).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }) : '09:00',
+        check_out: record.check_out ? new Date(record.check_out).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }) : '18:00',
+        status: (record.status as any) || 'present',
+        reason: '',
+        is_late: Boolean(record.is_late),
+      });
+    } else {
+      setAdjustForm({
+        employee_id: '',
+        date: dateFilter || new Date().toISOString().split('T')[0],
+        check_in: '09:00',
+        check_out: '18:00',
+        status: 'present',
+        reason: '',
+        is_late: false,
+      });
+    }
+    setShowAdjustModal(true);
+
+    if (employeeList.length === 0) {
+      setEmployeesLoading(true);
+      try {
+        const res = await employeeManagementService.listEmployees({ paginate: false });
+        const list = Array.isArray(res) ? res : (res as any)?.results || [];
+        setEmployeeList(list);
+      } catch {
+        // fallback gracefully
+      } finally {
+        setEmployeesLoading(false);
+      }
+    }
+  };
+
+  const handleAdjustSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setAdjustError(null);
+    setAdjustSuccess(null);
+
+    if (!adjustForm.employee_id) {
+      setAdjustError('Please select an employee.');
+      return;
+    }
+    if (!adjustForm.reason.trim()) {
+      setAdjustError('Please provide an adjustment reason / notes.');
+      return;
+    }
+
+    try {
+      setAdjustSubmitting(true);
+      await attendanceService.adjustAttendance({
+        employee_id: parseInt(adjustForm.employee_id, 10),
+        date: adjustForm.date,
+        check_in: adjustForm.status !== 'absent' ? adjustForm.check_in : null,
+        check_out: adjustForm.status !== 'absent' ? adjustForm.check_out : null,
+        status: adjustForm.status,
+        reason: adjustForm.reason,
+        is_late: adjustForm.is_late,
+      });
+
+      setAdjustSuccess('Attendance adjusted successfully.');
+      setTimeout(() => {
+        setShowAdjustModal(false);
+        setAdjustSuccess(null);
+        loadAttendance();
+      }, 1000);
+    } catch (err: any) {
+      setAdjustError(err.message || 'Failed to adjust attendance.');
+    } finally {
+      setAdjustSubmitting(false);
+    }
+  };
+
 
   // Load authorized teams on mount
   useEffect(() => {
@@ -198,6 +300,39 @@ export const AttendanceManagementPage: React.FC = () => {
     });
   }, [history, statusFilter, searchQuery]);
 
+  const handleExportCsv = () => {
+    const cols: CsvColumn<AttendanceRecord>[] = [
+      { header: 'Employee Name', accessor: (r) => r.employee_name || '' },
+      { header: 'Employee Code', accessor: (r) => r.employee_code || '' },
+      { header: 'Date', accessor: (r) => r.date },
+      { header: 'Check In', accessor: (r) => r.check_in ? formatTimeOnly(r.check_in) : '--:--' },
+      { header: 'Check Out', accessor: (r) => r.check_out ? formatTimeOnly(r.check_out) : '--:--' },
+      { header: 'Status', accessor: (r) => r.status },
+      { header: 'Late', accessor: (r) => r.is_late ? 'Yes' : 'No' },
+      {
+        header: 'Total Break (HH:MM:SS)',
+        accessor: (r) => {
+          const ms = r.total_break_duration
+            ? parseDjangoDuration(r.total_break_duration)
+            : 0;
+          return formatDurationMs(ms);
+        },
+      },
+      {
+        header: 'Productive Work (HH:MM:SS)',
+        accessor: (r) => {
+          const ms = r.productive_work_duration
+            ? parseDjangoDuration(r.productive_work_duration)
+            : 0;
+          return formatDurationMs(ms);
+        },
+      },
+    ];
+
+    const filename = `attendance_report_${dateFilter || 'all'}_${new Date().toISOString().split('T')[0]}`;
+    exportToCsv(filename, cols, filteredHistory);
+  };
+
   const columns = [
     {
       key: 'employee',
@@ -282,6 +417,22 @@ export const AttendanceManagementPage: React.FC = () => {
           <span style={{ color: 'var(--color-text-muted)', fontSize: 'var(--font-size-xs)' }}>—</span>
         ),
     },
+    {
+      key: 'actions',
+      title: 'Action',
+      render: (r: AttendanceRecord) => (
+        <button
+          className="btn btn-secondary btn-sm"
+          style={{ padding: '3px 8px', fontSize: 'var(--font-size-xs)', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
+          onClick={() => openAdjustModal(r)}
+          title="Adjust Attendance Record"
+          type="button"
+        >
+          <Edit2 size={12} />
+          <span>Adjust</span>
+        </button>
+      ),
+    },
   ];
 
   if (!hasPermission('attendance.view_all')) {
@@ -304,17 +455,40 @@ export const AttendanceManagementPage: React.FC = () => {
           title="Attendance Management"
           subtitle={`Attendance overview for ${branchTitle}.`}
         />
-        <button
-          className="btn btn-secondary btn-sm"
-          onClick={loadAttendance}
-          disabled={loading}
-          type="button"
-          style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}
-        >
-          <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
-          <span>Refresh</span>
-        </button>
+        <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+          <button
+            className="btn btn-secondary btn-sm"
+            onClick={handleExportCsv}
+            disabled={filteredHistory.length === 0}
+            type="button"
+            style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+            title="Export filtered records to CSV"
+          >
+            <Download size={14} />
+            <span>Export CSV</span>
+          </button>
+          <button
+            className="btn btn-secondary btn-sm"
+            onClick={loadAttendance}
+            disabled={loading}
+            type="button"
+            style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+          >
+            <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
+            <span>Refresh</span>
+          </button>
+          <button
+            className="btn btn-primary btn-sm"
+            onClick={() => openAdjustModal()}
+            type="button"
+            style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+          >
+            <Plus size={14} />
+            <span>Manual Entry</span>
+          </button>
+        </div>
       </div>
+
 
       {error && <AlertBanner type="error" message={error} />}
 
@@ -451,6 +625,158 @@ export const AttendanceManagementPage: React.FC = () => {
           />
         )}
       </Card>
+
+      {/* Manual Attendance Adjustment Modal */}
+      {showAdjustModal && (
+        <Modal
+          title="Manual Attendance Adjustment"
+          onClose={() => {
+            if (!adjustSubmitting) {
+              setShowAdjustModal(false);
+              setAdjustError(null);
+            }
+          }}
+          size="md"
+        >
+          <form onSubmit={handleAdjustSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 'var(--spacing-md)' }}>
+            {adjustError && <AlertBanner type="error" message={adjustError} />}
+            {adjustSuccess && (
+              <div
+                style={{
+                  padding: '10px 14px',
+                  borderRadius: 'var(--radius-md)',
+                  backgroundColor: 'rgba(34, 197, 94, 0.15)',
+                  color: 'rgb(21, 128, 61)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                }}
+              >
+                <CheckCircle2 size={16} />
+                <span>{adjustSuccess}</span>
+              </div>
+            )}
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+              <label style={{ fontSize: '0.85rem', fontWeight: 600 }}>Employee *</label>
+              <select
+                className="input-field"
+                value={adjustForm.employee_id}
+                onChange={(e) => setAdjustForm((prev) => ({ ...prev, employee_id: e.target.value }))}
+                required
+                disabled={employeesLoading || adjustSubmitting}
+              >
+                <option value="">{employeesLoading ? 'Loading employees...' : 'Select Employee'}</option>
+                {employeeList.map((emp) => (
+                  <option key={emp.id} value={emp.id}>
+                    {emp.first_name} {emp.last_name} ({emp.employee_code || emp.email})
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--spacing-md)' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                <label style={{ fontSize: '0.85rem', fontWeight: 600 }}>Date *</label>
+                <input
+                  type="date"
+                  className="input-field"
+                  value={adjustForm.date}
+                  onChange={(e) => setAdjustForm((prev) => ({ ...prev, date: e.target.value }))}
+                  required
+                  disabled={adjustSubmitting}
+                />
+              </div>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                <label style={{ fontSize: '0.85rem', fontWeight: 600 }}>Status *</label>
+                <select
+                  className="input-field"
+                  value={adjustForm.status}
+                  onChange={(e) => setAdjustForm((prev) => ({ ...prev, status: e.target.value as any }))}
+                  disabled={adjustSubmitting}
+                >
+                  <option value="present">Present</option>
+                  <option value="half_day">Half Day</option>
+                  <option value="absent">Absent</option>
+                </select>
+              </div>
+            </div>
+
+            {adjustForm.status !== 'absent' && (
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--spacing-md)' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                  <label style={{ fontSize: '0.85rem', fontWeight: 600 }}>Check-in Time (HH:MM)</label>
+                  <input
+                    type="time"
+                    className="input-field"
+                    value={adjustForm.check_in}
+                    onChange={(e) => setAdjustForm((prev) => ({ ...prev, check_in: e.target.value }))}
+                    disabled={adjustSubmitting}
+                  />
+                </div>
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                  <label style={{ fontSize: '0.85rem', fontWeight: 600 }}>Check-out Time (HH:MM)</label>
+                  <input
+                    type="time"
+                    className="input-field"
+                    value={adjustForm.check_out}
+                    onChange={(e) => setAdjustForm((prev) => ({ ...prev, check_out: e.target.value }))}
+                    disabled={adjustSubmitting}
+                  />
+                </div>
+              </div>
+            )}
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <input
+                type="checkbox"
+                id="adjust-late"
+                checked={adjustForm.is_late}
+                onChange={(e) => setAdjustForm((prev) => ({ ...prev, is_late: e.target.checked }))}
+                disabled={adjustSubmitting}
+              />
+              <label htmlFor="adjust-late" style={{ fontSize: '0.85rem', cursor: 'pointer' }}>
+                Mark as Late Check-in
+              </label>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+              <label style={{ fontSize: '0.85rem', fontWeight: 600 }}>Adjustment Reason / Notes *</label>
+              <textarea
+                className="input-field"
+                style={{ minHeight: '75px', resize: 'vertical' }}
+                value={adjustForm.reason}
+                onChange={(e) => setAdjustForm((prev) => ({ ...prev, reason: e.target.value }))}
+                placeholder="Reason for manual adjustment (e.g. system downtime, swipe card failure, regularization approval)..."
+                required
+                disabled={adjustSubmitting}
+              />
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 'var(--spacing-sm)', marginTop: 'var(--spacing-sm)' }}>
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={() => setShowAdjustModal(false)}
+                disabled={adjustSubmitting}
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                className="btn btn-primary"
+                disabled={adjustSubmitting}
+                style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+              >
+                {adjustSubmitting ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
+                <span>{adjustSubmitting ? 'Saving...' : 'Save Adjustment'}</span>
+              </button>
+            </div>
+          </form>
+        </Modal>
+      )}
     </div>
   );
 };

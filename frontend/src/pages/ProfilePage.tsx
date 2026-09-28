@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { Card } from '../components/Card';
 import { StatusBadge } from '../components/StatusBadge';
-import { Loader2, Save, User as UserIcon, Building, ShieldAlert } from 'lucide-react';
+import { Loader2, Save, User as UserIcon, Building, ShieldAlert, Lock, KeyRound, CheckCircle2 } from 'lucide-react';
 import { employeeService, type EmployeeProfile } from '../services/employee';
+import { authService } from '../services/auth';
 import { useAuth } from '../contexts/AuthContext';
 
 const styles = {
@@ -113,6 +114,54 @@ export const ProfilePage: React.FC = () => {
     emergency_contact_name: '',
     emergency_contact_phone: ''
   });
+
+  // Password change state
+  const [passwordData, setPasswordData] = useState({
+    old_password: '',
+    new_password: '',
+    confirm_password: '',
+  });
+  const [passwordSaving, setPasswordSaving] = useState(false);
+  const [passwordError, setPasswordError] = useState<string | null>(null);
+  const [passwordSuccess, setPasswordSuccess] = useState<string | null>(null);
+
+  const handlePasswordChange = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setPasswordError(null);
+    setPasswordSuccess(null);
+
+    if (!passwordData.old_password || !passwordData.new_password || !passwordData.confirm_password) {
+      setPasswordError('Please fill in all password fields.');
+      return;
+    }
+
+    if (passwordData.new_password !== passwordData.confirm_password) {
+      setPasswordError('New password and confirmation do not match.');
+      return;
+    }
+
+    if (passwordData.new_password.length < 8) {
+      setPasswordError('New password must be at least 8 characters long.');
+      return;
+    }
+
+    try {
+      setPasswordSaving(true);
+      const msg = await authService.changePassword(
+        passwordData.old_password,
+        passwordData.new_password,
+        passwordData.confirm_password
+      );
+      setPasswordSuccess(msg || 'Password changed successfully.');
+      setPasswordData({ old_password: '', new_password: '', confirm_password: '' });
+      setTimeout(() => setPasswordSuccess(null), 4000);
+    } catch (err: any) {
+      setPasswordError(err.message || 'Failed to change password. Please check your credentials.');
+    } finally {
+      setPasswordSaving(false);
+    }
+  };
+
 
   useEffect(() => {
     employeeService.getProfile()
@@ -355,6 +404,106 @@ export const ProfilePage: React.FC = () => {
           {saving ? 'Saving...' : 'Save Changes'}
         </button>
       </form>
+
+      {/* Account Security & Password */}
+      <Card>
+        <div style={styles.section}>
+          <h2 style={styles.sectionTitle}>
+            <Lock size={20} /> Account Security & Password
+          </h2>
+          <p style={{ margin: '0 0 var(--spacing-md) 0', fontSize: '0.85rem', color: 'var(--color-text-muted)' }}>
+            Update your account password. Choose a strong, unique password with at least 8 characters.
+          </p>
+
+          {passwordError && (
+            <div style={styles.alert('error')}>
+              <ShieldAlert size={18} />
+              <span>{passwordError}</span>
+            </div>
+          )}
+
+          {passwordSuccess && (
+            <div style={styles.alert('success')}>
+              <CheckCircle2 size={18} />
+              <span>{passwordSuccess}</span>
+            </div>
+          )}
+
+          <form onSubmit={handlePasswordChange}>
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+                gap: 'var(--spacing-md)',
+                marginBottom: 'var(--spacing-md)',
+              }}
+            >
+              <div style={styles.formGroup}>
+                <label style={styles.label}>Current Password</label>
+                <input
+                  type="password"
+                  name="old_password"
+                  value={passwordData.old_password}
+                  onChange={(e) => {
+                    setPasswordData((prev) => ({ ...prev, old_password: e.target.value }));
+                    setPasswordError(null);
+                  }}
+                  className="input-neumorphic"
+                  placeholder="••••••••"
+                  required
+                />
+              </div>
+
+              <div style={styles.formGroup}>
+                <label style={styles.label}>New Password</label>
+                <input
+                  type="password"
+                  name="new_password"
+                  value={passwordData.new_password}
+                  onChange={(e) => {
+                    setPasswordData((prev) => ({ ...prev, new_password: e.target.value }));
+                    setPasswordError(null);
+                  }}
+                  className="input-neumorphic"
+                  placeholder="••••••••"
+                  required
+                />
+              </div>
+
+              <div style={styles.formGroup}>
+                <label style={styles.label}>Confirm New Password</label>
+                <input
+                  type="password"
+                  name="confirm_password"
+                  value={passwordData.confirm_password}
+                  onChange={(e) => {
+                    setPasswordData((prev) => ({ ...prev, confirm_password: e.target.value }));
+                    setPasswordError(null);
+                  }}
+                  className="input-neumorphic"
+                  placeholder="••••••••"
+                  required
+                />
+              </div>
+            </div>
+
+            <button
+              type="submit"
+              disabled={passwordSaving}
+              className="btn btn-secondary"
+              style={{ display: 'inline-flex', alignItems: 'center', gap: '8px' }}
+            >
+              {passwordSaving ? (
+                <Loader2 size={18} style={{ animation: 'spin 1s linear infinite' }} />
+              ) : (
+                <KeyRound size={18} />
+              )}
+              {passwordSaving ? 'Updating Password...' : 'Change Password'}
+            </button>
+          </form>
+        </div>
+      </Card>
     </div>
+
   );
 };

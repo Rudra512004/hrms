@@ -118,9 +118,101 @@ class LeaveBalanceViewSet(viewsets.ReadOnlyModelViewSet):
 
     def get_queryset(self):
         user = self.request.user
-        if hasattr(user, 'employee'):
-            return LeaveBalance.objects.filter(employee=user.employee)
-        return LeaveBalance.objects.none()
+        if not user.is_authenticated:
+            return LeaveBalance.objects.none()
+
+        emp_id = self.request.query_params.get('employee_id') or self.request.query_params.get('employee')
+        leave_type_id = self.request.query_params.get('leave_type_id') or self.request.query_params.get('leave_type')
+
+        if user.is_superuser:
+            qs = LeaveBalance.objects.all()
+            if emp_id:
+                qs = qs.filter(employee_id=emp_id)
+            if leave_type_id:
+                qs = qs.filter(leave_type_id=leave_type_id)
+            return qs.select_related('employee__user', 'leave_type', 'branch', 'leave_cycle')
+
+        caller_emp = getattr(user, 'employee', None)
+        if not caller_emp:
+            return LeaveBalance.objects.none()
+
+        from apps.authorization.services import AuthorizationService
+        can_manage = AuthorizationService.has_permission(user, 'leave_type.manage')
+        can_view = AuthorizationService.has_permission(user, 'leave.view')
+
+        if (can_manage or can_view) and emp_id and str(emp_id) != str(caller_emp.id):
+            authorized_branches = AuthorizationService.get_authorized_branches(user, 'leave_type.manage' if can_manage else 'leave.view')
+            qs = LeaveBalance.objects.filter(
+                employee__organization=caller_emp.organization,
+                employee__branch__in=authorized_branches,
+                employee_id=emp_id
+            )
+            if leave_type_id:
+                qs = qs.filter(leave_type_id=leave_type_id)
+            return qs.select_related('employee__user', 'leave_type', 'branch', 'leave_cycle')
+
+        qs = LeaveBalance.objects.filter(employee=caller_emp)
+        if leave_type_id:
+            qs = qs.filter(leave_type_id=leave_type_id)
+        return qs.select_related('employee__user', 'leave_type', 'branch', 'leave_cycle')
+
+    @action(detail=True, methods=['post'], url_path='adjust')
+    def adjust(self, request, pk=None):
+        user = request.user
+        balance = self.get_object()
+
+        from apps.authorization.services import AuthorizationService
+        if not user.is_superuser:
+            if not AuthorizationService.has_permission(user, 'leave_type.manage'):
+                return Response({'detail': 'Permission denied. leave_type.manage required.'}, status=status.HTTP_403_FORBIDDEN)
+            caller_emp = getattr(user, 'employee', None)
+            if not caller_emp or balance.employee.organization_id != caller_emp.organization_id:
+                return Response({'detail': 'Cross-organization modification forbidden.'}, status=status.HTTP_403_FORBIDDEN)
+
+        amount = request.data.get('amount')
+        reason = request.data.get('reason', '')
+        if amount is None:
+            return Response({'detail': 'Adjustment amount is required.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        from decimal import Decimal, InvalidOperation
+        try:
+            adj_decimal = Decimal(str(amount))
+        except InvalidOperation:
+            return Response({'detail': 'Invalid adjustment amount format.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        if not str(reason).strip():
+            return Response({'detail': 'Adjustment reason is required.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        from .models import LeaveBalanceTransaction
+        with transaction.atomic():
+            balance = LeaveBalance.objects.select_for_update().get(pk=balance.pk)
+            balance.adjustment += adj_decimal
+            balance.save()
+
+            LeaveBalanceTransaction.objects.create(
+                balance=balance,
+                employee=balance.employee,
+                leave_type=balance.leave_type,
+                leave_cycle=balance.leave_cycle,
+                actor=user,
+                transaction_type='manual_adjustment',
+                amount=adj_decimal,
+                effective_date=timezone.now().date(),
+                reference=str(reason).strip()
+            )
+
+            AuditService.log(
+                action='leave_balance_adjusted',
+                actor=user,
+                target_type='leave_balance',
+                target_id=balance.id,
+                metadata={'amount': str(adj_decimal), 'reason': str(reason).strip(), 'employee_id': balance.employee_id},
+                request=request
+            )
+
+        serializer = self.get_serializer(balance)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
 
 def _is_branch_authorized(authorized_branches, branch_id):
     if hasattr(authorized_branches, 'filter'):

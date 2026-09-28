@@ -190,5 +190,41 @@ export const authService = {
 
     const data = await response.json();
     return data.detail || 'Account successfully activated.';
+  },
+
+  /**
+   * Change password for authenticated user.
+   */
+  changePassword: async (old_password: string, new_password: string, confirm_password: string): Promise<string> => {
+    const token = localStorage.getItem('auth_token');
+    const response = await fetch('/api/v1/auth/password-change/', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { 'Authorization': `Token ${token}` } : {})
+      },
+      body: JSON.stringify({ old_password, new_password, confirm_password })
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      if (errorData.non_field_errors) {
+        throw new Error(errorData.non_field_errors[0]);
+      }
+      if (errorData.detail) {
+        throw new Error(errorData.detail);
+      }
+      const firstErrorKey = Object.keys(errorData)[0];
+      if (firstErrorKey && Array.isArray(errorData[firstErrorKey])) {
+        throw new Error(errorData[firstErrorKey][0]);
+      }
+      throw new Error('Failed to change password');
+    }
+
+    const data = await response.json();
+    if (data.token) {
+      localStorage.setItem('auth_token', data.token);
+    }
+    return data.detail || 'Password changed successfully.';
   }
 };

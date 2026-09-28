@@ -333,6 +333,131 @@ class AttendanceManagementViewSet(viewsets.GenericViewSet):
         serializer = self.get_serializer(queryset, many=True)
         return Response(serializer.data)
 
+    @action(detail=False, methods=['post'], url_path='adjust')
+    def adjust(self, request):
+        user = request.user
+        emp_id = request.data.get('employee') or request.data.get('employee_id')
+        date_val = request.data.get('date')
+        check_in = request.data.get('check_in')
+        check_out = request.data.get('check_out')
+        status_val = request.data.get('status', 'present')
+        reason = request.data.get('reason', '')
+        is_late = request.data.get('is_late', False)
+
+        if not emp_id or not date_val:
+            return Response({'detail': 'Employee and date are required.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        from apps.employees.models import Employee
+        try:
+            target_emp = Employee.objects.select_related('organization', 'branch', 'team').get(id=emp_id)
+        except (Employee.DoesNotExist, ValueError):
+            return Response({'detail': 'Employee not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+        if not user.is_superuser:
+            caller_emp = getattr(user, 'employee', None)
+            if not caller_emp or target_emp.organization_id != caller_emp.organization_id:
+                return Response({'detail': 'Cross-organization modification forbidden.'}, status=status.HTTP_403_FORBIDDEN)
+            from apps.authorization.services import AuthorizationService
+            auth_branches = AuthorizationService.get_authorized_branches(user, 'attendance.view_all')
+            auth_teams = AuthorizationService.get_authorized_teams(user, 'attendance.view_all')
+
+            is_branch_auth = False
+            if target_emp.branch_id:
+                if hasattr(auth_branches, 'filter'):
+                    is_branch_auth = auth_branches.filter(id=target_emp.branch_id).exists()
+                else:
+                    is_branch_auth = any(str(getattr(b, 'id', b)) == str(target_emp.branch_id) for b in auth_branches)
+
+            is_team_auth = False
+            if target_emp.team_id:
+                if hasattr(auth_teams, 'filter'):
+                    is_team_auth = auth_teams.filter(id=target_emp.team_id).exists()
+                else:
+                    is_team_auth = any(str(getattr(t, 'id', t)) == str(target_emp.team_id) for t in auth_teams)
+
+            if not (is_branch_auth or is_team_auth):
+                return Response({'detail': 'You do not have permission to adjust attendance for this employee.'}, status=status.HTTP_403_FORBIDDEN)
+
+        from django.utils.dateparse import parse_date, parse_datetime
+        from datetime import datetime
+        parsed_date = parse_date(str(date_val)) if isinstance(date_val, str) else date_val
+        if not parsed_date:
+            return Response({'detail': 'Invalid date format. Use YYYY-MM-DD.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        parsed_check_in = None
+        if check_in:
+            parsed_check_in = parse_datetime(str(check_in))
+            if not parsed_check_in:
+                for fmt in ('%H:%M:%S', '%H:%M'):
+                    try:
+                        t = datetime.strptime(str(check_in).strip(), fmt).time()
+                        parsed_check_in = timezone.make_aware(datetime.combine(parsed_date, t))
+                        break
+                    except ValueError:
+                        continue
+                if not parsed_check_in:
+                    return Response({'detail': 'Invalid check_in format.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        parsed_check_out = None
+        if check_out:
+            parsed_check_out = parse_datetime(str(check_out))
+            if not parsed_check_out:
+                for fmt in ('%H:%M:%S', '%H:%M'):
+                    try:
+                        t = datetime.strptime(str(check_out).strip(), fmt).time()
+                        parsed_check_out = timezone.make_aware(datetime.combine(parsed_date, t))
+                        break
+                    except ValueError:
+                        continue
+                if not parsed_check_out:
+                    return Response({'detail': 'Invalid check_out format.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        if parsed_check_in and parsed_check_out and parsed_check_out < parsed_check_in:
+            return Response({'detail': 'Check-out cannot be before check-in.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        with transaction.atomic():
+            attendance, created = Attendance.objects.get_or_create(
+                employee=target_emp,
+                date=parsed_date,
+                defaults={
+                    'status': status_val,
+                    'is_late': bool(is_late),
+                    'check_in': parsed_check_in,
+                    'check_out': parsed_check_out,
+                }
+            )
+
+            if not created:
+                attendance.status = status_val
+                attendance.is_late = bool(is_late)
+                if check_in is not None or status_val == 'absent':
+                    attendance.check_in = parsed_check_in
+                if check_out is not None or status_val == 'absent':
+                    attendance.check_out = parsed_check_out
+
+            # Recalculate productive work duration
+            if attendance.check_in and attendance.check_out:
+                total_breaks = attendance.total_break_duration or timedelta(0)
+                dur = (attendance.check_out - attendance.check_in) - total_breaks
+                attendance.productive_work_duration = max(timedelta(0), dur)
+            elif attendance.status == 'absent':
+                attendance.productive_work_duration = timedelta(0)
+
+            attendance.save()
+
+            AuditService.log(
+                action='attendance_manual_adjustment',
+                actor=user,
+                target_type='attendance',
+                target_id=attendance.id,
+                metadata={'reason': reason, 'employee_id': target_emp.id, 'date': str(parsed_date)},
+                request=request
+            )
+
+        serializer = self.get_serializer(attendance)
+        return Response(serializer.data, status=status.HTTP_200_OK if not created else status.HTTP_201_CREATED)
+
+
 class HolidayViewSet(viewsets.ModelViewSet):
     serializer_class = HolidaySerializer
     pagination_class = StandardResultsSetPagination

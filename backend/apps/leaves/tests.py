@@ -475,3 +475,21 @@ class AdminLeaveTypeAPITests(TestCase):
             response = self.client.post(reverse('leave-requests-approve', kwargs={'pk': req2.id}))
             self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
             self.assertIn('overlapping', str(response.data).lower())
+
+    def test_adjust_leave_balance_success(self):
+        admin_user = User.objects.create_superuser(email='superadmin@example.com', password='Password123!')
+        self.client.force_authenticate(user=admin_user)
+        url = reverse('leave-balances-adjust', kwargs={'pk': self.balance.id})
+        res = self.client.post(url, {'amount': '2.5', 'reason': 'Compensatory off'})
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        self.balance.refresh_from_db()
+        self.assertEqual(float(self.balance.adjustment), 2.5)
+        self.assertEqual(float(self.balance.remaining), 12.5)
+
+    def test_adjust_leave_balance_permission_denied_for_regular_employee(self):
+        self.client.force_authenticate(user=self.employee)
+        url = reverse('leave-balances-adjust', kwargs={'pk': self.balance.id})
+        from unittest.mock import patch
+        with patch('apps.authorization.services.AuthorizationService.has_permission', return_value=False):
+            res = self.client.post(url, {'amount': '1.0', 'reason': 'Self grant'})
+            self.assertEqual(res.status_code, status.HTTP_403_FORBIDDEN)

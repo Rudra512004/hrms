@@ -1,10 +1,14 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { usePagination } from '../../hooks/usePagination';
 import { Card } from '../../components/Card';
 import { Table } from '../../components/Table';
 import { StatusBadge } from '../../components/StatusBadge';
-import { leaveService, type LeaveRequest, type ListLeaveRequestsParams } from '../../services/leaves';
-import { AlertCircle, FileCheck2, Loader2, Check, X } from 'lucide-react';
+import { Modal } from '../../components/Modal';
+import { leaveService, type LeaveRequest, type ListLeaveRequestsParams, type LeaveBalance } from '../../services/leaves';
+import { employeeManagementService } from '../../services/employeeManagement';
+import { type EmployeeProfile } from '../../services/employee';
+import { exportToCsv } from '../../utils/exportCsv';
+import { AlertCircle, FileCheck2, Loader2, Check, X, Download, Sliders } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useBranchContext } from '../../contexts/BranchContext';
 
@@ -130,6 +134,20 @@ export function AdminLeavePage() {
   const [reviewComment, setReviewComment] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  // Leave Balance Adjustment Modal State
+  const [showAdjustModal, setShowAdjustModal] = useState(false);
+  const [employees, setEmployees] = useState<EmployeeProfile[]>([]);
+  const [employeesLoading, setEmployeesLoading] = useState(false);
+  const [selectedEmployeeId, setSelectedEmployeeId] = useState<string>('');
+  const [employeeBalances, setEmployeeBalances] = useState<LeaveBalance[]>([]);
+  const [balancesLoading, setBalancesLoading] = useState(false);
+  const [selectedBalanceId, setSelectedBalanceId] = useState<number | null>(null);
+  const [adjustAmount, setAdjustAmount] = useState<string>('');
+  const [adjustReason, setAdjustReason] = useState<string>('');
+  const [isAdjusting, setIsAdjusting] = useState(false);
+  const [adjustError, setAdjustError] = useState<string | null>(null);
+  const [adjustSuccess, setAdjustSuccess] = useState<string | null>(null);
+
   const loadRequests = useCallback(async () => {
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
@@ -218,6 +236,122 @@ export function AdminLeavePage() {
       setError(msgs);
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  const handleExportCsv = () => {
+    if (!requests.length) return;
+    exportToCsv(
+      `leave_requests_${new Date().toISOString().split('T')[0]}`,
+      [
+        { header: 'ID', accessor: (r) => `#${r.id}` },
+        { header: 'Employee', accessor: (r) => r.employee_name || `Employee #${r.employee}` },
+        { header: 'Employee Code', accessor: (r) => r.employee_code || '' },
+        { header: 'Leave Type', accessor: (r) => r.leave_type_name || '' },
+        { header: 'Start Date', accessor: (r) => r.start_date },
+        { header: 'End Date', accessor: (r) => r.end_date },
+        {
+          header: 'Duration (Days)',
+          accessor: (r) => (r.is_half_day ? 0.5 : (r.duration_days ?? '')),
+        },
+        {
+          header: 'Half Day',
+          accessor: (r) =>
+            r.is_half_day
+              ? r.half_day_period === 'second_half'
+                ? '2nd Half'
+                : '1st Half'
+              : 'No',
+        },
+        { header: 'Reason', accessor: (r) => r.reason },
+        { header: 'Status', accessor: (r) => r.status },
+        { header: 'Reviewer Comment', accessor: (r) => r.reviewer_comment || '' },
+      ],
+      requests
+    );
+  };
+
+  const openAdjustModal = async () => {
+    setShowAdjustModal(true);
+    setSelectedEmployeeId('');
+    setEmployeeBalances([]);
+    setSelectedBalanceId(null);
+    setAdjustAmount('');
+    setAdjustReason('');
+    setAdjustError(null);
+    setAdjustSuccess(null);
+
+    if (employees.length === 0) {
+      setEmployeesLoading(true);
+      try {
+        const res = await employeeManagementService.listEmployees({ paginate: false });
+        const list = Array.isArray(res) ? res : (res as any)?.results || [];
+        setEmployees(list);
+      } catch {
+        // fallback
+      } finally {
+        setEmployeesLoading(false);
+      }
+    }
+  };
+
+  const handleEmployeeChange = async (empId: string) => {
+    setSelectedEmployeeId(empId);
+    setSelectedBalanceId(null);
+    setEmployeeBalances([]);
+    setAdjustError(null);
+    setAdjustSuccess(null);
+
+    if (!empId) return;
+
+    setBalancesLoading(true);
+    try {
+      const balances = await leaveService.getBalances({ employee_id: empId });
+      setEmployeeBalances(balances);
+      if (balances.length > 0) {
+        setSelectedBalanceId(balances[0].id);
+      }
+    } catch {
+      setAdjustError('Failed to load leave balances for selected employee.');
+    } finally {
+      setBalancesLoading(false);
+    }
+  };
+
+  const handleAdjustSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedBalanceId) {
+      setAdjustError('Please select a leave balance to adjust.');
+      return;
+    }
+    const parsedAmount = parseFloat(adjustAmount);
+    if (isNaN(parsedAmount) || parsedAmount === 0) {
+      setAdjustError('Please enter a valid non-zero adjustment amount.');
+      return;
+    }
+    if (!adjustReason.trim()) {
+      setAdjustError('Please provide an adjustment reason.');
+      return;
+    }
+
+    setIsAdjusting(true);
+    setAdjustError(null);
+    setAdjustSuccess(null);
+    try {
+      await leaveService.adjustBalance(selectedBalanceId, parsedAmount, adjustReason.trim());
+      setAdjustSuccess('Leave balance adjusted successfully.');
+      setAdjustAmount('');
+      setAdjustReason('');
+      // Refresh balances
+      if (selectedEmployeeId) {
+        const updated = await leaveService.getBalances({ employee_id: selectedEmployeeId });
+        setEmployeeBalances(updated);
+      }
+    } catch (err: any) {
+      const msgs = err.errorData ? Object.values(err.errorData).flat().join(' ') : 'Failed to adjust leave balance.';
+      setAdjustError(msgs);
+    } finally {
+      setIsAdjusting(false);
     }
   };
 
@@ -341,9 +475,37 @@ export function AdminLeavePage() {
 
   return (
     <div style={styles.container}>
-      <div style={styles.header}>
-        <h1 style={styles.title}>Leave Management</h1>
-        <p style={styles.subtitle}>Review and manage employee leave requests.</p>
+      <div
+        style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'flex-start',
+          flexWrap: 'wrap',
+          gap: '16px',
+          marginBottom: 'var(--spacing-xl)',
+        }}
+      >
+        <div>
+          <h1 style={styles.title}>Leave Management</h1>
+          <p style={styles.subtitle}>Review and manage employee leave requests and balances.</p>
+        </div>
+        {(hasPermission('leave_type.manage') || user?.isSuperuser) && (
+          <button
+            onClick={openAdjustModal}
+            style={{
+              ...styles.button('secondary'),
+              backgroundColor: 'var(--color-primary)',
+              color: '#fff',
+              padding: '8px 16px',
+              border: 'none',
+              boxShadow: 'var(--shadow-sm)',
+            }}
+            title="Adjust Employee Leave Balance"
+            data-testid="adjust-balance-btn"
+          >
+            <Sliders size={15} /> Adjust Leave Balance
+          </button>
+        )}
       </div>
 
       {error && (
@@ -395,6 +557,19 @@ export function AdminLeavePage() {
                 <option value="rejected">Rejected</option>
                 <option value="cancelled">Cancelled</option>
               </select>
+
+              <button
+                onClick={handleExportCsv}
+                style={{
+                  ...styles.button('secondary'),
+                  padding: '6px 12px',
+                }}
+                disabled={requests.length === 0}
+                title="Export Leave Requests to CSV"
+                data-testid="export-leave-csv-btn"
+              >
+                <Download size={14} /> Export CSV
+              </button>
             </div>
           </div>
           <Table
@@ -449,6 +624,130 @@ export function AdminLeavePage() {
             </div>
           </div>
         </div>
+      )}
+
+      {showAdjustModal && (
+        <Modal
+          title="Adjust Employee Leave Balance"
+          onClose={() => setShowAdjustModal(false)}
+          size="md"
+          footer={
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={() => setShowAdjustModal(false)}
+                disabled={isAdjusting}
+              >
+                Close
+              </button>
+              <button
+                type="button"
+                className="btn btn-primary"
+                onClick={handleAdjustSubmit}
+                disabled={isAdjusting || !selectedBalanceId || !adjustAmount || !adjustReason}
+              >
+                {isAdjusting ? <Loader2 size={14} className="animate-spin" /> : 'Save Adjustment'}
+              </button>
+            </div>
+          }
+        >
+          {adjustError && (
+            <div style={styles.alert('error')}>
+              <AlertCircle size={18} />
+              <span>{adjustError}</span>
+            </div>
+          )}
+          {adjustSuccess && (
+            <div style={styles.alert('success')}>
+              <Check size={18} />
+              <span>{adjustSuccess}</span>
+            </div>
+          )}
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+            <div>
+              <label style={{ display: 'block', marginBottom: '6px', fontSize: '13px', fontWeight: 600 }}>
+                Select Employee *
+              </label>
+              <select
+                style={styles.input}
+                value={selectedEmployeeId}
+                onChange={(e) => handleEmployeeChange(e.target.value)}
+                disabled={employeesLoading}
+              >
+                <option value="">-- Choose an employee --</option>
+                {employees.map((emp) => (
+                  <option key={emp.id} value={emp.id}>
+                    {`${emp.first_name || ''} ${emp.last_name || ''}`.trim() || emp.email} ({emp.employee_code})
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {balancesLoading ? (
+              <div style={{ display: 'flex', justifyContent: 'center', padding: '16px 0' }}>
+                <Loader2 size={24} className="animate-spin" style={{ color: 'var(--color-primary)' }} />
+              </div>
+            ) : selectedEmployeeId ? (
+              employeeBalances.length === 0 ? (
+                <div style={{ fontSize: '13px', color: 'var(--color-text-muted)', fontStyle: 'italic', padding: '8px 0' }}>
+                  No leave balances found for this employee in the current active cycle.
+                </div>
+              ) : (
+                <>
+                  <div>
+                    <label style={{ display: 'block', marginBottom: '6px', fontSize: '13px', fontWeight: 600 }}>
+                      Select Leave Balance *
+                    </label>
+                    <select
+                      style={styles.input}
+                      value={selectedBalanceId ?? ''}
+                      onChange={(e) => setSelectedBalanceId(Number(e.target.value))}
+                    >
+                      <option value="">-- Select leave type balance --</option>
+                      {employeeBalances.map((b) => (
+                        <option key={b.id} value={b.id}>
+                          {b.leave_type_name} (Remaining: {b.remaining}d | Allocated: {b.allocated}d | Used: {b.used}d | Adj: {b.adjustment}d)
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label style={{ display: 'block', marginBottom: '6px', fontSize: '13px', fontWeight: 600 }}>
+                      Adjustment Amount (Days) *
+                    </label>
+                    <input
+                      type="number"
+                      step="0.5"
+                      style={styles.input}
+                      placeholder="e.g. 2.0 (credit) or -1.0 (debit)"
+                      value={adjustAmount}
+                      onChange={(e) => setAdjustAmount(e.target.value)}
+                    />
+                    <span style={{ fontSize: '12px', color: 'var(--color-text-muted)' }}>
+                      Positive values credit leaves; negative values debit leaves.
+                    </span>
+                  </div>
+
+                  <div>
+                    <label style={{ display: 'block', marginBottom: '6px', fontSize: '13px', fontWeight: 600 }}>
+                      Adjustment Reason *
+                    </label>
+                    <input
+                      type="text"
+                      style={styles.input}
+                      placeholder="e.g. Compensatory off granted for weekend production deployment"
+                      value={adjustReason}
+                      onChange={(e) => setAdjustReason(e.target.value)}
+                    />
+                  </div>
+                </>
+              )
+            ) : null}
+          </div>
+        </Modal>
       )}
     </div>
   );

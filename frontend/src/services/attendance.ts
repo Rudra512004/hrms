@@ -148,4 +148,21 @@ export const attendanceService = {
     (params?: ManagementAttendanceParams & { paginate?: false }, options?: { signal?: AbortSignal }): Promise<AttendanceRecord[]>;
     (params?: ManagementAttendanceParams, options?: { signal?: AbortSignal }): Promise<PaginatedResponse<AttendanceRecord> | AttendanceRecord[]>;
   },
+
+  adjustAttendance: async (payload: {
+    employee_id: number;
+    date: string;
+    check_in?: string | null;
+    check_out?: string | null;
+    status: 'present' | 'absent' | 'half_day';
+    reason: string;
+    is_late?: boolean;
+  }): Promise<AttendanceRecord> => {
+    const response = await fetch('/api/v1/attendance/management/adjust/', {
+      method: 'POST',
+      headers: getHeaders(true),
+      body: JSON.stringify(payload),
+    });
+    return handleResponse<AttendanceRecord>(response);
+  },
 };

@@ -94,7 +94,7 @@ from django.utils.http import urlsafe_base64_encode
 from django.utils.encoding import force_bytes
 from django.contrib.auth.tokens import default_token_generator
 from apps.notifications.services import NotificationService
-from .serializers import PasswordResetRequestSerializer, PasswordResetConfirmSerializer
+from .serializers import PasswordResetRequestSerializer, PasswordResetConfirmSerializer, PasswordChangeSerializer
 
 User = get_user_model()
 
@@ -158,3 +158,29 @@ class PasswordResetConfirmView(APIView):
         )
 
         return Response({'detail': 'Password has been successfully reset.'}, status=status.HTTP_200_OK)
+
+
+class ChangePasswordView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, *args, **kwargs):
+        serializer = PasswordChangeSerializer(data=request.data, context={'request': request})
+        serializer.is_valid(raise_exception=True)
+        user = serializer.save()
+
+        # Invalidate old token and issue new token for security
+        Token.objects.filter(user=user).delete()
+        new_token = Token.objects.create(user=user)
+
+        AuditService.log(
+            action='password_change',
+            actor=user,
+            target_type='user',
+            target_id=user.id,
+            request=request
+        )
+
+        return Response({
+            'detail': 'Password changed successfully.',
+            'token': new_token.key
+        }, status=status.HTTP_200_OK)

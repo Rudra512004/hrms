@@ -264,7 +264,9 @@ export function LeavePage() {
             }}
           >
             {balances.map((b) => {
-              const pct = b.allocated > 0 ? Math.round(((b.allocated - b.remaining) / b.allocated) * 100) : 0;
+              const alloc = Number(b.allocated) || 0;
+              const rem = Number(b.remaining) || 0;
+              const pct = alloc > 0 ? Math.round(((alloc - rem) / alloc) * 100) : 0;
               return (
                 <div
                   key={b.id}

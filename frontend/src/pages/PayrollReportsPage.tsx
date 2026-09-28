@@ -20,6 +20,7 @@ import { StatusBadge } from '../components/StatusBadge';
 import { AlertBanner } from '../components/AlertBanner';
 import { EmptyState } from '../components/EmptyState';
 import { useAuth } from '../contexts/AuthContext';
+import { exportToCsv } from '../utils/exportCsv';
 import {
   payrollService,
   type PayrollPeriod,
@@ -283,6 +284,32 @@ export const PayrollReportsPage: React.FC = () => {
     }
   };
 
+  const handleExportReconciliationCsv = () => {
+    if (!reconciliationRecords.length) return;
+    const periodLabel = selectedPeriod ? `${MONTH_NAMES[selectedPeriod.month]}_${selectedPeriod.year}` : 'period';
+    exportToCsv(
+      `payroll_reconciliation_${periodLabel}`,
+      [
+        { header: 'Employee Code', accessor: (r) => r.employee_code },
+        { header: 'Employee Name', accessor: (r) => r.employee_name },
+        { header: 'Branch', accessor: (r) => r.branch_name },
+        { header: 'Department', accessor: (r) => r.department_name },
+        { header: 'Working Days', accessor: (r) => r.working_days },
+        { header: 'Present Days', accessor: (r) => r.present_days },
+        { header: 'Half Days', accessor: (r) => r.half_days },
+        { header: 'Leave Days', accessor: (r) => r.leave_days },
+        { header: 'Absent Days', accessor: (r) => r.absent_days },
+        { header: 'Effective Days', accessor: (r) => r.effective_days },
+        { header: 'Basic Salary', accessor: (r) => r.basic_salary ?? 'Confidential' },
+        { header: 'Gross Salary', accessor: (r) => r.gross_salary ?? 'Confidential' },
+        { header: 'Net Salary', accessor: (r) => r.net_salary ?? 'Confidential' },
+        { header: 'Loss of Pay', accessor: (r) => r.loss_of_pay_amount ?? 'Confidential' },
+        { header: 'Status', accessor: (r) => r.status },
+      ],
+      reconciliationRecords
+    );
+  };
+
   const maxBranchCount = Math.max(...(breakdownData?.by_branch.map((b) => b.headcount) || [1]), 1);
   const maxDeptCount = Math.max(...(breakdownData?.by_department.map((d) => d.headcount) || [1]), 1);
 
@@ -529,6 +556,23 @@ export const PayrollReportsPage: React.FC = () => {
                   Reset Filters
                 </button>
               )}
+
+              <button
+                onClick={handleExportReconciliationCsv}
+                className="btn btn-secondary"
+                disabled={reconciliationRecords.length === 0}
+                style={{
+                  height: '38px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  marginLeft: 'auto',
+                }}
+                title="Export Reconciliation Ledger to CSV"
+              >
+                <FileSpreadsheet size={16} />
+                <span>Export CSV</span>
+              </button>
             </div>
           </Card>
 

@@ -14,11 +14,19 @@ class LeaveTypeSerializer(serializers.ModelSerializer):
 class LeaveBalanceSerializer(serializers.ModelSerializer):
     remaining = serializers.DecimalField(max_digits=8, decimal_places=2, read_only=True)
     leave_type_name = serializers.CharField(source='leave_type.name', read_only=True)
+    employee_code = serializers.CharField(source='employee.employee_code', read_only=True, default=None)
+    employee_name = serializers.SerializerMethodField(read_only=True)
 
     class Meta:
         model = LeaveBalance
-        fields = ['id', 'employee', 'leave_type', 'leave_type_name', 'branch', 'leave_cycle', 'allocated', 'used', 'carried_forward', 'adjustment', 'remaining']
+        fields = ['id', 'employee', 'employee_name', 'employee_code', 'leave_type', 'leave_type_name', 'branch', 'leave_cycle', 'allocated', 'used', 'carried_forward', 'adjustment', 'remaining']
         read_only_fields = ['employee', 'allocated', 'used', 'carried_forward', 'adjustment']
+
+    def get_employee_name(self, obj):
+        if not obj.employee or not obj.employee.user:
+            return None
+        return f"{obj.employee.user.first_name} {obj.employee.user.last_name}".strip()
+
 
 class LeaveRequestSerializer(serializers.ModelSerializer):
     duration_days = serializers.DecimalField(max_digits=5, decimal_places=2, read_only=True, allow_null=True)

@@ -109,3 +109,38 @@ class PasswordResetConfirmSerializer(serializers.Serializer):
         user.set_password(self.validated_data['new_password'])
         user.save()
         return user
+
+
+class PasswordChangeSerializer(serializers.Serializer):
+    old_password = serializers.CharField(write_only=True)
+    new_password = serializers.CharField(write_only=True)
+    confirm_password = serializers.CharField(write_only=True)
+
+    def validate(self, data):
+        request = self.context.get('request')
+        if not request or not request.user or not request.user.is_authenticated:
+            raise serializers.ValidationError("Authentication required.")
+
+        user = request.user
+        if not user.check_password(data['old_password']):
+            raise serializers.ValidationError({"old_password": ["Current password is incorrect."]})
+
+        if data['new_password'] != data['confirm_password']:
+            raise serializers.ValidationError({"confirm_password": ["Passwords do not match."]})
+
+        if data['old_password'] == data['new_password']:
+            raise serializers.ValidationError({"new_password": ["New password cannot be the same as current password."]})
+
+        try:
+            validate_password(data['new_password'], user=user)
+        except ValidationError as e:
+            raise serializers.ValidationError({"new_password": list(e.messages)})
+
+        data['user'] = user
+        return data
+
+    def save(self):
+        user = self.validated_data['user']
+        user.set_password(self.validated_data['new_password'])
+        user.save()
+        return user

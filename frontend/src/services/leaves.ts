@@ -12,12 +12,17 @@ export interface LeaveType {
 export interface LeaveBalance {
   id: number;
   employee: number;
+  employee_name?: string;
+  employee_code?: string;
   leave_type: number;
   leave_type_name: string;
-  allocated: number;
-  used: number;
-  remaining: number;
+  allocated: number | string;
+  used: number | string;
+  carried_forward?: number | string;
+  adjustment?: number | string;
+  remaining: number | string;
 }
+
 
 export interface LeaveRequest {
   id: number;
@@ -149,10 +154,28 @@ export const leaveService = {
     return handleResponse(response);
   },
 
-  getBalances: async (): Promise<LeaveBalance[]> => {
-    const response = await fetch('/api/v1/leaves/balances/', { headers: getHeaders() });
+  getBalances: async (params?: { employee_id?: number | string; leave_type_id?: number | string }): Promise<LeaveBalance[]> => {
+    let url = '/api/v1/leaves/balances/';
+    if (params) {
+      const q = new URLSearchParams();
+      if (params.employee_id) q.set('employee_id', String(params.employee_id));
+      if (params.leave_type_id) q.set('leave_type_id', String(params.leave_type_id));
+      const qs = q.toString();
+      if (qs) url += `?${qs}`;
+    }
+    const response = await fetch(url, { headers: getHeaders() });
     return handleResponse(response);
   },
+
+  adjustBalance: async (balanceId: number, amount: number | string, reason: string): Promise<LeaveBalance> => {
+    const response = await fetch(`/api/v1/leaves/balances/${balanceId}/adjust/`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify({ amount, reason })
+    });
+    return handleResponse(response);
+  },
+
 
   getRequests: (async (
     params?: ListLeaveRequestsParams,
