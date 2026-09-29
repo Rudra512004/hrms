@@ -18,26 +18,19 @@ from apps.leaves.models import LeaveRequest
 from .models import CompensationHistory, PayrollPeriod, PayrollRecord, Payslip
 
 
-def _working_days_in_period(organization_id: int, start: date, end: date) -> int:
+def _working_days_in_period(branch_id: int, start: date, end: date) -> int:
     """
-    Count weekdays (Mon–Fri) within [start, end] that are NOT org holidays.
-    Mirrors the logic in LeaveRequest.duration_days for consistency.
+    Count working days within [start, end] that are not branch holidays or recurring off-days.
+    Uses WorkingCalendarService as the authoritative evaluation engine.
     """
-    holiday_dates = set(
-        Holiday.objects.filter(
-            organization_id=organization_id,
-            date__range=[start, end],
-            is_active=True,
-        ).values_list('date', flat=True)
-    )
+    if not branch_id:
+        return 0
 
-    days = 0
-    current = start
-    while current <= end:
-        if current.weekday() < 5 and current not in holiday_dates:
-            days += 1
-        current += timedelta(days=1)
-    return days
+    from apps.organization.models import Branch
+    from apps.organization.services import WorkingCalendarService
+    branch = Branch.objects.get(id=branch_id)
+    return WorkingCalendarService.count_working_days(branch, start, end)
+
 
 
 def _get_active_salary(employee, period_start: date, period_end: date = None) -> Decimal:
@@ -108,8 +101,8 @@ def _attendance_summary(employee, start: date, end: date) -> dict:
 def _approved_leave_days(employee, start: date, end: date, exclude_dates: set = None) -> int:
     """
     Count distinct working days of approved LeaveRequests overlapping the pay period.
-    Excludes weekends and holidays, and deduplicates overlapping requests.
-    Excludes dates already accounted for by attendance (exclude_dates) to prevent double counting.
+    Excludes weekends, recurring off-days, and holidays via WorkingCalendarService.
+    Deduplicates overlapping requests and excludes dates already accounted for by attendance (exclude_dates).
     """
     if exclude_dates is None:
         exclude_dates = set()
@@ -120,24 +113,27 @@ def _approved_leave_days(employee, start: date, end: date, exclude_dates: set = 
         start_date__lte=end,
         end_date__gte=start,
     )
+    if not requests.exists():
+        return 0
+
+    from apps.organization.services import WorkingCalendarService
+    branch = getattr(employee, 'branch', None)
     leave_dates = set()
-    holiday_dates = set(
-        Holiday.objects.filter(
-            organization=employee.organization,
-            date__range=[start, end],
-            is_active=True,
-        ).values_list('date', flat=True)
-    )
+
     for lr in requests:
         clipped_start = max(lr.start_date, start)
         clipped_end = min(lr.end_date, end)
-
         current = clipped_start
         while current <= clipped_end:
-            if current.weekday() < 5 and current not in holiday_dates and current not in exclude_dates:
-                leave_dates.add(current)
+            if current not in exclude_dates:
+                if not branch:
+                    from apps.organization.exceptions import WorkingCalendarConfigurationError
+                    raise WorkingCalendarConfigurationError("Branch is required to determine leave duration.")
+                if WorkingCalendarService.is_working_day(branch, current):
+                    leave_dates.add(current)
             current += timedelta(days=1)
     return len(leave_dates)
+
 
 
 def generate_payroll_for_period(period: PayrollPeriod, requesting_user=None) -> list:
@@ -163,13 +159,12 @@ def generate_payroll_for_period(period: PayrollPeriod, requesting_user=None) -> 
         Q(exit_date__isnull=True) | Q(exit_date__gte=period.start_date)
     ).select_related('organization', 'user')
 
-    working_days = _working_days_in_period(
-        period.organization_id, period.start_date, period.end_date
-    )
-
     records = []
 
     for emp in employees:
+        working_days = _working_days_in_period(
+            emp.branch_id, period.start_date, period.end_date
+        )
         basic_salary = _get_active_salary(emp, period.start_date, period.end_date)
         att = _attendance_summary(emp, period.start_date, period.end_date)
 

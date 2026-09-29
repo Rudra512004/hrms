@@ -48,21 +48,21 @@ class EndToEndHRMSWorkflowTests(TestCase):
             organization=self.org,
             name='Bangalore HQ',
             address='123 Tech Park',
-            latitude=12.9716,
-            longitude=77.5946,
+            latitude='12.9716',
+            longitude='77.5946',
             radius=500.0,
             is_active=True,
         )
 
         # 3. Department Setup
         self.dept = Department.objects.create(
-            organization=self.org,
+            branch=self.branch,
             name='Engineering',
         )
 
         # 4. Shift Setup
         self.shift = Shift.objects.create(
-            organization=self.org,
+            branch=self.branch,
             name='General Shift',
             start_time='09:00:00',
             end_time='18:00:00',
@@ -72,7 +72,7 @@ class EndToEndHRMSWorkflowTests(TestCase):
 
         # 5. Holiday Setup (e.g. New Year's Day)
         self.holiday = Holiday.objects.create(
-            organization=self.org,
+            branch=self.branch,
             name="New Year's Day",
             date=date(2025, 1, 1),
             is_active=True,
@@ -82,9 +82,12 @@ class EndToEndHRMSWorkflowTests(TestCase):
         self.leave_type = LeaveType.objects.create(
             organization=self.org,
             name='Annual Leave',
-            annual_allocation=12,
             is_active=True,
         )
+
+        from apps.leaves.models import BranchLeavePolicy, LeaveCycle
+        cycle = LeaveCycle.objects.create(branch=self.branch, name='C1', start_date=date(2025,1,1), end_date=date(2025,12,31), is_active=True)
+        BranchLeavePolicy.objects.create(branch=self.branch, leave_type=self.leave_type, monthly_allocation=1.5, cancellation_allowed=True)
 
         # 7. Employee 1: Primary active lifecycle subject
         self.user1 = User.objects.create_user(
@@ -105,6 +108,10 @@ class EndToEndHRMSWorkflowTests(TestCase):
         )
 
         # 8. HR / Admin User with RBAC capabilities
+        from apps.leaves.models import LeaveBalance
+        cycle = LeaveCycle.objects.filter(branch=self.branch).first()
+        LeaveBalance.objects.create(employee=self.emp1, leave_type=self.leave_type, leave_cycle=cycle, branch=self.branch, allocated=12)
+
         self.hr_user = User.objects.create_user(
             email='hr.admin@acme.com',
             password='Password123!',
@@ -137,10 +144,19 @@ class EndToEndHRMSWorkflowTests(TestCase):
     def _auth_as(self, user, permissions=None):
         self.client.force_authenticate(user=user)
         perms = set(permissions or [])
-        return patch(
+        from contextlib import ExitStack
+        stack = ExitStack()
+        stack.enter_context(patch(
             'apps.authorization.services.AuthorizationService.has_permission',
             side_effect=lambda u, p: (p in perms) if u == user else False
-        )
+        ))
+        # When the user is the test subject with any permissions, expose all org branches
+        all_branches = list(Branch.objects.filter(organization=self.org))
+        stack.enter_context(patch(
+            'apps.authorization.services.AuthorizationService.get_authorized_branches',
+            side_effect=lambda u, p: all_branches if (u == user and bool(perms)) else []
+        ))
+        return stack
 
     # ─── Full Lifecycle Test ──────────────────────────────────────────────────
 
@@ -181,7 +197,7 @@ class EndToEndHRMSWorkflowTests(TestCase):
             resp = self.client.post(reverse('leave-requests-approve', kwargs={'pk': leave.id}), {
                 'reviewer_comment': 'Approved by HR'
             })
-            self.assertEqual(resp.status_code, status.HTTP_200_OK)
+            self.assertEqual(resp.status_code, status.HTTP_200_OK, resp.data)
         leave.refresh_from_db()
         self.assertEqual(leave.status, 'approved')
 
@@ -206,7 +222,7 @@ class EndToEndHRMSWorkflowTests(TestCase):
         # Step E: HR Generates Draft Payroll
         with self._auth_as(self.hr_user, permissions=['payroll.view', 'payroll.generate']):
             resp = self.client.post(f'/api/v1/payroll/periods/{period_id}/generate/')
-            self.assertEqual(resp.status_code, status.HTTP_200_OK)
+            self.assertEqual(resp.status_code, status.HTTP_200_OK, resp.data)
 
         record = PayrollRecord.objects.get(period=period, employee=self.emp1)
         self.assertEqual(record.status, PayrollRecord.STATUS_DRAFT)
@@ -216,7 +232,7 @@ class EndToEndHRMSWorkflowTests(TestCase):
         self.assertEqual(record.effective_days, Decimal('7.00'))
 
         # Jan 2025 working days: 23 weekdays - 1 holiday (Jan 1) = 22 working days
-        working_days = _working_days_in_period(self.org.id, date(2025, 1, 1), date(2025, 1, 31))
+        working_days = _working_days_in_period(self.branch.id, date(2025, 1, 1), date(2025, 1, 31))
         self.assertEqual(working_days, 22)
         self.assertEqual(record.working_days, 22)
         self.assertEqual(record.absent_days, 15)  # 22 - 7 = 15
@@ -229,7 +245,7 @@ class EndToEndHRMSWorkflowTests(TestCase):
         # Step F: HR Approves Payroll Period
         with self._auth_as(self.hr_user, permissions=['payroll.view', 'payroll.approve']):
             resp = self.client.post(f'/api/v1/payroll/periods/{period_id}/approve/')
-            self.assertEqual(resp.status_code, status.HTTP_200_OK)
+            self.assertEqual(resp.status_code, status.HTTP_200_OK, resp.data)
 
         period.refresh_from_db()
         record.refresh_from_db()
@@ -245,7 +261,7 @@ class EndToEndHRMSWorkflowTests(TestCase):
         # Step H: Employee views own payslip (/my/)
         with self._auth_as(self.user1):
             resp = self.client.get('/api/v1/payroll/payslips/my/')
-            self.assertEqual(resp.status_code, status.HTTP_200_OK)
+            self.assertEqual(resp.status_code, status.HTTP_200_OK, resp.data)
             self.assertEqual(len(resp.data), 1)
             self.assertEqual(resp.data[0]['payslip_number'], 'PAY-202501-EMP001')
             self.assertEqual(resp.data[0]['net_salary'], str(expected_gross))
@@ -278,7 +294,7 @@ class EndToEndHRMSWorkflowTests(TestCase):
         # Exception detector identifies MISSING_COMPENSATION
         with self._auth_as(self.hr_user, permissions=['payroll.view_reports']):
             resp = self.client.get(f'/api/v1/payroll/reports/exceptions/?period={period.id}')
-            self.assertEqual(resp.status_code, status.HTTP_200_OK)
+            self.assertEqual(resp.status_code, status.HTTP_200_OK, resp.data)
             ex_types = [e['type'] for e in resp.data['exceptions'] if e['employee_id'] == self.emp1.id]
             self.assertIn('MISSING_COMPENSATION', ex_types)
 
@@ -298,7 +314,7 @@ class EndToEndHRMSWorkflowTests(TestCase):
 
         with self._auth_as(self.hr_user, permissions=['payroll.view_reports']):
             resp = self.client.get(f'/api/v1/payroll/reports/exceptions/?period={period.id}')
-            self.assertEqual(resp.status_code, status.HTTP_200_OK)
+            self.assertEqual(resp.status_code, status.HTTP_200_OK, resp.data)
             ex_types = [e['type'] for e in resp.data['exceptions'] if e['employee_id'] == self.emp1.id]
             self.assertIn('FULL_ABSENCE', ex_types)
 
@@ -321,7 +337,7 @@ class EndToEndHRMSWorkflowTests(TestCase):
 
         with self._auth_as(self.hr_user, permissions=['payroll.view_reports']):
             resp = self.client.get(f'/api/v1/payroll/reports/exceptions/?period={period.id}')
-            self.assertEqual(resp.status_code, status.HTTP_200_OK)
+            self.assertEqual(resp.status_code, status.HTTP_200_OK, resp.data)
             ex_types = [e['type'] for e in resp.data['exceptions'] if e['employee_id'] == self.emp1.id]
             self.assertIn('PENDING_LEAVE', ex_types)
 
@@ -342,7 +358,7 @@ class EndToEndHRMSWorkflowTests(TestCase):
 
         with self._auth_as(self.hr_user, permissions=['payroll.view_reports']):
             resp = self.client.get(f'/api/v1/payroll/reports/exceptions/?period={period.id}')
-            self.assertEqual(resp.status_code, status.HTTP_200_OK)
+            self.assertEqual(resp.status_code, status.HTTP_200_OK, resp.data)
             ex_types = [e['type'] for e in resp.data['exceptions'] if e['employee_id'] == self.emp1.id]
             self.assertIn('ATTENDANCE_INCOMPLETE', ex_types)
 
@@ -379,7 +395,7 @@ class EndToEndHRMSWorkflowTests(TestCase):
 
         with self._auth_as(self.hr_user, permissions=['payroll.view_reports']):
             resp = self.client.get(f'/api/v1/payroll/reports/period-summary/?period={period.id}')
-            self.assertEqual(resp.status_code, status.HTTP_200_OK)
+            self.assertEqual(resp.status_code, status.HTTP_200_OK, resp.data)
             self.assertIsNone(resp.data['summary']['total_net_salary'])
             self.assertIsNone(resp.data['summary']['total_basic_salary'])
 

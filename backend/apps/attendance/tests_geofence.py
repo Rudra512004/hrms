@@ -18,11 +18,11 @@ class GeofenceTests(TestCase):
         
         self.branch1 = Branch.objects.create(
             organization=self.org1, name='HQ', 
-            latitude=19.0760, longitude=72.8777, radius=100.0
+            latitude='19.0760', longitude='72.8777', radius='100.0'
         )
         self.branch2 = Branch.objects.create(
             organization=self.org2, name='Remote', 
-            latitude=28.7041, longitude=77.1025, radius=100.0
+            latitude='28.7041', longitude='77.1025', radius='100.0'
         )
         
         self.user1 = User.objects.create_user(email='emp1@test.com', password='Password123!', status='active')
@@ -34,6 +34,17 @@ class GeofenceTests(TestCase):
         # User without branch
         self.user3 = User.objects.create_user(email='emp3@test.com', password='Password123!', status='active')
         self.emp3 = Employee.objects.create(user=self.user3, employee_code='E3', organization=self.org1)
+
+        self.branch1.working_calendar.work_days = '0,1,2,3,4,5,6'
+        self.branch1.working_calendar.save()
+        from datetime import time, timedelta
+        self.shift1 = Shift.objects.create(
+            branch=self.branch1,
+            name='HQ Shift',
+            start_time=time(9, 0),
+            end_time=time(17, 0),
+            work_days='0,1,2,3,4,5,6'
+        )
 
     def test_unauthenticated(self):
         response = self.client.post(reverse('attendance-check-in'))

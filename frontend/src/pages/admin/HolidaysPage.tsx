@@ -1,167 +1,106 @@
-import React, { useState, useEffect } from 'react';
-import { holidayService, type Holiday } from '../../services/holiday';
-import { organizationService, type Organization } from '../../services/organization';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { holidayService, type Holiday, type CreateHolidayPayload, type UpdateHolidayPayload } from '../../services/holiday';
 import { Card } from '../../components/Card';
 import { Table } from '../../components/Table';
 import { StatusBadge } from '../../components/StatusBadge';
-import { Plus, Edit2, Trash2, Power, AlertCircle, Loader2 } from 'lucide-react';
+import { PageHeader } from '../../components/PageHeader';
+import { AlertBanner } from '../../components/AlertBanner';
+import { Plus, Edit2, Trash2, CalendarDays, Loader2, AlertCircle } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
-
-const styles = {
-  header: {
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 'var(--spacing-lg)',
-  },
-  title: {
-    margin: 0,
-    fontSize: '1.25rem',
-    color: 'var(--color-text-main)',
-  },
-  button: {
-    backgroundColor: 'var(--color-primary)',
-    color: '#fff',
-    border: 'none',
-    padding: '8px 16px',
-    borderRadius: 'var(--radius-md)',
-    cursor: 'pointer',
-    display: 'flex',
-    alignItems: 'center',
-    gap: '8px',
-    fontWeight: 500,
-    transition: 'opacity 0.2s',
-  },
-  actionBtn: {
-    background: 'none',
-    border: 'none',
-    cursor: 'pointer',
-    padding: '4px',
-    color: 'var(--color-text-muted)',
-    display: 'inline-flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: '8px',
-  },
-  modalOverlay: {
-    position: 'fixed' as const,
-    top: 0, left: 0, right: 0, bottom: 0,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    zIndex: 1000,
-  },
-  modalContent: {
-    backgroundColor: 'var(--color-bg-card)',
-    padding: 'var(--spacing-xl)',
-    borderRadius: 'var(--radius-lg)',
-    width: '100%',
-    maxWidth: '500px',
-    boxShadow: 'var(--shadow-lg)',
-    maxHeight: '90vh',
-    overflowY: 'auto' as const,
-  },
-  formGroup: {
-    marginBottom: 'var(--spacing-md)',
-  },
-  label: {
-    display: 'block',
-    marginBottom: '8px',
-    fontWeight: 500,
-    fontSize: '0.9rem',
-    color: 'var(--color-text-main)',
-  },
-  input: {
-    width: '100%',
-    padding: '10px 12px',
-    border: '1px solid var(--color-border)',
-    borderRadius: 'var(--radius-md)',
-    backgroundColor: 'var(--color-bg-body)',
-    color: 'var(--color-text-main)',
-    fontSize: '0.95rem',
-  },
-  modalActions: {
-    display: 'flex',
-    justifyContent: 'flex-end',
-    gap: '12px',
-    marginTop: 'var(--spacing-xl)',
-  },
-  cancelBtn: {
-    backgroundColor: 'transparent',
-    color: 'var(--color-text-main)',
-    border: '1px solid var(--color-border)',
-    padding: '8px 16px',
-    borderRadius: 'var(--radius-md)',
-    cursor: 'pointer',
-  },
-  errorBox: {
-    backgroundColor: 'rgba(234, 84, 85, 0.1)',
-    color: 'var(--color-status-danger)',
-    padding: '12px',
-    borderRadius: 'var(--radius-md)',
-    marginBottom: '16px',
-    fontSize: '0.9rem',
-    display: 'flex',
-    alignItems: 'center',
-    gap: '8px',
-  }
-};
+import { useBranchContext } from '../../contexts/BranchContext';
 
 export const HolidaysPage: React.FC = () => {
+  const { hasPermission } = useAuth();
+  const { branchId, selectedBranch } = useBranchContext();
+
   const [holidays, setHolidays] = useState<Holiday[]>([]);
-  const [organizations, setOrganizations] = useState<Organization[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
+  // Modal states
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingHoliday, setEditingHoliday] = useState<Holiday | null>(null);
-  const [formData, setFormData] = useState({ name: '', date: '', organization: 0, is_active: true });
+  const [formData, setFormData] = useState<{ name: string; date: string; is_active: boolean }>({
+    name: '',
+    date: '',
+    is_active: true,
+  });
   const [formError, setFormError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
-  const { hasPermission } = useAuth();
-  
+
+  // Delete confirmation state
+  const [deleteConfirmId, setDeleteConfirmId] = useState<number | null>(null);
+  const [deleting, setDeleting] = useState(false);
+
+  // Stale request controller ref
+  const abortControllerRef = useRef<AbortController | null>(null);
+
   const canManage = hasPermission('holiday.manage');
+  const isAllLocations = branchId === null;
 
-  useEffect(() => {
-    loadData();
-  }, []);
+  const loadHolidays = useCallback(async () => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
 
-  const loadData = async () => {
-    setLoading(true);
     try {
-      const [holidayData, orgData] = await Promise.all([
-        holidayService.getAll(),
-        organizationService.listOrganizations().catch(() => [])
-      ]);
-      setHolidays(holidayData);
-      setOrganizations(orgData);
+      setLoading(true);
       setError(null);
+
+      const params = isAllLocations ? {} : { branch_id: branchId };
+      const data = await holidayService.listHolidays(params, { signal: controller.signal });
+
+      if (abortControllerRef.current === controller) {
+        setHolidays(Array.isArray(data) ? data : []);
+      }
     } catch (err: any) {
-      if (err.response?.status === 403) {
-        setError("403 Forbidden: You do not have permission to view holidays.");
-      } else {
-        setError("Failed to load holidays.");
+      if (err.name === 'AbortError') return;
+      if (abortControllerRef.current === controller) {
+        if (err?.status === 403 || err?.response?.status === 403) {
+          setError('403 Forbidden: You do not have permission to view holidays.');
+        } else if (err?.errorData?.detail) {
+          setError(err.errorData.detail);
+        } else {
+          setError('Failed to load holidays.');
+        }
+        setHolidays([]);
       }
     } finally {
-      setLoading(false);
+      if (abortControllerRef.current === controller) {
+        setLoading(false);
+      }
     }
-  };
+  }, [branchId, isAllLocations]);
+
+  useEffect(() => {
+    setHolidays([]);
+    loadHolidays();
+
+    return () => {
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
+    };
+  }, [loadHolidays]);
 
   const openCreateModal = () => {
+    if (isAllLocations) return;
     setEditingHoliday(null);
-    setFormData({ name: '', date: '', organization: organizations[0]?.id || 0, is_active: true });
+    setFormData({ name: '', date: '', is_active: true });
     setFormError(null);
     setIsModalOpen(true);
   };
 
   const openEditModal = (holiday: Holiday) => {
+    if (isAllLocations) return;
     setEditingHoliday(holiday);
-    setFormData({ 
-      name: holiday.name, 
-      date: holiday.date, 
-      organization: holiday.organization,
-      is_active: holiday.is_active 
+    setFormData({
+      name: holiday.name,
+      date: holiday.date,
+      is_active: holiday.is_active,
     });
     setFormError(null);
     setIsModalOpen(true);
@@ -169,200 +108,317 @@ export const HolidaysPage: React.FC = () => {
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formData.organization) {
-        setFormError("Organization is required.");
-        return;
+    if (!formData.name.trim()) {
+      setFormError('Holiday name is required.');
+      return;
+    }
+    if (!formData.date) {
+      setFormError('Date is required.');
+      return;
+    }
+    if (!branchId) {
+      setFormError('Select a branch from the header to manage this configuration.');
+      return;
     }
 
     setSaving(true);
     setFormError(null);
 
     try {
-      const payload: Partial<Holiday> = { 
-          name: formData.name,
-          date: formData.date,
-          organization: formData.organization,
-          is_active: formData.is_active
-      };
-      
       if (editingHoliday) {
+        const payload: UpdateHolidayPayload = {
+          name: formData.name.trim(),
+          date: formData.date,
+          is_active: formData.is_active,
+        };
         await holidayService.update(editingHoliday.id, payload);
+        setSuccessMessage('Holiday updated successfully.');
       } else {
+        const payload: CreateHolidayPayload = {
+          branch: branchId,
+          name: formData.name.trim(),
+          date: formData.date,
+          is_active: formData.is_active,
+        };
         await holidayService.create(payload);
+        setSuccessMessage('Holiday created successfully.');
       }
       setIsModalOpen(false);
-      loadData();
+      loadHolidays();
     } catch (err: any) {
-      if (err.errorData && err.errorData.name) {
+      if (err.errorData?.name) {
         setFormError(err.errorData.name[0]);
-      } else if (err.errorData && err.errorData.non_field_errors) {
+      } else if (err.errorData?.date) {
+        setFormError(err.errorData.date[0]);
+      } else if (err.errorData?.non_field_errors) {
         setFormError(err.errorData.non_field_errors[0]);
-      } else if (err.response?.status === 403) {
-        setFormError("Permission denied.");
-      } else if (err.errorData && typeof err.errorData === 'object') {
-        const errorMsgs = Object.entries(err.errorData).map(([key, val]) => `${key}: ${val}`).join(' | ');
-        setFormError(errorMsgs || "Validation error.");
+      } else if (err.errorData?.detail) {
+        setFormError(err.errorData.detail);
+      } else if (err.status === 403 || err.response?.status === 403) {
+        setFormError('403 Forbidden: You do not have permission to manage holidays.');
       } else {
-        setFormError("An error occurred while saving.");
+        setFormError('Failed to save holiday. Please try again.');
       }
     } finally {
       setSaving(false);
     }
   };
 
-  const toggleActive = async (holiday: Holiday) => {
+  const handleDelete = async (id: number) => {
+    if (isAllLocations) return;
     try {
-      await holidayService.update(holiday.id, { is_active: !holiday.is_active });
-      loadData();
-    } catch {
-      alert("Failed to toggle status.");
+      setDeleting(true);
+      await holidayService.delete(id);
+      setSuccessMessage('Holiday deleted successfully.');
+      setDeleteConfirmId(null);
+      loadHolidays();
+    } catch (err: any) {
+      if (err.status === 403 || err.response?.status === 403) {
+        setError('403 Forbidden: You do not have permission to delete holidays.');
+      } else if (err.errorData?.detail) {
+        setError(err.errorData.detail);
+      } else {
+        setError('Failed to delete holiday.');
+      }
+    } finally {
+      setDeleting(false);
     }
   };
 
-  const handleDelete = async (holiday: Holiday) => {
-    if (!window.confirm(`Are you sure you want to delete the holiday "${holiday.name}"?`)) return;
-    try {
-      await holidayService.delete(holiday.id);
-      loadData();
-    } catch (err: any) {
-      if (err.response?.status === 409) {
-        alert(err.errorData?.detail || "Cannot delete holiday that is in use.");
-      } else {
-        alert("Failed to delete holiday.");
-      }
-    }
-  };
+  if (!hasPermission('holiday.view')) {
+    return (
+      <div className="animate-fade-in">
+        <PageHeader title="Holiday Management" subtitle="Branch holiday calendar." />
+        <AlertBanner type="error" message="You do not have permission to view holidays." />
+      </div>
+    );
+  }
+
+  const branchTitle = selectedBranch.type === 'branch' && selectedBranch.branch?.name
+    ? `Branch: ${selectedBranch.branch.name}`
+    : 'All Locations';
 
   const columns = [
-    { key: 'id', title: 'ID' },
-    { key: 'name', title: 'Name' },
-    { key: 'date', title: 'Date' },
-    { 
-      key: 'is_active', 
-      title: 'Status', 
-      render: (n: Holiday) => (
-        <StatusBadge status={n.is_active ? 'active' : 'inactive'} />
-      ) 
-    }
+    {
+      key: 'name',
+      title: 'Holiday Name',
+      render: (h: Holiday) => <span style={{ fontWeight: 600 }}>{h.name}</span>,
+    },
+    {
+      key: 'date',
+      title: 'Date',
+      render: (h: Holiday) => (
+        <span style={{ fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>
+          {h.date}
+        </span>
+      ),
+    },
+    {
+      key: 'is_active',
+      title: 'Status',
+      render: (h: Holiday) => (
+        <StatusBadge status={h.is_active ? 'active' : 'inactive'} label={h.is_active ? 'Active' : 'Inactive'} />
+      ),
+    },
+    ...(canManage && !isAllLocations
+      ? [
+          {
+            key: 'actions',
+            title: 'Actions',
+            render: (h: Holiday) => (
+              <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                <button
+                  className="btn btn-secondary btn-sm"
+                  onClick={() => openEditModal(h)}
+                  title="Edit Holiday"
+                  aria-label={`Edit ${h.name}`}
+                  type="button"
+                  style={{ padding: '4px 8px' }}
+                >
+                  <Edit2 size={14} />
+                </button>
+                <button
+                  className="btn btn-secondary btn-sm"
+                  onClick={() => setDeleteConfirmId(h.id)}
+                  title="Delete Holiday"
+                  aria-label={`Delete ${h.name}`}
+                  type="button"
+                  style={{ padding: '4px 8px', color: 'var(--color-status-danger)' }}
+                >
+                  <Trash2 size={14} />
+                </button>
+              </div>
+            ),
+          },
+        ]
+      : []),
   ];
 
-  if (canManage) {
-    columns.push({ 
-      key: 'actions', 
-      title: 'Actions', 
-      render: (n: Holiday) => (
-        <div>
-          <button style={styles.actionBtn} onClick={() => openEditModal(n)} title="Edit">
-            <Edit2 size={18} />
-          </button>
-          <button style={styles.actionBtn} onClick={() => toggleActive(n)} title={n.is_active ? "Deactivate" : "Activate"}>
-            <Power size={18} color={n.is_active ? "var(--color-status-success)" : "var(--color-text-muted)"} />
-          </button>
-          <button style={styles.actionBtn} onClick={() => handleDelete(n)} title="Delete">
-            <Trash2 size={18} color="var(--color-status-danger)" />
-          </button>
-        </div>
-      ) 
-    });
-  }
-
-  if (loading && holidays.length === 0) {
-    return (
-      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '400px' }}>
-        <Loader2 size={32} color="var(--color-primary)" style={{ animation: 'spin 1s linear infinite' }} />
-      </div>
-    );
-  }
-
-  if (error && holidays.length === 0) {
-    return (
-      <Card>
-        <div style={styles.errorBox}>
-          <AlertCircle size={20} />
-          <span>{error}</span>
-        </div>
-      </Card>
-    );
-  }
-
   return (
-    <div>
-      <div style={styles.header}>
-        <h1 style={styles.title}>Holidays</h1>
+    <div className="animate-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: 'var(--spacing-lg)' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 'var(--spacing-md)' }}>
+        <PageHeader
+          title="Holiday Management"
+          subtitle={`Manage official company holidays for ${branchTitle}.`}
+        />
         {canManage && (
-          <button style={styles.button} onClick={openCreateModal}>
-            <Plus size={18} /> Add Holiday
+          <button
+            className="btn btn-primary"
+            onClick={openCreateModal}
+            disabled={isAllLocations}
+            title={isAllLocations ? 'Select a branch from the header to manage this configuration.' : 'Add a new holiday'}
+            type="button"
+            style={{ display: 'inline-flex', alignItems: 'center', gap: '8px' }}
+          >
+            <Plus size={16} />
+            <span>Add Holiday</span>
           </button>
         )}
       </div>
 
-      <Card>
-        {holidays.length === 0 ? (
-          <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--color-text-muted)' }}>
-            No holidays found.
+      {isAllLocations && (
+        <AlertBanner
+          type="info"
+          message="Select a branch from the header to manage this configuration."
+        />
+      )}
+
+      {error && <AlertBanner type="error" message={error} />}
+      {successMessage && <AlertBanner type="success" message={successMessage} />}
+
+      <Card noPadding>
+        {loading ? (
+          <div className="loading-center" style={{ padding: 'var(--spacing-2xl)' }}>
+            <Loader2 size={28} className="animate-spin" style={{ color: 'var(--color-primary)' }} />
+            <span style={{ marginTop: '8px' }}>Loading holidays…</span>
           </div>
         ) : (
-          <div style={{ overflowX: 'auto' }}>
-            <Table data={holidays} columns={columns} keyExtractor={(n) => n.id} />
-          </div>
+          <Table
+            columns={columns}
+            data={holidays}
+            keyExtractor={(h) => h.id.toString()}
+            emptyIcon={CalendarDays}
+            emptyTitle="No holidays configured"
+            emptyDescription={
+              isAllLocations
+                ? 'No holidays found across authorized branches.'
+                : 'No holidays configured for this branch yet.'
+            }
+          />
         )}
       </Card>
 
+      {/* Add / Edit Holiday Modal */}
       {isModalOpen && (
-        <div style={styles.modalOverlay}>
-          <div style={styles.modalContent}>
-            <h2 style={{ marginTop: 0 }}>{editingHoliday ? 'Edit Holiday' : 'Add Holiday'}</h2>
-            
-            {formError && (
-              <div style={styles.errorBox}>
-                <AlertCircle size={18} /> {formError}
-              </div>
-            )}
+        <div className="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="holiday-modal-title">
+          <div className="modal-content" style={{ maxWidth: '480px' }}>
+            <h2 id="holiday-modal-title" style={{ margin: '0 0 var(--spacing-md) 0', fontSize: '1.25rem' }}>
+              {editingHoliday ? 'Edit Holiday' : 'Add Holiday'}
+            </h2>
 
-            <form onSubmit={handleSave}>
-              <div style={styles.formGroup}>
-                <label style={styles.label}>Name</label>
-                <input 
-                  style={styles.input} 
+            {formError && <AlertBanner type="error" message={formError} style={{ marginBottom: 'var(--spacing-md)' }} />}
+
+            <form onSubmit={handleSave} style={{ display: 'flex', flexDirection: 'column', gap: 'var(--spacing-md)' }}>
+              <div>
+                <label className="input-label" htmlFor="holiday-name">
+                  Holiday Name <span style={{ color: 'var(--color-status-danger)' }}>*</span>
+                </label>
+                <input
+                  id="holiday-name"
+                  type="text"
+                  className="input-field"
                   value={formData.name}
-                  onChange={(e) => setFormData({...formData, name: e.target.value})}
+                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                  placeholder="e.g. Independence Day"
                   required
                 />
               </div>
-              <div style={styles.formGroup}>
-                <label style={styles.label}>Organization</label>
-                <select
-                  style={styles.input}
-                  value={formData.organization}
-                  onChange={(e) => setFormData({...formData, organization: parseInt(e.target.value)})}
-                  required
-                >
-                  <option value={0} disabled>Select an organization</option>
-                  {organizations.map(org => (
-                    <option key={org.id} value={org.id}>{org.name}</option>
-                  ))}
-                </select>
-              </div>
-              <div style={styles.formGroup}>
-                <label style={styles.label}>Date</label>
-                <input 
+
+              <div>
+                <label className="input-label" htmlFor="holiday-date">
+                  Date <span style={{ color: 'var(--color-status-danger)' }}>*</span>
+                </label>
+                <input
+                  id="holiday-date"
                   type="date"
-                  style={styles.input} 
+                  className="input-field"
                   value={formData.date}
-                  onChange={(e) => setFormData({...formData, date: e.target.value})}
+                  onChange={(e) => setFormData({ ...formData, date: e.target.value })}
                   required
                 />
               </div>
-              
-              <div style={styles.modalActions}>
-                <button type="button" style={styles.cancelBtn} onClick={() => setIsModalOpen(false)}>
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '4px' }}>
+                <input
+                  id="holiday-is-active"
+                  type="checkbox"
+                  checked={formData.is_active}
+                  onChange={(e) => setFormData({ ...formData, is_active: e.target.checked })}
+                  style={{ width: '16px', height: '16px', cursor: 'pointer' }}
+                />
+                <label htmlFor="holiday-is-active" style={{ cursor: 'pointer', fontSize: '0.9rem', fontWeight: 500 }}>
+                  Active (observed this calendar year)
+                </label>
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', marginTop: 'var(--spacing-lg)' }}>
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  onClick={() => setIsModalOpen(false)}
+                  disabled={saving}
+                >
                   Cancel
                 </button>
-                <button type="submit" style={styles.button} disabled={saving}>
-                  {saving ? <Loader2 size={18} style={{ animation: 'spin 1s linear infinite' }}/> : 'Save'}
+                <button
+                  type="submit"
+                  className="btn btn-primary"
+                  disabled={saving}
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+                >
+                  {saving && <Loader2 size={14} className="animate-spin" />}
+                  <span>{saving ? 'Saving…' : editingHoliday ? 'Update Holiday' : 'Create Holiday'}</span>
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {deleteConfirmId !== null && (
+        <div className="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="delete-confirm-title">
+          <div className="modal-content" style={{ maxWidth: '420px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: 'var(--spacing-md)' }}>
+              <div style={{ padding: '8px', borderRadius: '50%', backgroundColor: 'rgba(234, 84, 85, 0.1)', color: 'var(--color-status-danger)' }}>
+                <AlertCircle size={22} />
+              </div>
+              <h2 id="delete-confirm-title" style={{ margin: 0, fontSize: '1.15rem' }}>
+                Confirm Deletion
+              </h2>
+            </div>
+            <p style={{ color: 'var(--color-text-muted)', fontSize: '0.9rem', marginBottom: 'var(--spacing-lg)' }}>
+              Are you sure you want to delete this holiday? This action cannot be undone.
+            </p>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={() => setDeleteConfirmId(null)}
+                disabled={deleting}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="btn btn-primary"
+                style={{ backgroundColor: 'var(--color-status-danger)', borderColor: 'var(--color-status-danger)' }}
+                onClick={() => handleDelete(deleteConfirmId)}
+                disabled={deleting}
+              >
+                {deleting ? 'Deleting…' : 'Delete'}
+              </button>
+            </div>
           </div>
         </div>
       )}

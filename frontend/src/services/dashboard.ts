@@ -154,11 +154,15 @@ export interface DashboardTrendsResponse {
 }
 
 export const dashboardService = {
-  getOverview: async (): Promise<DashboardOverviewResponse> => {
+  getOverview: async (branchId?: number | string): Promise<DashboardOverviewResponse> => {
     const token = localStorage.getItem('auth_token');
     if (!token) throw new Error('No authentication token');
 
-    const response = await fetch('/api/v1/dashboard/overview/', {
+    const url = branchId !== undefined && branchId !== null && branchId !== ''
+      ? `/api/v1/dashboard/overview/?branch_id=${branchId}`
+      : '/api/v1/dashboard/overview/';
+
+    const response = await fetch(url, {
       headers: {
         'Authorization': `Token ${token}`,
       },
@@ -172,11 +176,16 @@ export const dashboardService = {
     return await response.json();
   },
 
-  getTrends: async (window: TrendsWindow): Promise<DashboardTrendsResponse> => {
+  getTrends: async (window: TrendsWindow, branchId?: number | string): Promise<DashboardTrendsResponse> => {
     const token = localStorage.getItem('auth_token');
     if (!token) throw new Error('No authentication token');
 
-    const response = await fetch(`/api/v1/dashboard/trends/?window=${window}`, {
+    let url = `/api/v1/dashboard/trends/?window=${window}`;
+    if (branchId !== undefined && branchId !== null && branchId !== '') {
+      url += `&branch_id=${branchId}`;
+    }
+
+    const response = await fetch(url, {
       headers: {
         'Authorization': `Token ${token}`,
       },

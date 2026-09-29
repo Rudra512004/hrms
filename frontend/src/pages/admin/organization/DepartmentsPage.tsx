@@ -1,10 +1,11 @@
-import React, { useState, useEffect } from 'react';
-import { organizationService, type Department, type Organization } from '../../../services/organization';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { organizationService, type Department, type Branch } from '../../../services/organization';
 import { Card } from '../../../components/Card';
 import { Table } from '../../../components/Table';
 import { StatusBadge } from '../../../components/StatusBadge';
 import { Plus, Edit2, Trash2, Power, AlertCircle, Loader2 } from 'lucide-react';
 import { useAuth } from '../../../contexts/AuthContext';
+import { useBranchContext } from '../../../contexts/BranchContext';
 
 const styles = {
   header: {
@@ -102,37 +103,47 @@ const styles = {
     display: 'flex',
     alignItems: 'center',
     gap: '8px',
+  },
+  helperText: {
+    fontSize: '0.8rem',
+    color: 'var(--color-text-muted)',
+    marginTop: '4px',
   }
 };
 
 export const DepartmentsPage: React.FC = () => {
   const [departments, setDepartments] = useState<Department[]>([]);
-  const [organizations, setOrganizations] = useState<Organization[]>([]);
+  const [branches, setBranches] = useState<Branch[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingDept, setEditingDept] = useState<Department | null>(null);
-  const [formData, setFormData] = useState({ name: '', description: '', organization: 0, is_active: true });
+  const [formData, setFormData] = useState({ name: '', description: '', branch: 0, is_active: true });
   const [formError, setFormError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+
   const { hasPermission } = useAuth();
-  
+  const { branchId, branches: contextBranches } = useBranchContext();
+
   const canManage = hasPermission('department.manage');
 
-  useEffect(() => {
-    loadData();
-  }, []);
+  const branchMap = useMemo(() => {
+    const map = new Map<number, string>();
+    branches.forEach(b => map.set(b.id, b.name));
+    return map;
+  }, [branches]);
 
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      const [deptData, orgData] = await Promise.all([
-        organizationService.listDepartments(),
-        organizationService.listOrganizations().catch(() => []) // Gracefully degrade if lack org.view
+      const [deptData, branchData] = await Promise.all([
+        branchId ? organizationService.listDepartments(branchId) : organizationService.listDepartments(),
+        organizationService.listBranches().catch(() => contextBranches || [])
       ]);
-      setDepartments(deptData);
-      setOrganizations(orgData);
+      setDepartments(Array.isArray(deptData) ? deptData : []);
+      const resolvedBranches = Array.isArray(branchData) && branchData.length > 0 ? branchData : (contextBranches || []);
+      setBranches(resolvedBranches);
       setError(null);
     } catch (err: any) {
       if (err.response?.status === 403) {
@@ -143,11 +154,17 @@ export const DepartmentsPage: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [branchId, contextBranches]);
+
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
 
   const openCreateModal = () => {
     setEditingDept(null);
-    setFormData({ name: '', description: '', organization: organizations[0]?.id || 0, is_active: true });
+    // Preselect active branch from header if available, else first branch
+    const defaultBranch = branchId || (branches.length > 0 ? branches[0].id : 0);
+    setFormData({ name: '', description: '', branch: defaultBranch, is_active: true });
     setFormError(null);
     setIsModalOpen(true);
   };
@@ -156,8 +173,8 @@ export const DepartmentsPage: React.FC = () => {
     setEditingDept(dept);
     setFormData({ 
       name: dept.name, 
-      description: dept.description, 
-      organization: dept.organization,
+      description: dept.description || '', 
+      branch: dept.branch || 0,
       is_active: dept.is_active 
     });
     setFormError(null);
@@ -166,31 +183,49 @@ export const DepartmentsPage: React.FC = () => {
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formData.organization) {
-        setFormError("Organization is required.");
-        return;
+    if (!formData.name.trim()) {
+      setFormError("Department name is required.");
+      return;
+    }
+    if (!formData.branch || formData.branch === 0) {
+      setFormError("Branch is required.");
+      return;
     }
 
     setSaving(true);
     setFormError(null);
 
     try {
-      const payload = { ...formData };
-      
       if (editingDept) {
-        await organizationService.updateDepartment(editingDept.id, payload);
+        // Backend DepartmentSerializer has branch as read-only on update
+        await organizationService.updateDepartment(editingDept.id, {
+          name: formData.name.trim(),
+          description: formData.description,
+          is_active: formData.is_active,
+        });
       } else {
-        await organizationService.createDepartment(payload);
+        await organizationService.createDepartment({
+          name: formData.name.trim(),
+          branch: formData.branch,
+          description: formData.description,
+          is_active: formData.is_active,
+        });
       }
       setIsModalOpen(false);
       loadData();
     } catch (err: any) {
-      if (err.errorData && err.errorData.name) {
-        setFormError(err.errorData.name[0]);
+      if (err.errorData?.branch) {
+        setFormError(Array.isArray(err.errorData.branch) ? err.errorData.branch[0] : err.errorData.branch);
+      } else if (err.errorData?.name) {
+        setFormError(Array.isArray(err.errorData.name) ? err.errorData.name[0] : err.errorData.name);
+      } else if (err.errorData?.detail) {
+        setFormError(err.errorData.detail);
       } else if (err.response?.status === 403) {
         setFormError("Permission denied.");
       } else if (err.errorData && typeof err.errorData === 'object') {
-        const errorMsgs = Object.entries(err.errorData).map(([key, val]) => `${key}: ${val}`).join(' | ');
+        const errorMsgs = Object.entries(err.errorData)
+          .map(([key, val]) => `${key}: ${Array.isArray(val) ? val.join(', ') : val}`)
+          .join(' | ');
         setFormError(errorMsgs || "Validation error.");
       } else {
         setFormError("An error occurred while saving.");
@@ -215,7 +250,7 @@ export const DepartmentsPage: React.FC = () => {
       await organizationService.deleteDepartment(dept.id);
       loadData();
     } catch (err: any) {
-      if (err.response?.status === 409) {
+      if (err.response?.status === 409 || err.response?.status === 400) {
         alert(err.errorData?.detail || "Cannot delete department that is in use.");
       } else {
         alert("Failed to delete department.");
@@ -227,7 +262,11 @@ export const DepartmentsPage: React.FC = () => {
     { key: 'id', title: 'ID' },
     { key: 'name', title: 'Name' },
     { key: 'description', title: 'Description' },
-    { key: 'organization', title: 'Organization', render: (n: Department) => n.organization_name || `Org #${n.organization}` },
+    { 
+      key: 'branch', 
+      title: 'Branch', 
+      render: (n: Department) => branchMap.get(n.branch) || n.branch_name || `Branch #${n.branch}` 
+    },
     { 
       key: 'is_active', 
       title: 'Status', 
@@ -243,13 +282,28 @@ export const DepartmentsPage: React.FC = () => {
       title: 'Actions', 
       render: (n: Department) => (
         <div>
-          <button style={styles.actionBtn} onClick={() => openEditModal(n)} title="Edit">
+          <button 
+            style={styles.actionBtn} 
+            onClick={() => openEditModal(n)} 
+            title="Edit"
+            data-testid={`edit-dept-${n.id}`}
+          >
             <Edit2 size={18} />
           </button>
-          <button style={styles.actionBtn} onClick={() => toggleActive(n)} title={n.is_active ? "Deactivate" : "Activate"}>
+          <button 
+            style={styles.actionBtn} 
+            onClick={() => toggleActive(n)} 
+            title={n.is_active ? "Deactivate" : "Activate"}
+            data-testid={`toggle-dept-${n.id}`}
+          >
             <Power size={18} color={n.is_active ? "var(--color-status-success)" : "var(--color-text-muted)"} />
           </button>
-          <button style={styles.actionBtn} onClick={() => handleDelete(n)} title="Delete">
+          <button 
+            style={styles.actionBtn} 
+            onClick={() => handleDelete(n)} 
+            title="Delete"
+            data-testid={`delete-dept-${n.id}`}
+          >
             <Trash2 size={18} color="var(--color-status-danger)" />
           </button>
         </div>
@@ -281,7 +335,7 @@ export const DepartmentsPage: React.FC = () => {
       <div style={styles.header}>
         <h1 style={styles.title}>Departments</h1>
         {canManage && (
-          <button style={styles.button} onClick={openCreateModal}>
+          <button style={styles.button} onClick={openCreateModal} data-testid="add-department-btn">
             <Plus size={18} /> Add Department
           </button>
         )}
@@ -300,12 +354,12 @@ export const DepartmentsPage: React.FC = () => {
       </Card>
 
       {isModalOpen && (
-        <div style={styles.modalOverlay}>
+        <div style={styles.modalOverlay} data-testid="department-modal">
           <div style={styles.modalContent}>
             <h2 style={{ marginTop: 0 }}>{editingDept ? 'Edit Department' : 'Add Department'}</h2>
             
             {formError && (
-              <div style={styles.errorBox}>
+              <div style={styles.errorBox} data-testid="department-form-error">
                 <AlertCircle size={18} /> {formError}
               </div>
             )}
@@ -318,36 +372,57 @@ export const DepartmentsPage: React.FC = () => {
                   value={formData.name}
                   onChange={(e) => setFormData({...formData, name: e.target.value})}
                   required
+                  data-testid="department-name-input"
+                  placeholder="e.g. Engineering"
                 />
               </div>
+
               <div style={styles.formGroup}>
-                <label style={styles.label}>Organization</label>
+                <label style={styles.label}>Branch</label>
                 <select
                   style={styles.input}
-                  value={formData.organization}
-                  onChange={(e) => setFormData({...formData, organization: parseInt(e.target.value)})}
+                  value={formData.branch}
+                  onChange={(e) => setFormData({...formData, branch: parseInt(e.target.value, 10)})}
                   required
+                  disabled={!!editingDept}
+                  data-testid="department-branch-select"
                 >
-                  <option value={0} disabled>Select an organization</option>
-                  {organizations.map(org => (
-                    <option key={org.id} value={org.id}>{org.name}</option>
+                  <option value={0} disabled>Select a branch</option>
+                  {branches.map(b => (
+                    <option key={b.id} value={b.id}>{b.name}</option>
                   ))}
                 </select>
+                {editingDept && (
+                  <div style={styles.helperText}>Branch cannot be changed once a department is created.</div>
+                )}
               </div>
+
               <div style={styles.formGroup}>
                 <label style={styles.label}>Description</label>
                 <input 
                   style={styles.input} 
                   value={formData.description}
                   onChange={(e) => setFormData({...formData, description: e.target.value})}
+                  data-testid="department-desc-input"
+                  placeholder="Optional description"
                 />
               </div>
               
               <div style={styles.modalActions}>
-                <button type="button" style={styles.cancelBtn} onClick={() => setIsModalOpen(false)}>
+                <button 
+                  type="button" 
+                  style={styles.cancelBtn} 
+                  onClick={() => setIsModalOpen(false)}
+                  data-testid="department-cancel-btn"
+                >
                   Cancel
                 </button>
-                <button type="submit" style={styles.button} disabled={saving}>
+                <button 
+                  type="submit" 
+                  style={styles.button} 
+                  disabled={saving}
+                  data-testid="department-save-btn"
+                >
                   {saving ? <Loader2 size={18} style={{ animation: 'spin 1s linear infinite' }}/> : 'Save'}
                 </button>
               </div>

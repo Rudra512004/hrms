@@ -32,8 +32,21 @@ const handleResponse = async (response: Response) => {
 };
 
 export const branchService = {
-    getAll: async (): Promise<Branch[]> => {
-        const response = await fetch('/api/v1/organization/branches/', {
+    getAll: async (organizationId?: number): Promise<Branch[]> => {
+        const url = organizationId
+            ? `/api/v1/organization/branches/?organization=${organizationId}`
+            : '/api/v1/organization/branches/';
+        const response = await fetch(url, {
+            headers: getHeaders()
+        });
+        return handleResponse(response);
+    },
+
+    listBranches: async (organizationId?: number): Promise<Branch[]> => {
+        const url = organizationId
+            ? `/api/v1/organization/branches/?organization=${organizationId}`
+            : '/api/v1/organization/branches/';
+        const response = await fetch(url, {
             headers: getHeaders()
         });
         return handleResponse(response);

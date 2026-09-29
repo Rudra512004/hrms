@@ -2,7 +2,7 @@ from rest_framework.test import APITestCase
 from rest_framework import status
 from django.contrib.auth import get_user_model
 from unittest.mock import patch
-from apps.organization.models import Organization, Department, Designation
+from apps.organization.models import Organization, Department, Designation, Branch
 from apps.employees.models import Employee
 
 User = get_user_model()
@@ -11,8 +11,9 @@ class EmployeeSelfServiceSecurityTests(APITestCase):
     def setUp(self):
         self.org1 = Organization.objects.create(name='Org 1')
         self.org2 = Organization.objects.create(name='Org 2')
-        
-        self.dept1 = Department.objects.create(name='Dept 1', organization=self.org1)
+        self.branch1 = Branch.objects.create(organization=self.org1, name='Branch 1', radius=100)
+
+        self.dept1 = Department.objects.create(name='Dept 1', branch=self.branch1)
         self.desig1 = Designation.objects.create(name='Worker', organization=self.org1)
         self.desig_ceo = Designation.objects.create(name='CEO', organization=self.org1)
         

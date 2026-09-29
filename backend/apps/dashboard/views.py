@@ -23,7 +23,8 @@ class DashboardOverviewView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request, *args, **kwargs):
-        overview_data = DashboardAggregationService.get_dashboard_overview(request.user)
+        branch_id = request.query_params.get("branch_id")
+        overview_data = DashboardAggregationService.get_dashboard_overview(request.user, branch_id)
         return Response(overview_data, status=status.HTTP_200_OK)
 
 
@@ -46,6 +47,7 @@ class DashboardTrendsView(APIView):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        trends_data = DashboardTrendsService.get_trends(request.user, window)
+        branch_id = request.query_params.get("branch_id")
+        trends_data = DashboardTrendsService.get_trends(request.user, window, branch_id)
         return Response(trends_data, status=status.HTTP_200_OK)
 

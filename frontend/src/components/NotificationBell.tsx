@@ -1,244 +1,397 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { Bell, Check, Inbox, RefreshCw, AlertCircle } from 'lucide-react';
+﻿import React, { useState, useEffect, useRef, useCallback } from 'react';
+import {
+  Bell,
+  BellOff,
+  X,
+  CheckCheck,
+  AlertCircle,
+  Loader2,
+} from 'lucide-react';
 import { notificationService, type Notification } from '../services/notifications';
 
+// GöÇGöÇ Helpers GöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇ
+
+/** Format ISO timestamp as compact relative string */
+function relativeTime(iso: string): string {
+  const diff = Date.now() - new Date(iso).getTime();
+  const s = Math.floor(diff / 1000);
+  if (s < 60) return 'just now';
+  const m = Math.floor(s / 60);
+  if (m < 60) return `${m}m ago`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}h ago`;
+  const d = Math.floor(h / 24);
+  if (d < 7) return `${d}d ago`;
+  return new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+}
+
+/**
+ * DEV1_CONTRACT: Map provisional notification_type values to UI accent colours.
+ * Update keys once Dev1 confirms the exact type string values.
+ */
+const TYPE_COLOR: Record<string, string> = {
+  leave_approved:      'var(--color-status-success)',
+  leave_rejected:      'var(--color-status-danger)',
+  leave_pending:       'var(--color-status-warning)',
+  payroll_processed:   'var(--color-status-info)',
+  payslip_generated:   'var(--color-status-info)',
+  asset_assigned:      'var(--color-primary)',
+  asset_returned:      'var(--color-text-muted)',
+  lifecycle_promotion: 'var(--color-primary)',
+  lifecycle_transfer:  'var(--color-primary)',
+  lifecycle_exit:      'var(--color-status-danger)',
+  document_uploaded:   'var(--color-status-info)',
+  system:              'var(--color-text-muted)',
+};
+
+function accentForType(type: string): string {
+  return TYPE_COLOR[type] ?? 'var(--color-primary)';
+}
+
+// GöÇGöÇ Component GöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇ
+
+/**
+ * NotificationBell
+ *
+ * Self-contained header notification widget:
+ * - Bell icon button with unread-count badge
+ * - Keyboard accessible (Escape closes, focus returns to button)
+ * - Panel renders all UX states: loading, empty, error, populated
+ * - Individual mark-as-read + mark-all-read
+ *
+ * API wiring is provisional (see services/notifications.ts).
+ * When Dev1 finalises the backend contract, only the service layer needs
+ * to change; this component requires no modification.
+ */
 export const NotificationBell: React.FC = () => {
   const [isOpen, setIsOpen] = useState(false);
-  const [unreadCount, setUnreadCount] = useState(0);
+
+  // Notification data
   const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [unreadCount, setUnreadCount] = useState(0);
+
+  // Per-fetch state
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  
-  const dropdownRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    fetchUnreadCount();
-  }, []);
+  // Optimistic action states
+  const [markingId, setMarkingId] = useState<number | null>(null);
+  const [markingAll, setMarkingAll] = useState(false);
 
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
-        setIsOpen(false);
-      }
-    };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    if (isOpen) {
-      fetchNotifications();
-      fetchUnreadCount();
-    }
-  }, [isOpen]);
+  // GöÇGöÇ Data fetching GöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇ
 
-  const fetchUnreadCount = async () => {
+  const fetchNotifications = useCallback(async () => {
+    setLoading(true);
+    setError(null);
     try {
-      const data = await notificationService.getUnreadCount();
-      setUnreadCount(data.unread_count);
-    } catch (err) {
-      console.error('Failed to fetch unread count', err);
-    }
-  };
-
-  const fetchNotifications = async () => {
-    try {
-      setLoading(true);
-      setError(null);
       const data = await notificationService.getNotifications();
-      setNotifications(Array.isArray(data) ? data : []);
-    } catch {
-      setError('Failed to load notifications.');
+      setNotifications(data);
+      setUnreadCount(data.filter((n: Notification) => !n.is_read).length);
+    } catch (err: any) {
+      const status: number = err?.status ?? 0;
+      if (status === 404) {
+        setError('Notifications are not yet available.');
+      } else if (status === 401 || status === 403) {
+        setError('You do not have permission to view notifications.');
+      } else {
+        setError('Failed to load notifications. Please try again.');
+      }
+      setNotifications([]);
+      setUnreadCount(0);
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
-  const handleMarkAsRead = async (id: number) => {
+  // Reload whenever panel is opened
+  useEffect(() => {
+    if (isOpen) {
+      fetchNotifications();
+    }
+  }, [isOpen, fetchNotifications]);
+
+  // GöÇGöÇ Keyboard & outside-click GöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇ
+
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setIsOpen(false);
+        buttonRef.current?.focus();
+      }
+    };
+
+    const handleMouseDown = (e: MouseEvent) => {
+      const target = e.target as Node;
+      if (
+        panelRef.current && !panelRef.current.contains(target) &&
+        buttonRef.current && !buttonRef.current.contains(target)
+      ) {
+        setIsOpen(false);
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    document.addEventListener('mousedown', handleMouseDown);
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+      document.removeEventListener('mousedown', handleMouseDown);
+    };
+  }, [isOpen]);
+
+  // GöÇGöÇ Actions GöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇ
+
+  const handleMarkRead = async (notif: Notification) => {
+    if (notif.is_read || markingId === notif.id) return;
+    setMarkingId(notif.id);
     try {
-      await notificationService.markAsRead(id);
-      setNotifications(prev => prev.map(n => n.id === id ? { ...n, is_read: true } : n));
+      await notificationService.markAsRead(notif.id);
+      // Optimistic update
+      setNotifications(prev =>
+        prev.map(n => n.id === notif.id ? { ...n, is_read: true } : n)
+      );
       setUnreadCount(prev => Math.max(0, prev - 1));
-    } catch (err) {
-      console.error('Failed to mark notification as read', err);
+    } catch {
+      // Silent fail for individual mark-read GÇö data reloads on next panel open
+    } finally {
+      setMarkingId(null);
     }
   };
 
-  const handleMarkAllAsRead = async () => {
+  const handleMarkAllRead = async () => {
+    if (markingAll || unreadCount === 0) return;
+    setMarkingAll(true);
     try {
       await notificationService.markAllAsRead();
       setNotifications(prev => prev.map(n => ({ ...n, is_read: true })));
       setUnreadCount(0);
-    } catch (err) {
-      console.error('Failed to mark all as read', err);
+    } catch {
+      // Could surface a toast once a toast system is implemented
+    } finally {
+      setMarkingAll(false);
     }
   };
 
-  const formatDate = (dateStr: string) => {
-    const date = new Date(dateStr);
-    return new Intl.DateTimeFormat('en-US', {
-      month: 'short',
-      day: 'numeric',
-      hour: 'numeric',
-      minute: 'numeric',
-    }).format(date);
-  };
+  // GöÇGöÇ Derived display GöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇ
+
+  const badgeLabel = unreadCount > 99 ? '99+' : unreadCount > 9 ? '9+' : String(unreadCount);
+  const ariaLabel = unreadCount > 0
+    ? `Notifications, ${unreadCount} unread`
+    : 'Notifications';
+
+  // GöÇGöÇ Render GöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇ
 
   return (
-    <div className="notification-wrapper" ref={dropdownRef} style={{ position: 'relative' }}>
+    <div style={{ position: 'relative', flexShrink: 0 }}>
+
+      {/* GöÇGöÇ Bell button GöÇGöÇ */}
       <button
-        className="header-toggle"
-        onClick={() => setIsOpen(!isOpen)}
-        aria-label="Notifications"
+        ref={buttonRef}
+        id="notification-bell-btn"
+        className="header-toggle notif-bell-btn"
         type="button"
-        style={{ position: 'relative' }}
+        aria-label={ariaLabel}
+        aria-expanded={isOpen}
+        aria-haspopup="dialog"
+        onClick={() => setIsOpen(prev => !prev)}
       >
-        <Bell size={20} />
+        <Bell size={18} aria-hidden="true" />
         {unreadCount > 0 && (
-          <span
-            style={{
-              position: 'absolute',
-              top: '4px',
-              right: '4px',
-              backgroundColor: '#ef4444',
-              color: 'white',
-              fontSize: '0.65rem',
-              fontWeight: 700,
-              borderRadius: '9999px',
-              minWidth: '16px',
-              height: '16px',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              padding: '0 4px',
-            }}
-          >
-            {unreadCount > 99 ? '99+' : unreadCount}
+          <span className="notif-badge" aria-hidden="true">
+            {badgeLabel}
           </span>
         )}
       </button>
 
+      {/* GöÇGöÇ Dropdown panel GöÇGöÇ */}
       {isOpen && (
         <div
-          className="notification-dropdown"
-          style={{
-            position: 'absolute',
-            top: 'calc(100% + 8px)',
-            right: 0,
-            width: '360px',
-            backgroundColor: '#ffffff',
-            borderRadius: '12px',
-            boxShadow: '0 10px 40px rgba(0,0,0,0.1)',
-            border: '1px solid var(--color-border)',
-            zIndex: 1000,
-            display: 'flex',
-            flexDirection: 'column',
-            maxHeight: '480px',
-            overflow: 'hidden',
-          }}
+          ref={panelRef}
+          className="notif-panel animate-fade-in"
+          role="dialog"
+          aria-labelledby="notif-panel-heading"
+          aria-modal="false"
         >
-          {/* Header */}
-          <div style={{
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            padding: '16px 20px',
-            borderBottom: '1px solid var(--color-border)',
-            backgroundColor: '#f8fafc'
-          }}>
-            <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 600, color: 'var(--color-text-main)' }}>
-              Notifications
-            </h3>
-            {unreadCount > 0 && (
+          {/* Panel header */}
+          <div className="notif-panel-hd">
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <h2 id="notif-panel-heading" className="notif-panel-title">
+                Notifications
+              </h2>
+              {unreadCount > 0 && (
+                <span className="notif-count-pill" aria-live="polite">
+                  {unreadCount} unread
+                </span>
+              )}
+            </div>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: '2px' }}>
+              {unreadCount > 0 && !loading && !error && (
+                <button
+                  className="btn btn-ghost btn-sm"
+                  type="button"
+                  onClick={handleMarkAllRead}
+                  disabled={markingAll}
+                  aria-label="Mark all notifications as read"
+                  title="Mark all as read"
+                  style={{ fontSize: 'var(--font-size-xs)', gap: '4px' }}
+                >
+                  {markingAll
+                    ? <Loader2 size={13} className="animate-spin" aria-hidden="true" />
+                    : <CheckCheck size={13} aria-hidden="true" />}
+                  <span className="notif-mark-all-label">Mark all read</span>
+                </button>
+              )}
               <button
-                onClick={handleMarkAllAsRead}
-                style={{
-                  background: 'none',
-                  border: 'none',
-                  color: 'var(--color-primary)',
-                  fontSize: '0.85rem',
-                  fontWeight: 600,
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '4px'
-                }}
+                className="btn btn-ghost btn-sm"
+                type="button"
+                onClick={() => setIsOpen(false)}
+                aria-label="Close notifications panel"
+                style={{ padding: '4px 6px' }}
               >
-                <Check size={14} /> Mark all read
+                <X size={16} aria-hidden="true" />
               </button>
-            )}
+            </div>
           </div>
 
-          {/* Body */}
-          <div style={{ flex: 1, overflowY: 'auto', padding: '0' }}>
-            {loading && notifications.length === 0 ? (
-              <div style={{ display: 'flex', justifyContent: 'center', padding: '40px' }}>
-                <RefreshCw size={24} color="var(--color-text-muted)" className="spin" />
+          {/* Panel body */}
+          <div
+            className="notif-panel-body"
+            role="log"
+            aria-live="polite"
+            aria-label="Notification items"
+          >
+
+            {/* Loading */}
+            {loading && (
+              <div className="notif-state">
+                <Loader2
+                  size={26}
+                  className="animate-spin"
+                  style={{ color: 'var(--color-primary)', marginBottom: '10px' }}
+                  aria-hidden="true"
+                />
+                <span style={{ fontSize: 'var(--font-size-sm)', color: 'var(--color-text-muted)' }}>
+                  Loading notificationsGÇª
+                </span>
               </div>
-            ) : error ? (
-              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '40px', color: '#ef4444' }}>
-                <AlertCircle size={32} style={{ marginBottom: '12px' }} />
-                <span style={{ fontSize: '0.9rem' }}>{error}</span>
-                <button 
+            )}
+
+            {/* Error */}
+            {!loading && error && (
+              <div className="notif-state">
+                <AlertCircle
+                  size={26}
+                  style={{ color: 'var(--color-status-warning)', marginBottom: '10px' }}
+                  aria-hidden="true"
+                />
+                <p style={{
+                  fontSize: 'var(--font-size-sm)',
+                  color: 'var(--color-text-muted)',
+                  textAlign: 'center',
+                  maxWidth: '210px',
+                  margin: '0 0 12px 0',
+                }}>
+                  {error}
+                </p>
+                <button
+                  className="btn btn-secondary btn-sm"
+                  type="button"
                   onClick={fetchNotifications}
-                  style={{ marginTop: '12px', background: 'none', border: '1px solid currentColor', borderRadius: '4px', padding: '4px 12px', color: 'inherit', cursor: 'pointer' }}
                 >
                   Retry
                 </button>
               </div>
-            ) : notifications.length === 0 ? (
-              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '60px 20px', color: 'var(--color-text-muted)' }}>
-                <Inbox size={48} style={{ marginBottom: '16px', opacity: 0.5 }} />
-                <span style={{ fontSize: '0.95rem', fontWeight: 500 }}>No notifications yet</span>
-                <span style={{ fontSize: '0.85rem', marginTop: '4px' }}>When you get notifications, they'll show up here.</span>
+            )}
+
+            {/* Empty */}
+            {!loading && !error && notifications.length === 0 && (
+              <div className="notif-state">
+                <BellOff
+                  size={30}
+                  style={{
+                    opacity: 0.3,
+                    color: 'var(--color-text-muted)',
+                    marginBottom: '10px',
+                  }}
+                  aria-hidden="true"
+                />
+                <p style={{
+                  fontSize: 'var(--font-size-sm)',
+                  fontWeight: 600,
+                  color: 'var(--color-text-main)',
+                  margin: '0 0 4px 0',
+                }}>
+                  All caught up
+                </p>
+                <p style={{
+                  fontSize: 'var(--font-size-xs)',
+                  color: 'var(--color-text-muted)',
+                  margin: 0,
+                }}>
+                  No notifications yet.
+                </p>
               </div>
-            ) : (
-              <div style={{ display: 'flex', flexDirection: 'column' }}>
+            )}
+
+            {/* Notification list */}
+            {!loading && !error && notifications.length > 0 && (
+              <ul className="notif-list" role="list">
                 {notifications.map(notif => (
-                  <div
+                  <li
                     key={notif.id}
-                    onClick={() => !notif.is_read && handleMarkAsRead(notif.id)}
-                    style={{
-                      padding: '16px 20px',
-                      borderBottom: '1px solid var(--color-border)',
-                      backgroundColor: notif.is_read ? '#ffffff' : '#f0f9ff',
-                      cursor: notif.is_read ? 'default' : 'pointer',
-                      transition: 'background-color 0.2s ease',
-                      display: 'flex',
-                      flexDirection: 'column',
-                      gap: '4px'
-                    }}
+                    className={`notif-item${notif.is_read ? '' : ' notif-item--unread'}`}
                   >
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '8px' }}>
-                      <span style={{ 
-                        fontSize: '0.9rem', 
-                        fontWeight: notif.is_read ? 500 : 600, 
-                        color: 'var(--color-text-main)' 
-                      }}>
+                    {/* Unread accent bar */}
+                    {!notif.is_read && (
+                      <span
+                        className="notif-accent"
+                        aria-hidden="true"
+                        style={{ backgroundColor: accentForType(notif.notification_type) }}
+                      />
+                    )}
+
+                    {/* Content */}
+                    <div className="notif-item-content">
+                      <p className="notif-item-title" title={notif.title}>
                         {notif.title}
-                      </span>
-                      {!notif.is_read && (
-                        <div style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: '#0ea5e9', flexShrink: 0, marginTop: '6px' }} />
+                      </p>
+                      {notif.message && (
+                        <p className="notif-item-msg" title={notif.message}>
+                          {notif.message}
+                        </p>
                       )}
+                      <time
+                        className="notif-item-time"
+                        dateTime={notif.created_at}
+                        title={new Date(notif.created_at).toLocaleString()}
+                      >
+                        {relativeTime(notif.created_at)}
+                      </time>
                     </div>
-                    <p style={{ 
-                      margin: 0, 
-                      fontSize: '0.85rem', 
-                      color: 'var(--color-text-muted)',
-                      lineHeight: 1.4 
-                    }}>
-                      {notif.message}
-                    </p>
-                    <span style={{ 
-                      fontSize: '0.75rem', 
-                      color: '#94a3b8', 
-                      marginTop: '4px' 
-                    }}>
-                      {formatDate(notif.created_at)}
-                    </span>
-                  </div>
+
+                    {/* Mark read action */}
+                    {!notif.is_read && (
+                      <button
+                        className="notif-markread-btn"
+                        type="button"
+                        onClick={() => handleMarkRead(notif)}
+                        disabled={markingId === notif.id}
+                        aria-label={`Mark "${notif.title}" as read`}
+                        title="Mark as read"
+                      >
+                        {markingId === notif.id
+                          ? <Loader2 size={12} className="animate-spin" aria-hidden="true" />
+                          : <CheckCheck size={12} aria-hidden="true" />}
+                      </button>
+                    )}
+                  </li>
                 ))}
-              </div>
+              </ul>
             )}
           </div>
         </div>

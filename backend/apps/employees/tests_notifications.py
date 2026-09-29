@@ -4,7 +4,7 @@ from rest_framework import status
 from rest_framework.test import APIClient
 from django.contrib.auth import get_user_model
 from apps.employees.models import Employee
-from apps.organization.models import Organization, Department, Designation
+from apps.organization.models import Organization, Department, Designation, Branch
 from apps.notifications.models import Notification
 from unittest.mock import patch
 from django.utils import timezone
@@ -21,13 +21,15 @@ class EmployeeNotificationIntegrationTests(TransactionTestCase):
 
         self.admin_user = User.objects.create_user(email='admin_emp@example.com', password='Password123!', status='active', is_superuser=True)
 
-        self.department = Department.objects.create(organization=self.org, name='Engineering')
+        self.branch = Branch.objects.create(organization=self.org, name='Main Branch', radius=100)
+        self.department = Department.objects.create(branch=self.branch, name='Engineering')
         self.designation = Designation.objects.create(organization=self.org, name='Senior Engineer')
 
     @patch('apps.authorization.services.AuthorizationService.has_permission', return_value=True)
     def test_employee_transfer_notification(self, mock_perm):
         self.client.force_authenticate(user=self.admin_user)
         response = self.client.post(f'/api/v1/employees/management/{self.employee.pk}/transfer/', {
+            'branch': self.branch.id,
             'department': self.department.id,
             'effective_date': timezone.now().date().isoformat(),
             'reason': 'Team restructuring'

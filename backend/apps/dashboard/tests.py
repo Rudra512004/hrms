@@ -24,14 +24,16 @@ class DashboardOverviewTests(TestCase):
 
         # Organization 1 (Primary)
         self.org1 = Organization.objects.create(name="Primary Corp")
-        OfficeNetwork.objects.create(organization=self.org1, name="Primary Net", network="127.0.0.0/8", is_active=True)
-        self.dept1 = Department.objects.create(organization=self.org1, name="Engineering")
+        from apps.organization.models import Branch
         self.branch1 = Branch.objects.create(organization=self.org1, name="Headquarters", radius=100.0)
+        OfficeNetwork.objects.create(branch=self.branch1, name="Primary Net", network="127.0.0.0/8", is_active=True)
+        self.dept1 = Department.objects.create(branch=self.branch1, name="Engineering")
 
         # Organization 2 (Isolated)
         self.org2 = Organization.objects.create(name="Secondary Corp")
-        OfficeNetwork.objects.create(organization=self.org2, name="Secondary Net", network="10.0.0.0/8", is_active=True)
-        self.dept2 = Department.objects.create(organization=self.org2, name="Marketing")
+        self.branch2 = Branch.objects.create(organization=self.org2, name="Secondary HQ", radius=100.0)
+        OfficeNetwork.objects.create(branch=self.branch2, name="Secondary Net", network="10.0.0.0/8", is_active=True)
+        self.dept2 = Department.objects.create(branch=self.branch2, name="Marketing")
 
         # Standard Permissions
         self.perm_emp_view, _ = Permission.objects.get_or_create(
@@ -103,7 +105,7 @@ class DashboardOverviewTests(TestCase):
             email="user@secondary.com", password="Password123!", status="active"
         )
         self.org2_profile = Employee.objects.create(
-            user=self.org2_user, organization=self.org2, employee_code="SEC001",
+            user=self.org2_user, organization=self.org2, branch=self.branch2, employee_code="SEC001",
             department=self.dept2, employment_status=EmploymentStatus.ACTIVE
         )
 
@@ -128,13 +130,16 @@ class DashboardOverviewTests(TestCase):
             check_in=timezone.now()
         )
         leave_type = LeaveType.objects.create(
-            organization=self.org1, name="Casual Leave", annual_allocation=12
+            organization=self.org1, name="Casual Leave"
         )
-        balance = LeaveBalance.objects.get(employee=self.emp_profile, leave_type=leave_type)
+        from apps.leaves.models import LeaveCycle
+        from datetime import date
+        cycle = LeaveCycle.objects.create(branch=self.branch1, name='C1', start_date=date(2026,1,1), end_date=date(2026,12,31), is_active=True)
+        balance = LeaveBalance.objects.create(employee=self.emp_profile, leave_type=leave_type, branch=self.branch1, leave_cycle=cycle, allocated=10, used=0)
         balance.used = 2
         balance.save()
         Holiday.objects.create(
-            organization=self.org1, name="Independence Day", date=self.today
+            branch=self.branch1, name="Independence Day", date=self.today
         )
 
         self.client.force_authenticate(user=self.emp_user)
@@ -151,7 +156,7 @@ class DashboardOverviewTests(TestCase):
         self.assertIsNotNone(personal)
         self.assertEqual(personal['attendance_today']['status'], 'present')
         self.assertEqual(len(personal['leave_balances']), 1)
-        self.assertEqual(personal['leave_balances'][0]['remaining'], 10)
+        self.assertEqual(personal['leave_balances'][0]['remaining'], 8)
         self.assertEqual(len(personal['upcoming_holidays']), 1)
         self.assertEqual(personal['upcoming_holidays'][0]['name'], 'Independence Day')
 
@@ -169,7 +174,7 @@ class DashboardOverviewTests(TestCase):
             check_in=timezone.now()
         )
         leave_type = LeaveType.objects.create(
-            organization=self.org1, name="Sick Leave", annual_allocation=10
+            organization=self.org1, name="Sick Leave"
         )
         LeaveRequest.objects.create(
             employee=self.report_profile,
@@ -286,11 +291,12 @@ class DashboardOverviewTests(TestCase):
     def test_empty_no_data_organization_state(self):
         """An organization with 1 employee and 0 attendance records evaluates without divide-by-zero errors."""
         empty_org = Organization.objects.create(name="Empty Corp")
+        empty_branch = Branch.objects.create(organization=empty_org, name="Empty Branch", radius=100.0)
         empty_user = User.objects.create_user(
             email="empty@corp.com", password="Password123!", status="active"
         )
         Employee.objects.create(
-            user=empty_user, organization=empty_org, employee_code="EMPEMPTY",
+            user=empty_user, organization=empty_org, branch=empty_branch, employee_code="EMPEMPTY",
             employment_status=EmploymentStatus.ONBOARDING
         )
         empty_role = Role.objects.create(organization=empty_org, name="Admin")
@@ -328,7 +334,7 @@ class DashboardOverviewTests(TestCase):
 
     def test_attendance_rate_employees_on_approved_leave(self):
         """1 employee on approved leave and 3 present -> net expected_working is 3, 100% rate."""
-        leave_type = LeaveType.objects.create(organization=self.org1, name="Annual Leave", annual_allocation=15)
+        leave_type = LeaveType.objects.create(organization=self.org1, name="Annual Leave")
         LeaveRequest.objects.create(
             employee=self.emp_profile,
             leave_type=leave_type,
@@ -398,7 +404,7 @@ class DashboardOverviewTests(TestCase):
 
     def test_attendance_rate_approved_leave_plus_attendance_edge_case(self):
         """Employee has approved leave but punches in anyway: counted once as present, not on leave."""
-        leave_type = LeaveType.objects.create(organization=self.org1, name="Sick Leave", annual_allocation=10)
+        leave_type = LeaveType.objects.create(organization=self.org1, name="Sick Leave")
         LeaveRequest.objects.create(
             employee=self.emp_profile,
             leave_type=leave_type,
@@ -425,7 +431,7 @@ class DashboardOverviewTests(TestCase):
 
     def test_attendance_rate_zero_expected_workforce(self):
         """All active employees are on approved leave -> expected_working is 0, percentage is 0.0%."""
-        leave_type = LeaveType.objects.create(organization=self.org1, name="Company Vacation", annual_allocation=20)
+        leave_type = LeaveType.objects.create(organization=self.org1, name="Company Vacation")
         for emp in [self.emp_profile, self.mgr_profile, self.report_profile, self.hr_profile]:
             LeaveRequest.objects.create(
                 employee=emp,
@@ -447,6 +453,72 @@ class DashboardOverviewTests(TestCase):
         self.assertEqual(att['absent'], 0)
         self.assertEqual(att['attendance_percentage'], 0.0)
 
+    def test_dashboard_unauthorized_branch_access(self):
+        """Requesting overview with branch_id for a cross-organization branch must return HTTP 403 Forbidden."""
+        self.client.force_authenticate(user=self.hr_user)
+        # Scope HR role to branch1
+        UserRole.objects.filter(user=self.hr_user).update(scope='branch', branch=self.branch1)
+
+        # Try accessing branch2 (secondary organization branch)
+        response = self.client.get(f"{self.overview_url}?branch_id={self.branch2.id}")
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_dashboard_same_org_unauthorized_branch_access(self):
+        """Requesting overview with branch_id for another branch in same org without permissions returns HTTP 403 Forbidden."""
+        branch3 = Branch.objects.create(organization=self.org1, name="Branch 3", radius=100.0)
+        self.client.force_authenticate(user=self.hr_user)
+        UserRole.objects.filter(user=self.hr_user).update(scope='branch', branch=self.branch1)
+
+        response = self.client.get(f"{self.overview_url}?branch_id={branch3.id}")
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_dashboard_authorized_branch_access(self):
+        """Requesting overview with branch_id for an authorized branch returns HTTP 200 with isolated data."""
+        self.client.force_authenticate(user=self.hr_user)
+        UserRole.objects.filter(user=self.hr_user).update(scope='branch', branch=self.branch1)
+
+        response = self.client.get(f"{self.overview_url}?branch_id={self.branch1.id}")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        org_data = response.data['organization']
+        self.assertIsNotNone(org_data)
+        self.assertEqual(org_data['workforce']['total_active'], 4)
+
+    def test_dashboard_authorized_branch_zero_data(self):
+        """Authorized branch with zero active employees returns HTTP 200 with 0 metrics, distinct from 403."""
+        empty_branch = Branch.objects.create(organization=self.org1, name="Zero Data Branch", radius=100.0)
+        empty_role = Role.objects.create(organization=self.org1, name="Empty Branch Admin")
+        RolePermission.objects.create(role=empty_role, permission=self.perm_emp_view)
+        RolePermission.objects.create(role=empty_role, permission=self.perm_att_view)
+        UserRole.objects.create(user=self.hr_user, role=empty_role, scope='branch', branch=empty_branch)
+
+        self.client.force_authenticate(user=self.hr_user)
+        response = self.client.get(f"{self.overview_url}?branch_id={empty_branch.id}")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        org_data = response.data['organization']
+        self.assertIsNotNone(org_data)
+        self.assertEqual(org_data['workforce']['total_active'], 0)
+        self.assertEqual(org_data['attendance_today']['expected_total'], 0)
+
+    def test_dashboard_no_branch_id_branch_scoped_user_isolation(self):
+        """No branch_id for branch-scoped user aggregates ONLY across their authorized branches, not all org branches."""
+        branch3 = Branch.objects.create(organization=self.org1, name="Unassigned Branch", radius=100.0)
+        u_extra = User.objects.create_user(email="extra@primary.com", password="Password123!", status="active")
+        Employee.objects.create(
+            user=u_extra, organization=self.org1, employee_code="EXT001",
+            branch=branch3, employment_status=EmploymentStatus.ACTIVE
+        )
+
+        self.client.force_authenticate(user=self.hr_user)
+        # Scope HR user strictly to branch1
+        UserRole.objects.filter(user=self.hr_user).update(scope='branch', branch=self.branch1)
+
+        response = self.client.get(self.overview_url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        org_data = response.data['organization']
+        self.assertIsNotNone(org_data)
+        # Should be 4 (branch1 employees), NOT 5 (which would include branch3)
+        self.assertEqual(org_data['workforce']['total_active'], 4)
+
 
 class DashboardTrendsTests(TestCase):
     def setUp(self):
@@ -456,13 +528,15 @@ class DashboardTrendsTests(TestCase):
 
         # Organization 1 (Primary)
         self.org1 = Organization.objects.create(name="Trends Primary Corp")
-        OfficeNetwork.objects.create(organization=self.org1, name="Primary Net", network="127.0.0.0/8", is_active=True)
-        self.dept1 = Department.objects.create(organization=self.org1, name="Engineering")
-        self.branch1 = Branch.objects.create(organization=self.org1, name="Headquarters", radius=100.0)
+        from apps.organization.models import Branch
+        self.branch1 = Branch.objects.create(organization=self.org1, name="Trends HQ", radius=100.0)
+        OfficeNetwork.objects.create(branch=self.branch1, name="Primary Net", network="127.0.0.0/8", is_active=True)
+        self.dept1 = Department.objects.create(branch=self.branch1, name="Engineering")
 
         # Organization 2 (Isolated)
         self.org2 = Organization.objects.create(name="Trends Secondary Corp")
-        OfficeNetwork.objects.create(organization=self.org2, name="Secondary Net", network="10.0.0.0/8", is_active=True)
+        self.branch2 = Branch.objects.create(organization=self.org2, name="Secondary HQ", radius=100.0)
+        OfficeNetwork.objects.create(branch=self.branch2, name="Secondary Net", network="10.0.0.0/8", is_active=True)
 
         # Standard Permissions
         self.perm_emp_view, _ = Permission.objects.get_or_create(
@@ -580,8 +654,8 @@ class DashboardTrendsTests(TestCase):
 
         r_6m = self.client.get(f"{self.trends_url}?window=6m")
         self.assertEqual(r_6m.status_code, status.HTTP_200_OK)
-        self.assertIsNone(r_6m.data['attendance_trend'])
-        self.assertIsNone(r_6m.data['workforce_trend'])
+        self.assertIsNone(r_7d.data['attendance_trend'])
+        self.assertIsNone(r_7d.data['workforce_trend'])
 
     def test_permission_gating_attendance_view_all_only(self):
         """User with attendance.view_all receives 7d attendance trend but not workforce trend."""
@@ -654,7 +728,7 @@ class DashboardTrendsTests(TestCase):
                 break
 
         if target_date:
-            Holiday.objects.create(organization=self.org1, name="Founder's Holiday", date=target_date, is_active=True)
+            Holiday.objects.create(branch=self.branch1, name="Founder's Holiday", date=target_date, is_active=True)
 
             self.client.force_authenticate(user=self.hr_user)
             r = self.client.get(f"{self.trends_url}?window=7d")
@@ -725,7 +799,7 @@ class DashboardTrendsTests(TestCase):
                 break
 
         if target_date:
-            leave_type = LeaveType.objects.create(organization=self.org1, name="Paid Vacation", annual_allocation=15)
+            leave_type = LeaveType.objects.create(organization=self.org1, name="Paid Vacation")
             LeaveRequest.objects.create(
                 employee=self.emp_profile, leave_type=leave_type,
                 start_date=target_date, end_date=target_date, status='approved'
@@ -753,7 +827,7 @@ class DashboardTrendsTests(TestCase):
                 break
 
         if target_date:
-            leave_type = LeaveType.objects.create(organization=self.org1, name="Casual Leave", annual_allocation=10)
+            leave_type = LeaveType.objects.create(organization=self.org1, name="Casual Leave")
             LeaveRequest.objects.create(
                 employee=self.emp_profile, leave_type=leave_type,
                 start_date=target_date, end_date=target_date, status='approved'
@@ -916,4 +990,39 @@ class DashboardTrendsTests(TestCase):
             self.assertEqual(item['end_headcount'], 0)
             self.assertEqual(item['turnover_rate'], 0.0)
 
+    def test_trends_unauthorized_branch_access_returns_403(self):
+        """Trends endpoint with branch_id for unauthorized branch or cross-org branch returns HTTP 403 Forbidden."""
+        # Scope HR user to branch1
+        UserRole.objects.filter(user=self.hr_user).update(scope='branch', branch=self.branch1)
+        self.client.force_authenticate(user=self.hr_user)
+
+        # Cross-organization branch (branch2)
+        r1 = self.client.get(f"{self.trends_url}?window=7d&branch_id={self.branch2.id}")
+        self.assertEqual(r1.status_code, status.HTTP_403_FORBIDDEN)
+
+        r2 = self.client.get(f"{self.trends_url}?window=6m&branch_id={self.branch2.id}")
+        self.assertEqual(r2.status_code, status.HTTP_403_FORBIDDEN)
+
+        # Same organization unauthorized branch (branch3)
+        branch3 = Branch.objects.create(organization=self.org1, name="Trends Branch 3", radius=100.0)
+        r3 = self.client.get(f"{self.trends_url}?window=7d&branch_id={branch3.id}")
+        self.assertEqual(r3.status_code, status.HTTP_403_FORBIDDEN)
+
+        r4 = self.client.get(f"{self.trends_url}?window=6m&branch_id={branch3.id}")
+        self.assertEqual(r4.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_trends_authorized_branch_access_returns_200(self):
+        """Trends endpoint with branch_id for an authorized branch returns HTTP 200 with isolated data."""
+        # Scope HR user to branch1
+        UserRole.objects.filter(user=self.hr_user).update(scope='branch', branch=self.branch1)
+        self.client.force_authenticate(user=self.hr_user)
+
+        # Authorized branch (branch1)
+        r1 = self.client.get(f"{self.trends_url}?window=7d&branch_id={self.branch1.id}")
+        self.assertEqual(r1.status_code, status.HTTP_200_OK)
+        self.assertIsNotNone(r1.data['attendance_trend'])
+
+        r2 = self.client.get(f"{self.trends_url}?window=6m&branch_id={self.branch1.id}")
+        self.assertEqual(r2.status_code, status.HTTP_200_OK)
+        self.assertIsNotNone(r2.data['workforce_trend'])
 

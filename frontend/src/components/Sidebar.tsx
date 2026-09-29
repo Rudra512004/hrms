@@ -54,6 +54,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen }) => {
         { path: '/admin/assets',       label: 'Assets',        icon: Package,    permission: 'asset.view' },
         { path: '/admin/organizations',label: 'Organizations', icon: Building2,  permission: 'organization.view' },
         { path: '/admin/departments',  label: 'Departments',   icon: GitBranch,  permission: 'department.view' },
+        { path: '/admin/teams',        label: 'Teams',         icon: Users,      permission: 'team.view' },
         { path: '/admin/branches',     label: 'Branches',      icon: Building2,  permission: 'branch.view' },
         { path: '/admin/designations', label: 'Designations',  icon: Briefcase,  permission: 'designation.view' },
       ],
@@ -69,6 +70,8 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen }) => {
         { path: '/admin/wfh',          label: 'WFH Requests',          icon: Network,   permission: 'wfh.view' },
         { path: '/admin/holidays',     label: 'Holidays',              icon: CalendarDays, permission: 'holiday.view' },
         { path: '/admin/shifts',       label: 'Shifts',                icon: Clock,     permission: 'shift.view' },
+        { path: '/admin/working-calendar', label: 'Working Calendar',   icon: CalendarDays, permission: 'organization.update' },
+        { path: '/admin/attendance-policy',label: 'Attendance Policy',  icon: ShieldAlert,  permission: 'branch.view' },
       ],
     },
     {

@@ -2,7 +2,7 @@ from django.test import TestCase
 from django.contrib.auth import get_user_model
 from rest_framework.test import APIClient
 from rest_framework import status
-from apps.organization.models import Organization, OfficeNetwork
+from apps.organization.models import Organization, Branch, OfficeNetwork
 from apps.employees.models import Employee, EmploymentStatus, WFHRequest
 from apps.authorization.models import Role, Permission, RolePermission, UserRole
 from django.utils import timezone
@@ -20,8 +20,10 @@ class TenantWFHAndProvisioningSecurityTests(TestCase):
         self.org_b = Organization.objects.create(name='Org Beta')
 
         # Office networks (to satisfy IsNetworkAllowed for local testing)
-        OfficeNetwork.objects.create(organization=self.org_a, name='Net A', network='127.0.0.1/32', is_active=True)
-        OfficeNetwork.objects.create(organization=self.org_b, name='Net B', network='127.0.0.1/32', is_active=True)
+        self.branch_a = Branch.objects.create(organization=self.org_a, name='HQ Alpha')
+        self.branch_b = Branch.objects.create(organization=self.org_b, name='HQ Beta')
+        OfficeNetwork.objects.create(branch=self.branch_a, name='Net A', network='127.0.0.1/32', is_active=True)
+        OfficeNetwork.objects.create(branch=self.branch_b, name='Net B', network='127.0.0.1/32', is_active=True)
 
         # Permissions
         perm_codes = ['wfh.view', 'wfh.approve', 'wfh.reject', 'wfh.cancel', 'employee.create', 'employee.view']

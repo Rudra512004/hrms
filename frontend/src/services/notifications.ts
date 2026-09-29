@@ -1,4 +1,4 @@
-export type Notification = {
+﻿export type Notification = {
   id: number;
   notification_type: string;
   title: string;

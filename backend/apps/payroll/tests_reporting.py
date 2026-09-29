@@ -26,12 +26,12 @@ class PayrollReportingTests(TestCase):
         # Branches & Departments in Org 1
         self.branch1 = Branch.objects.create(organization=self.org1, name='HQ Branch', radius=100)
         self.branch2 = Branch.objects.create(organization=self.org1, name='East Branch', radius=100)
-        self.dept1 = Department.objects.create(organization=self.org1, name='Engineering')
-        self.dept2 = Department.objects.create(organization=self.org1, name='Marketing')
+        self.dept1 = Department.objects.create(branch=self.branch1, name='Engineering')
+        self.dept2 = Department.objects.create(branch=self.branch2, name='Marketing')
 
         # Branch in Org 2
         self.branch_org2 = Branch.objects.create(organization=self.org2, name='Other Branch', radius=100)
-        self.dept_org2 = Department.objects.create(organization=self.org2, name='Other Dept')
+        self.dept_org2 = Department.objects.create(branch=self.branch_org2, name='Other Dept')
 
 
         # Employee 1 in Org 1 (Engineering, HQ)
@@ -219,7 +219,7 @@ class PayrollReportingTests(TestCase):
         self.assertTrue(len(absent_ex) > 0)
 
     def test_pending_leave_detection(self):
-        lt = LeaveType.objects.create(organization=self.org1, name='Casual', annual_allocation=12)
+        lt = LeaveType.objects.create(organization=self.org1, name='Casual')
         LeaveRequest.objects.create(
             employee=self.emp1, leave_type=lt,
             start_date=date(2025, 1, 10), end_date=date(2025, 1, 12),

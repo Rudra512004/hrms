@@ -3,7 +3,7 @@ from django.contrib.auth import get_user_model
 from rest_framework.test import APIClient
 from rest_framework import status
 
-from apps.organization.models import Organization, Department, Designation, OfficeNetwork
+from apps.organization.models import Organization, Department, Designation, OfficeNetwork, Branch, Team
 from apps.employees.models import Employee, EmploymentStatus
 from apps.authorization.models import Role, Permission, UserRole, RolePermission
 from apps.audit.models import AuditLog
@@ -29,6 +29,7 @@ class MultiTenantIsolationSecurityTests(TestCase):
             'role.view', 'role.assign', 'role.revoke',
             'permission.view', 'permission.assign', 'permission.revoke',
             'department.view', 'department.manage',
+            'team.view', 'team.manage',
             'designation.view', 'designation.manage',
             'office_network.view', 'office_network.create', 'office_network.update', 'office_network.delete',
             'organization.view', 'organization.manage',
@@ -94,14 +95,19 @@ class MultiTenantIsolationSecurityTests(TestCase):
         self.role_perm_b = RolePermission.objects.create(role=self.role_member_b, permission=self.permissions['department.view'])
 
         # 7. Create Organization Resources for Org A and Org B
-        self.dept_a = Department.objects.create(organization=self.org_a, name='Engineering Alpha')
-        self.dept_b = Department.objects.create(organization=self.org_b, name='Engineering Beta')
+        self.branch_a = Branch.objects.create(organization=self.org_a, name='HQ Alpha')
+        self.branch_b = Branch.objects.create(organization=self.org_b, name='HQ Beta')
+        self.net_a = OfficeNetwork.objects.create(branch=self.branch_a, name='Net Alpha', network='127.0.0.1/32')
+        self.net_b = OfficeNetwork.objects.create(branch=self.branch_b, name='Net Beta', network='172.16.0.0/16')
+
+        self.dept_a = Department.objects.create(branch=self.branch_a, name='Engineering Alpha')
+        self.dept_b = Department.objects.create(branch=self.branch_b, name='Engineering Beta')
+
+        self.team_a = Team.objects.create(department=self.dept_a, name='Backend Alpha')
+        self.team_b = Team.objects.create(department=self.dept_b, name='Backend Beta')
 
         self.desig_a = Designation.objects.create(organization=self.org_a, name='Developer Alpha')
         self.desig_b = Designation.objects.create(organization=self.org_b, name='Developer Beta')
-
-        self.net_a = OfficeNetwork.objects.create(organization=self.org_a, name='Net Alpha', network='127.0.0.1/32')
-        self.net_b = OfficeNetwork.objects.create(organization=self.org_b, name='Net Beta', network='172.16.0.0/16')
 
         # 8. Create Audit Logs
         self.audit_a = AuditLog.objects.create(
@@ -274,7 +280,42 @@ class MultiTenantIsolationSecurityTests(TestCase):
         payload = {'organization': self.org_b.id, 'name': 'Injected Dept'}
         response = self.client.post('/api/v1/organization/departments/', payload)
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertIn('organization', response.data)
+        self.assertIn('branch', response.data)
+
+    def test_team_list_isolation(self):
+        """Admin A only sees Org A teams."""
+        self.client.force_authenticate(user=self.user_admin_a)
+        response = self.client.get('/api/v1/organization/teams/')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        team_ids = [t['id'] for t in response.data]
+        self.assertIn(self.team_a.id, team_ids)
+        self.assertNotIn(self.team_b.id, team_ids)
+
+    def test_team_retrieve_idor_blocked(self):
+        """Admin A cannot retrieve Org B team."""
+        self.client.force_authenticate(user=self.user_admin_a)
+        response = self.client.get(f'/api/v1/organization/teams/{self.team_b.id}/')
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+
+    def test_team_update_idor_blocked(self):
+        """Admin A cannot modify Org B team."""
+        self.client.force_authenticate(user=self.user_admin_a)
+        response = self.client.patch(f'/api/v1/organization/teams/{self.team_b.id}/', {'name': 'Hacked Team'})
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+
+    def test_team_delete_idor_blocked(self):
+        """Admin A cannot delete Org B team."""
+        self.client.force_authenticate(user=self.user_admin_a)
+        response = self.client.delete(f'/api/v1/organization/teams/{self.team_b.id}/')
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+
+    def test_team_create_payload_injection_rejected(self):
+        """Admin A attempting to specify Org B department in create payload is rejected with 400."""
+        self.client.force_authenticate(user=self.user_admin_a)
+        payload = {'department': self.dept_b.id, 'name': 'Injected Team'}
+        response = self.client.post('/api/v1/organization/teams/', payload)
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('department', response.data)
 
     # =========================================================================
     # E. ORGANIZATION MODULE: DESIGNATIONS

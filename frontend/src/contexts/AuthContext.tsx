@@ -52,7 +52,11 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   }, []);
 
   const hasPermission = (permission: string): boolean => {
-    if (!session || !session.permissions) return false;
+    if (!session) return false;
+    if (session.user?.isSuperuser || session.roles?.includes('Super Admin')) {
+      return true;
+    }
+    if (!session.permissions) return false;
     return session.permissions.includes(permission);
   };
 

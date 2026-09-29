@@ -96,7 +96,7 @@ class PayrollReportingViewSet(viewsets.ViewSet):
 
         department_id = request.query_params.get('department')
         if department_id:
-            if not Department.objects.filter(id=department_id, organization=org).exists():
+            if not Department.objects.filter(id=department_id, branch__organization=org).exists():
                 return Response({'detail': 'Department not found.'}, status=status.HTTP_404_NOT_FOUND)
 
         search = request.query_params.get('search')

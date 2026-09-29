@@ -5,6 +5,7 @@ from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from django.utils import timezone
 from django.db import transaction, IntegrityError
+from django.db.models import Q
 from datetime import timedelta
 from apps.authorization.permissions import IsNetworkAllowed, require_permission
 from .models import Attendance, AttendanceBreak, Holiday, Shift
@@ -17,44 +18,65 @@ class AttendanceViewSet(viewsets.GenericViewSet):
     permission_classes = [IsAuthenticated]
 
     def _validate_location(self, request, employee):
+        from apps.authorization.network import NetworkAccessService
+
+        if getattr(request.user, 'is_superuser', False):
+            return None # Superusers bypass location restrictions
+
+        # Determine Attendance Policy
+        # Using getattr to safely handle case where branch lacks a policy (fallback to strict defaults)
+        branch = employee.branch
+        policy = getattr(branch, 'attendance_policy', None)
+
+        is_gps_enabled = policy.is_office_gps_enabled if policy else True
+        is_ip_enabled = policy.is_office_ip_enabled if policy else False
+        is_wfh_enabled = policy.is_wfh_enabled if policy else False
+        wfh_bypasses = policy.wfh_bypasses_office_restrictions if policy else False
+
+        # 1. WFH Bypass
+        if is_wfh_enabled and wfh_bypasses and NetworkAccessService.is_wfh_active(employee):
+            return None # Bypass office restrictions
+
+        # Extract GPS data if provided
         lat = request.data.get('latitude')
         lon = request.data.get('longitude')
         accuracy = request.data.get('accuracy')
 
-        if not employee.branch:
-            from apps.authorization.network import NetworkAccessService
-            if not NetworkAccessService.is_remote_access_allowed(request, request.user):
-                return Response({'detail': 'ATTENDANCE_OUTSIDE_GEOFENCE'}, status=status.HTTP_403_FORBIDDEN)
-            return None
-            
-        if lat is None or lon is None:
-            return Response({'detail': 'Location data is required for branch employees.'}, status=status.HTTP_400_BAD_REQUEST)
-            
         try:
-            lat = float(lat)
-            lon = float(lon)
-            accuracy = float(accuracy) if accuracy is not None else None
+            if lat is not None and lon is not None:
+                lat = float(lat)
+                lon = float(lon)
+            if accuracy is not None:
+                accuracy = float(accuracy)
         except ValueError:
             return Response({'detail': 'Invalid location data.'}, status=status.HTTP_400_BAD_REQUEST)
-            
+
         if accuracy is not None and accuracy > 100.0:
             return Response({'detail': 'POOR_GPS_ACCURACY'}, status=status.HTTP_400_BAD_REQUEST)
-            
+
         branch = employee.branch
-        if not branch.is_active:
-            return Response({'detail': 'Assigned branch is inactive.'}, status=status.HTTP_400_BAD_REQUEST)
-            
-        if branch.latitude is None or branch.longitude is None:
-            # If branch has no coordinates configured, fallback to network check
-            from apps.authorization.network import NetworkAccessService
-            if not NetworkAccessService.is_remote_access_allowed(request, request.user):
+
+        # 2. IP Enforcement
+        if is_ip_enabled:
+            ip = NetworkAccessService.get_client_ip(request)
+            if not NetworkAccessService.is_office_network_allowed(ip, employee.organization):
+                return Response({'detail': 'ATTENDANCE_OUTSIDE_OFFICE_NETWORK'}, status=status.HTTP_403_FORBIDDEN)
+
+        # 3. GPS Enforcement
+        if is_gps_enabled:
+            if not branch:
                 return Response({'detail': 'ATTENDANCE_OUTSIDE_GEOFENCE'}, status=status.HTTP_403_FORBIDDEN)
-            return None
-            
-        dist = calculate_haversine_distance(lat, lon, branch.latitude, branch.longitude)
-        if dist > branch.radius:
-            return Response({'detail': 'ATTENDANCE_OUTSIDE_GEOFENCE'}, status=status.HTTP_403_FORBIDDEN)
-            
+            if branch.latitude is None or branch.longitude is None:
+                return Response({'detail': 'ATTENDANCE_OUTSIDE_GEOFENCE'}, status=status.HTTP_403_FORBIDDEN)
+            if not branch.is_active:
+                return Response({'detail': 'Assigned branch is inactive.'}, status=status.HTTP_400_BAD_REQUEST)
+            if lat is None or lon is None:
+                return Response({'detail': 'Location data is required for branch employees.'}, status=status.HTTP_400_BAD_REQUEST)
+
+            dist = calculate_haversine_distance(lat, lon, branch.latitude, branch.longitude)
+            if dist > branch.radius:
+                return Response({'detail': 'ATTENDANCE_OUTSIDE_GEOFENCE'}, status=status.HTTP_403_FORBIDDEN)
+
         return {'lat': lat, 'lon': lon, 'acc': accuracy}
 
     def get_queryset(self):
@@ -83,6 +105,11 @@ class AttendanceViewSet(viewsets.GenericViewSet):
         if isinstance(loc, Response):
             return loc
 
+        from .services import AttendanceCalculationService
+        shift = AttendanceCalculationService.resolve_scheduled_shift(employee, today)
+        check_in_time = timezone.now()
+        is_late = AttendanceCalculationService.is_late_check_in(shift, check_in_time, target_date=today)
+
         try:
             with transaction.atomic():
                 if Attendance.objects.filter(employee=employee, date=today).exists():
@@ -91,8 +118,9 @@ class AttendanceViewSet(viewsets.GenericViewSet):
                 attendance = Attendance.objects.create(
                     employee=employee,
                     date=today,
-                    check_in=timezone.now(),
+                    check_in=check_in_time,
                     status='present',
+                    is_late=is_late,
                     check_in_latitude=loc.get('lat') if loc else None,
                     check_in_longitude=loc.get('lon') if loc else None,
                     check_in_accuracy=loc.get('acc') if loc else None
@@ -143,16 +171,19 @@ class AttendanceViewSet(viewsets.GenericViewSet):
                 attendance.check_out_latitude = loc.get('lat')
                 attendance.check_out_longitude = loc.get('lon')
                 attendance.check_out_accuracy = loc.get('acc')
-            
+
             # Calculate total break duration
             total_break = timedelta(0)
             for b in attendance.breaks.all():
                 if b.ended_at:
                     total_break += (b.ended_at - b.started_at)
-            
+
             attendance.total_break_duration = total_break
             productive = (now - attendance.check_in) - total_break
             attendance.productive_work_duration = max(timedelta(0), productive)
+
+            from .services import AttendanceCalculationService
+            attendance.status = AttendanceCalculationService.determine_attendance_status(attendance)
 
             attendance.save()
 
@@ -195,7 +226,7 @@ class AttendanceViewSet(viewsets.GenericViewSet):
                 attendance=attendance,
                 started_at=timezone.now()
             )
-            
+
             AuditService.log(
                 action='break_started',
                 actor=request.user,
@@ -246,17 +277,40 @@ class AttendanceViewSet(viewsets.GenericViewSet):
 
 class AttendanceManagementViewSet(viewsets.GenericViewSet):
     serializer_class = AttendanceSerializer
-    
+
     def get_permissions(self):
         return [IsAuthenticated(), IsNetworkAllowed(), require_permission('attendance.view_all')()]
 
     def get_queryset(self):
         user = self.request.user
+        qs = Attendance.objects.all()
         if user.is_superuser:
-            return Attendance.objects.all()
-        if hasattr(user, 'employee') and user.employee.organization_id:
-            return Attendance.objects.filter(employee__organization_id=user.employee.organization_id)
-        return Attendance.objects.none()
+            pass
+        elif hasattr(user, 'employee') and user.employee:
+            from apps.authorization.services import AuthorizationService
+            authorized_branches = AuthorizationService.get_authorized_branches(user, 'attendance.view_all')
+            authorized_teams = AuthorizationService.get_authorized_teams(user, 'attendance.view_all')
+
+            qs = qs.filter(
+                Q(employee__branch__in=authorized_branches) |
+                Q(employee__team__in=authorized_teams)
+            )
+        else:
+            return Attendance.objects.none()
+
+        branch_id = self.request.query_params.get('branch_id')
+        if branch_id:
+            qs = qs.filter(employee__branch_id=branch_id)
+
+        team_id = self.request.query_params.get('team_id')
+        if team_id:
+            qs = qs.filter(employee__team_id=team_id)
+
+        date_param = self.request.query_params.get('date')
+        if date_param:
+            qs = qs.filter(date=date_param)
+
+        return qs.select_related('employee__user', 'employee__branch', 'employee__department', 'employee__team').prefetch_related('breaks').distinct()
 
     def list(self, request):
         queryset = self.get_queryset()
@@ -268,11 +322,21 @@ class HolidayViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         user = self.request.user
+        qs = Holiday.objects.all()
         if user.is_superuser:
-            return Holiday.objects.all()
-        if hasattr(user, 'employee') and user.employee.organization_id:
-            return Holiday.objects.filter(organization_id=user.employee.organization_id)
-        return Holiday.objects.none()
+            pass
+        elif hasattr(user, 'employee') and user.employee:
+            from apps.authorization.services import AuthorizationService
+            perm = 'holiday.view' if self.action in ['list', 'retrieve'] else 'holiday.manage'
+            authorized_branches = AuthorizationService.get_authorized_branches(user, perm)
+            qs = qs.filter(branch__in=authorized_branches)
+        else:
+            return Holiday.objects.none()
+
+        branch_id = self.request.query_params.get('branch_id')
+        if branch_id:
+            qs = qs.filter(branch_id=branch_id)
+        return qs
 
     def get_permissions(self):
         if self.action in ['list', 'retrieve']:
@@ -283,25 +347,63 @@ class HolidayViewSet(viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         from rest_framework.exceptions import ValidationError
-        if self.request.user.is_superuser and not hasattr(self.request.user, 'employee'):
-            from apps.organization.models import Organization
-            org = Organization.objects.first()
-        else:
-            org = self.request.user.employee.organization
-        if not org:
-            raise ValidationError({"organization": "User does not belong to an organization."})
-        serializer.save(organization=org)
+        branch = serializer.validated_data.get('branch')
+        if not branch:
+            raise ValidationError({"branch": "Branch is required."})
+        user = self.request.user
+        if not user.is_superuser:
+            if hasattr(user, 'employee') and user.employee and branch.organization_id != user.employee.organization_id:
+                raise ValidationError({"branch": "Cannot create holiday for another organization."})
+            from apps.authorization.services import AuthorizationService
+            if not AuthorizationService.has_permission(user, 'holiday.manage', branch.id):
+                raise ValidationError({"branch": "You do not have permission to manage holidays for this branch."})
+        serializer.save()
+
+    def perform_update(self, serializer):
+        from rest_framework.exceptions import ValidationError
+        instance = serializer.instance
+        user = self.request.user
+        if not user.is_superuser:
+            from apps.authorization.services import AuthorizationService
+            if not AuthorizationService.has_permission(user, 'holiday.manage', instance.branch_id):
+                raise ValidationError({"branch": "You do not have permission to manage holidays for this branch."})
+            target_branch = serializer.validated_data.get('branch')
+            if target_branch and target_branch != instance.branch:
+                if hasattr(user, 'employee') and user.employee and target_branch.organization_id != user.employee.organization_id:
+                    raise ValidationError({"branch": "Cannot move holiday to another organization."})
+                if not AuthorizationService.has_permission(user, 'holiday.manage', target_branch.id):
+                    raise ValidationError({"branch": "You do not have permission to manage holidays for the target branch."})
+        serializer.save()
+
+    def perform_destroy(self, instance):
+        from rest_framework.exceptions import ValidationError
+        user = self.request.user
+        if not user.is_superuser:
+            from apps.authorization.services import AuthorizationService
+            if not AuthorizationService.has_permission(user, 'holiday.manage', instance.branch_id):
+                raise ValidationError({"branch": "You do not have permission to delete holidays for this branch."})
+        instance.delete()
 
 class ShiftViewSet(viewsets.ModelViewSet):
     serializer_class = ShiftSerializer
 
     def get_queryset(self):
         user = self.request.user
+        qs = Shift.objects.all()
         if user.is_superuser:
-            return Shift.objects.all()
-        if hasattr(user, 'employee') and user.employee.organization_id:
-            return Shift.objects.filter(organization_id=user.employee.organization_id)
-        return Shift.objects.none()
+            pass
+        elif hasattr(user, 'employee') and user.employee:
+            from apps.authorization.services import AuthorizationService
+            perm = 'shift.view' if self.action in ['list', 'retrieve'] else 'shift.manage'
+            authorized_branches = AuthorizationService.get_authorized_branches(user, perm)
+            qs = qs.filter(branch__in=authorized_branches)
+        else:
+            return Shift.objects.none()
+
+        branch_id = self.request.query_params.get('branch_id')
+        if branch_id:
+            qs = qs.filter(branch_id=branch_id)
+        return qs
 
     def get_permissions(self):
         if self.action in ['list', 'retrieve']:
@@ -312,11 +414,39 @@ class ShiftViewSet(viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         from rest_framework.exceptions import ValidationError
-        if self.request.user.is_superuser and not hasattr(self.request.user, 'employee'):
-            from apps.organization.models import Organization
-            org = Organization.objects.first()
-        else:
-            org = self.request.user.employee.organization
-        if not org:
-            raise ValidationError({"organization": "User does not belong to an organization."})
-        serializer.save(organization=org)
+        branch = serializer.validated_data.get('branch')
+        if not branch:
+            raise ValidationError({"branch": "Branch is required."})
+        user = self.request.user
+        if not user.is_superuser:
+            if hasattr(user, 'employee') and user.employee and branch.organization_id != user.employee.organization_id:
+                raise ValidationError({"branch": "Cannot create shift for another organization."})
+            from apps.authorization.services import AuthorizationService
+            if not AuthorizationService.has_permission(user, 'shift.manage', branch.id):
+                raise ValidationError({"branch": "You do not have permission to manage shifts for this branch."})
+        serializer.save()
+
+    def perform_update(self, serializer):
+        from rest_framework.exceptions import ValidationError
+        instance = serializer.instance
+        user = self.request.user
+        if not user.is_superuser:
+            from apps.authorization.services import AuthorizationService
+            if not AuthorizationService.has_permission(user, 'shift.manage', instance.branch_id):
+                raise ValidationError({"branch": "You do not have permission to manage shifts for this branch."})
+            target_branch = serializer.validated_data.get('branch')
+            if target_branch and target_branch != instance.branch:
+                if hasattr(user, 'employee') and user.employee and target_branch.organization_id != user.employee.organization_id:
+                    raise ValidationError({"branch": "Cannot move shift to another organization."})
+                if not AuthorizationService.has_permission(user, 'shift.manage', target_branch.id):
+                    raise ValidationError({"branch": "You do not have permission to manage shifts for the target branch."})
+        serializer.save()
+
+    def perform_destroy(self, instance):
+        from rest_framework.exceptions import ValidationError
+        user = self.request.user
+        if not user.is_superuser:
+            from apps.authorization.services import AuthorizationService
+            if not AuthorizationService.has_permission(user, 'shift.manage', instance.branch_id):
+                raise ValidationError({"branch": "You do not have permission to delete shifts for this branch."})
+        instance.delete()

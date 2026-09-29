@@ -1,71 +1,92 @@
-export interface Holiday {
-    id: number;
-    organization: number;
-    name: string;
-    date: string;
-    is_active: boolean;
-    created_at: string;
-    updated_at: string;
-}
+import { ApiError } from './employeeManagement';
+import type { Holiday, CreateHolidayPayload, UpdateHolidayPayload } from '../types/attendance';
 
-const getHeaders = () => {
-    const token = localStorage.getItem('auth_token');
-    return {
-        'Content-Type': 'application/json',
-        ...(token ? { 'Authorization': `Token ${token}` } : {})
-    };
+export type { Holiday, CreateHolidayPayload, UpdateHolidayPayload };
+export { ApiError };
+
+const getHeaders = (includeContentType = true): HeadersInit => {
+  const token = localStorage.getItem('auth_token');
+  const headers: Record<string, string> = {
+    'Accept': 'application/json',
+  };
+  if (includeContentType) {
+    headers['Content-Type'] = 'application/json';
+  }
+  if (token) {
+    headers['Authorization'] = `Token ${token}`;
+  }
+  return headers;
 };
 
-const handleResponse = async (response: Response) => {
-    if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        const error = new Error('API Request Failed') as any;
-        error.response = response;
-        error.errorData = errorData;
-        throw error;
-    }
-    if (response.status === 204) return null;
-    return response.json();
+const handleResponse = async <T>(response: Response): Promise<T> => {
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new ApiError(response, errorData);
+  }
+  if (response.status === 204) return null as unknown as T;
+  return response.json();
 };
 
 export const holidayService = {
-    getAll: async (): Promise<Holiday[]> => {
-        const response = await fetch('/api/v1/attendance/holidays/', {
-            headers: getHeaders()
-        });
-        return handleResponse(response);
-    },
-
-    getById: async (id: number): Promise<Holiday> => {
-        const response = await fetch(`/api/v1/attendance/holidays/${id}/`, {
-            headers: getHeaders()
-        });
-        return handleResponse(response);
-    },
-
-    create: async (data: Partial<Holiday>): Promise<Holiday> => {
-        const response = await fetch('/api/v1/attendance/holidays/', {
-            method: 'POST',
-            headers: getHeaders(),
-            body: JSON.stringify(data)
-        });
-        return handleResponse(response);
-    },
-
-    update: async (id: number, data: Partial<Holiday>): Promise<Holiday> => {
-        const response = await fetch(`/api/v1/attendance/holidays/${id}/`, {
-            method: 'PATCH',
-            headers: getHeaders(),
-            body: JSON.stringify(data)
-        });
-        return handleResponse(response);
-    },
-
-    delete: async (id: number): Promise<void> => {
-        const response = await fetch(`/api/v1/attendance/holidays/${id}/`, {
-            method: 'DELETE',
-            headers: getHeaders()
-        });
-        return handleResponse(response);
+  listHolidays: async (
+    params?: { branch_id?: number | string | null },
+    options?: { signal?: AbortSignal }
+  ): Promise<Holiday[]> => {
+    let url = '/api/v1/attendance/holidays/';
+    if (
+      params?.branch_id !== undefined &&
+      params?.branch_id !== null &&
+      params?.branch_id !== '' &&
+      params?.branch_id !== 'all'
+    ) {
+      url += `?branch_id=${params.branch_id}`;
     }
+
+    const response = await fetch(url, {
+      headers: getHeaders(false),
+      signal: options?.signal,
+    });
+    return handleResponse<Holiday[]>(response);
+  },
+
+  getAll: async (
+    params?: { branch_id?: number | string | null },
+    options?: { signal?: AbortSignal }
+  ): Promise<Holiday[]> => {
+    return holidayService.listHolidays(params, options);
+  },
+
+  getById: async (id: number, options?: { signal?: AbortSignal }): Promise<Holiday> => {
+    const response = await fetch(`/api/v1/attendance/holidays/${id}/`, {
+      headers: getHeaders(false),
+      signal: options?.signal,
+    });
+    return handleResponse<Holiday>(response);
+  },
+
+  create: async (data: CreateHolidayPayload | Partial<Holiday>): Promise<Holiday> => {
+    const response = await fetch('/api/v1/attendance/holidays/', {
+      method: 'POST',
+      headers: getHeaders(true),
+      body: JSON.stringify(data),
+    });
+    return handleResponse<Holiday>(response);
+  },
+
+  update: async (id: number, data: UpdateHolidayPayload | Partial<Holiday>): Promise<Holiday> => {
+    const response = await fetch(`/api/v1/attendance/holidays/${id}/`, {
+      method: 'PATCH',
+      headers: getHeaders(true),
+      body: JSON.stringify(data),
+    });
+    return handleResponse<Holiday>(response);
+  },
+
+  delete: async (id: number): Promise<void> => {
+    const response = await fetch(`/api/v1/attendance/holidays/${id}/`, {
+      method: 'DELETE',
+      headers: getHeaders(false),
+    });
+    return handleResponse<void>(response);
+  },
 };

@@ -34,11 +34,14 @@ import { RolesPage } from '../pages/admin/RolesPage';
 import { RolePermissionsPage } from '../pages/admin/RolePermissionsPage';
 import { OrganizationsPage } from '../pages/admin/organization/OrganizationsPage';
 import { DepartmentsPage } from '../pages/admin/organization/DepartmentsPage';
+import { TeamsPage } from '../pages/admin/organization/TeamsPage';
 import { DesignationsPage } from '../pages/admin/organization/DesignationsPage';
 import { BranchesPage } from '../pages/admin/organization/BranchesPage';
 import { HolidaysPage } from '../pages/admin/HolidaysPage';
 import { ShiftsPage } from '../pages/admin/ShiftsPage';
 import { AssetsPage } from '../pages/admin/AssetsPage';
+import { WorkingCalendarPage } from '../pages/admin/WorkingCalendarPage';
+import { AttendancePolicyPage } from '../pages/admin/AttendancePolicyPage';
 import { ProtectedRoute } from '../components/ProtectedRoute';
 
 export const AppRouter: React.FC = () => {
@@ -104,6 +107,10 @@ export const AppRouter: React.FC = () => {
             <Route path="/admin/departments" element={<DepartmentsPage />} />
           </Route>
 
+          <Route element={<ProtectedRoute requiredPermission="team.view" />}>
+            <Route path="/admin/teams" element={<TeamsPage />} />
+          </Route>
+
           <Route element={<ProtectedRoute requiredPermission="designation.view" />}>
             <Route path="/admin/designations" element={<DesignationsPage />} />
           </Route>
@@ -118,6 +125,14 @@ export const AppRouter: React.FC = () => {
 
           <Route element={<ProtectedRoute requiredPermission="shift.view" />}>
             <Route path="/admin/shifts" element={<ShiftsPage />} />
+          </Route>
+
+          <Route element={<ProtectedRoute requiredPermission="organization.update" />}>
+            <Route path="/admin/working-calendar" element={<WorkingCalendarPage />} />
+          </Route>
+
+          <Route element={<ProtectedRoute requiredPermission="branch.view" />}>
+            <Route path="/admin/attendance-policy" element={<AttendancePolicyPage />} />
           </Route>
 
           <Route element={<ProtectedRoute requiredPermission="wfh.view" />}>

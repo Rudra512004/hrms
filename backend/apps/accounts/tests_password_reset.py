@@ -10,7 +10,7 @@ from django.contrib.auth.tokens import default_token_generator
 from rest_framework.authtoken.models import Token
 from apps.audit.models import AuditLog
 from apps.employees.models import Employee
-from apps.organization.models import Organization, OfficeNetwork
+from apps.organization.models import Organization, OfficeNetwork, Branch
 from apps.authorization.models import Role, UserRole
 
 User = get_user_model()
@@ -22,8 +22,9 @@ class PasswordResetTests(TestCase):
 
         self.client = APIClient()
         self.org, _ = Organization.objects.get_or_create(name='TestOrg')
+        self.branch, _ = Branch.objects.get_or_create(organization=self.org, name='HQ')
         OfficeNetwork.objects.get_or_create(
-            organization=self.org, name='Localhost',
+            branch=self.branch, name='Localhost',
             defaults={'network': '127.0.0.0/8', 'is_active': True}
         )
 

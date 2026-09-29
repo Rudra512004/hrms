@@ -26,26 +26,94 @@ User = get_user_model()
 class WorkingDaysTest(TestCase):
     def setUp(self):
         self.org = Organization.objects.create(name='WD Org')
+        from apps.organization.models import Branch
+        self.branch = Branch.objects.create(organization=self.org, name="Main")
 
     def test_excludes_weekends(self):
         # 2024-09-02 (Mon) to 2024-09-08 (Sun) → 5 working days
-        days = _working_days_in_period(self.org.id, date(2024, 9, 2), date(2024, 9, 8))
+        days = _working_days_in_period(self.branch.id, date(2024, 9, 2), date(2024, 9, 8))
         self.assertEqual(days, 5)
 
     def test_excludes_holidays(self):
-        Holiday.objects.create(organization=self.org, name='Test Holiday', date=date(2024, 9, 2), is_active=True)
-        days = _working_days_in_period(self.org.id, date(2024, 9, 2), date(2024, 9, 6))
+        Holiday.objects.create(
+            branch=self.branch, name='Test Holiday', date=date(2024, 9, 2), is_active=True)
+        days = _working_days_in_period(self.branch.id, date(2024, 9, 2), date(2024, 9, 6))
         self.assertEqual(days, 4)  # 5 weekdays − 1 holiday
 
     def test_inactive_holiday_not_excluded(self):
-        Holiday.objects.create(organization=self.org, name='Inactive', date=date(2024, 9, 2), is_active=False)
-        days = _working_days_in_period(self.org.id, date(2024, 9, 2), date(2024, 9, 6))
+        Holiday.objects.create(
+            branch=self.branch, name='Inactive', date=date(2024, 9, 2), is_active=False)
+        days = _working_days_in_period(self.branch.id, date(2024, 9, 2), date(2024, 9, 6))
         self.assertEqual(days, 5)
+
+    def test_6_day_calendar_respected(self):
+        """6-day working calendar (Mon-Sat) is respected by payroll working days."""
+        cal = getattr(self.branch, 'working_calendar', None)
+        cal.work_days = '0,1,2,3,4,5'
+        cal.save()
+        # 2024-09-02 (Mon) to 2024-09-08 (Sun) → 6 working days
+        days = _working_days_in_period(self.branch.id, date(2024, 9, 2), date(2024, 9, 8))
+        self.assertEqual(days, 6)
+
+    def test_non_standard_calendar_respected(self):
+        """Non-standard 4-day working calendar (Mon-Thu) is respected by payroll working days."""
+        cal = getattr(self.branch, 'working_calendar', None)
+        cal.work_days = '0,1,2,3'
+        cal.save()
+        # 2024-09-02 (Mon) to 2024-09-08 (Sun) → 4 working days
+        days = _working_days_in_period(self.branch.id, date(2024, 9, 2), date(2024, 9, 8))
+        self.assertEqual(days, 4)
+
+    def test_missing_calendar_does_not_become_monday_friday(self):
+        """Missing working calendar raises WorkingCalendarConfigurationError, not defaulting to Mon-Fri."""
+        from apps.organization.models import WorkingCalendar
+        from apps.organization.exceptions import WorkingCalendarConfigurationError
+        WorkingCalendar.objects.filter(branch=self.branch).delete()
+        self.branch.refresh_from_db()
+        with self.assertRaises(WorkingCalendarConfigurationError):
+            _working_days_in_period(self.branch.id, date(2024, 9, 2), date(2024, 9, 8))
+
+    def test_invalid_calendar_does_not_become_monday_friday(self):
+        """Invalid working calendar raises WorkingCalendarConfigurationError, not defaulting to Mon-Fri."""
+        from apps.organization.exceptions import WorkingCalendarConfigurationError
+        cal = getattr(self.branch, 'working_calendar', None)
+        cal.work_days = ''
+        cal.save()
+        with self.assertRaises(WorkingCalendarConfigurationError):
+            _working_days_in_period(self.branch.id, date(2024, 9, 2), date(2024, 9, 8))
+
+    def test_payroll_and_leave_agree_with_working_calendar(self):
+        """Payroll approved leave days and LeaveRequest duration_days agree with WorkingCalendarService."""
+        from apps.organization.services import WorkingCalendarService
+        cal = getattr(self.branch, 'working_calendar', None)
+        cal.work_days = '0,1,2,3,4,5'  # Mon-Sat
+        cal.save()
+
+        user = User.objects.create_user(email='wd_emp@org.com', password='Pass123!', status='active')
+        emp = Employee.objects.create(user=user, employee_code='WDE01', organization=self.org, branch=self.branch)
+        leave_type = LeaveType.objects.create(organization=self.org, name='Paid Leave')
+
+        # Leave from 2024-09-02 (Mon) to 2024-09-08 (Sun)
+        lr = LeaveRequest.objects.create(
+            employee=emp,
+            leave_type=leave_type,
+            start_date=date(2024, 9, 2),
+            end_date=date(2024, 9, 8),
+            status='approved'
+        )
+
+        expected_count = WorkingCalendarService.count_working_days(self.branch, date(2024, 9, 2), date(2024, 9, 8))
+        self.assertEqual(expected_count, 6)
+        self.assertEqual(lr.duration_days, 6)
+        leave_days_payroll = _approved_leave_days(emp, date(2024, 9, 1), date(2024, 9, 30))
+        self.assertEqual(leave_days_payroll, 6)
 
 
 class CompensationHistoryTest(TestCase):
     def setUp(self):
         self.org = Organization.objects.create(name='Comp Org')
+        from apps.organization.models import Branch
+        self.branch = Branch.objects.create(organization=self.org, name="Main")
         self.user = User.objects.create_user(email='emp@comp.com', password='Pass123!', status='active')
         self.emp = Employee.objects.create(user=self.user, employee_code='CE01', organization=self.org)
 
@@ -71,10 +139,12 @@ class CompensationHistoryTest(TestCase):
 class PayrollGenerationTest(TestCase):
     def setUp(self):
         self.org = Organization.objects.create(name='Gen Org')
+        from apps.organization.models import Branch
+        self.branch = Branch.objects.create(organization=self.org, name="Main")
         self.user = User.objects.create_user(email='emp@gen.com', password='Pass123!', status='active')
         self.emp = Employee.objects.create(
             user=self.user, employee_code='GE01',
-            organization=self.org,
+            organization=self.org, branch=getattr(self, "branch", getattr(self, "branch1", getattr(self, "branch2", None))),
             employment_status=EmploymentStatus.ACTIVE,
         )
         CompensationHistory.objects.create(
@@ -104,7 +174,7 @@ class PayrollGenerationTest(TestCase):
             Attendance.objects.create(employee=self.emp, date=date(2024, 9, d), status='present')
         generate_payroll_for_period(self.period)
         record = PayrollRecord.objects.get(period=self.period, employee=self.emp)
-        working_days = _working_days_in_period(self.org.id, date(2024, 9, 1), date(2024, 9, 30))
+        working_days = _working_days_in_period(self.branch.id, date(2024, 9, 1), date(2024, 9, 30))
         expected = (Decimal('30000.00') * Decimal(10) / Decimal(working_days)).quantize(Decimal('0.01'))
         self.assertEqual(record.gross_salary, expected)
 
@@ -130,7 +200,7 @@ class PayrollGenerationTest(TestCase):
 
     def test_effective_days_capped_at_working_days(self):
         # Even if present + leave exceeds working days, effective_days is capped at working_days
-        working_days = _working_days_in_period(self.org.id, date(2024, 9, 1), date(2024, 9, 30))
+        working_days = _working_days_in_period(self.branch.id, date(2024, 9, 1), date(2024, 9, 30))
         # Mark 25 attendance days (e.g. including weekends)
         for d in range(1, 26):
             Attendance.objects.create(employee=self.emp, date=date(2024, 9, d), status='present')
@@ -144,14 +214,16 @@ class PayrollGenerationTest(TestCase):
 class ApprovedLeaveInPayrollTest(TestCase):
     def setUp(self):
         self.org = Organization.objects.create(name='Leave Org')
+        from apps.organization.models import Branch
+        self.branch = Branch.objects.create(organization=self.org, name="Main")
         self.user = User.objects.create_user(email='lemp@lo.com', password='Pass123!', status='active')
         self.emp = Employee.objects.create(
             user=self.user, employee_code='LE01',
-            organization=self.org,
+            organization=self.org, branch=getattr(self, "branch", getattr(self, "branch1", getattr(self, "branch2", None))),
             employment_status=EmploymentStatus.ACTIVE,
         )
         self.leave_type = LeaveType.objects.create(
-            organization=self.org, name='Annual', annual_allocation=20
+            organization=self.org, name='Annual'
         )
 
     def test_approved_leave_counted_in_period(self):
@@ -197,11 +269,13 @@ class PayrollAPIPermissionTest(TestCase):
     def setUp(self):
         self.client = APIClient()
         self.org = Organization.objects.create(name='API Org')
+        from apps.organization.models import Branch
+        self.branch = Branch.objects.create(organization=self.org, name="Main")
         self.user = User.objects.create_user(email='api@org.com', password='Pass123!', status='active')
         self.emp = Employee.objects.create(
             user=self.user,
             employee_code='AP01',
-            organization=self.org,
+            organization=self.org, branch=getattr(self, "branch", getattr(self, "branch1", getattr(self, "branch2", None))),
             employment_status=EmploymentStatus.ACTIVE,
         )
 
@@ -263,14 +337,18 @@ class PayslipSecurityAndSelfServiceTest(TestCase):
     def setUp(self):
         self.client = APIClient()
         self.org1 = Organization.objects.create(name='Org 1')
+        from apps.organization.models import Branch
+        self.branch1 = Branch.objects.create(organization=self.org1, name="B1")
         self.org2 = Organization.objects.create(name='Org 2')
+        from apps.organization.models import Branch
+        self.branch2 = Branch.objects.create(organization=self.org2, name="B2")
 
         # Employee 1 in Org 1
         self.user1 = User.objects.create_user(
             email='emp1@org1.com', password='Pass123!', first_name='Alice', last_name='Smith', status='active'
         )
         self.emp1 = Employee.objects.create(
-            user=self.user1, employee_code='E001', organization=self.org1, employment_status=EmploymentStatus.ACTIVE
+            user=self.user1, employee_code='E001', organization=self.org1, branch=getattr(self, "branch", getattr(self, "branch1", getattr(self, "branch2", None))), employment_status=EmploymentStatus.ACTIVE
         )
         CompensationHistory.objects.create(
             employee=self.emp1, effective_from=date(2024, 7, 1), basic_salary=Decimal('60000.00')
@@ -281,7 +359,7 @@ class PayslipSecurityAndSelfServiceTest(TestCase):
             email='emp2@org1.com', password='Pass123!', first_name='Bob', last_name='Jones', status='active'
         )
         self.emp2 = Employee.objects.create(
-            user=self.user2, employee_code='E002', organization=self.org1, employment_status=EmploymentStatus.ACTIVE
+            user=self.user2, employee_code='E002', organization=self.org1, branch=getattr(self, "branch", getattr(self, "branch1", getattr(self, "branch2", None))), employment_status=EmploymentStatus.ACTIVE
         )
         CompensationHistory.objects.create(
             employee=self.emp2, effective_from=date(2024, 7, 1), basic_salary=Decimal('45000.00')
@@ -292,7 +370,7 @@ class PayslipSecurityAndSelfServiceTest(TestCase):
             email='emp3@org2.com', password='Pass123!', first_name='Charlie', last_name='Brown', status='active'
         )
         self.emp3 = Employee.objects.create(
-            user=self.user3, employee_code='E003', organization=self.org2, employment_status=EmploymentStatus.ACTIVE
+            user=self.user3, employee_code='E003', organization=self.org2, branch=self.branch2, employment_status=EmploymentStatus.ACTIVE
         )
         CompensationHistory.objects.create(
             employee=self.emp3, effective_from=date(2024, 7, 1), basic_salary=Decimal('50000.00')
@@ -453,6 +531,8 @@ class PayrollWorkflowRegressionTest(TestCase):
     def setUp(self):
         self.client = APIClient()
         self.org = Organization.objects.create(name='Regression Org')
+        from apps.organization.models import Branch
+        self.branch = Branch.objects.create(organization=self.org, name="Main")
         # Superuser WITHOUT an employee profile
         self.superadmin = User.objects.create_user(
             email='super_reg@company.com',
@@ -470,6 +550,7 @@ class PayrollWorkflowRegressionTest(TestCase):
             user=self.emp_user,
             employee_code='REG01',
             organization=self.org,
+            branch=self.branch,
             employment_status=EmploymentStatus.ACTIVE,
         )
         self.comp = CompensationHistory.objects.create(
@@ -513,16 +594,16 @@ class PayrollWorkflowRegressionTest(TestCase):
         period_id = create_resp.data['id']
 
         # 2. View periods
-        list_resp = self.client.get('/api/v1/payroll/periods/')
+        list_resp = self.client.get(f'/api/v1/payroll/periods/?organization={self.org.id}')
         self.assertEqual(list_resp.status_code, status.HTTP_200_OK)
         self.assertTrue(any(p['id'] == period_id for p in list_resp.data))
 
         # 3. Generate payroll
-        gen_resp = self.client.post(f'/api/v1/payroll/periods/{period_id}/generate/')
+        gen_resp = self.client.post(f'/api/v1/payroll/periods/{period_id}/generate/', {'organization': self.org.id})
         self.assertEqual(gen_resp.status_code, status.HTTP_200_OK)
 
         # 4. View records and verify calculation
-        rec_resp = self.client.get(f'/api/v1/payroll/records/?period={period_id}')
+        rec_resp = self.client.get(f'/api/v1/payroll/records/?period={period_id}&organization={self.org.id}')
         self.assertEqual(rec_resp.status_code, status.HTTP_200_OK)
         self.assertEqual(len(rec_resp.data), 1)
         record = rec_resp.data[0]
@@ -534,12 +615,12 @@ class PayrollWorkflowRegressionTest(TestCase):
         # 5. Approve payroll (mock time to after period close)
         with patch('django.utils.timezone.now') as mock_now:
             mock_now.return_value = datetime(2026, 10, 1, 12, 0, tzinfo=dt_timezone.utc)
-            appr_resp = self.client.post(f'/api/v1/payroll/periods/{period_id}/approve/')
+            appr_resp = self.client.post(f'/api/v1/payroll/periods/{period_id}/approve/', {'organization': self.org.id})
         self.assertEqual(appr_resp.status_code, status.HTTP_200_OK)
         self.assertEqual(appr_resp.data['status'], 'approved')
 
         # 6. Verify period locked
-        gen_again = self.client.post(f'/api/v1/payroll/periods/{period_id}/generate/')
+        gen_again = self.client.post(f'/api/v1/payroll/periods/{period_id}/generate/', {'organization': self.org.id})
         self.assertEqual(gen_again.status_code, status.HTTP_400_BAD_REQUEST)
 
         # 7. Verify payslip created and accessible to employee
@@ -556,6 +637,7 @@ class PayrollWorkflowRegressionTest(TestCase):
             'employee': self.emp.id,
             'basic_salary': '75000.00',
             'effective_from': '2026-10-01',
+            'organization': self.org.id
         })
         self.assertEqual(resp.status_code, status.HTTP_201_CREATED)
         self.assertEqual(resp.data['basic_salary'], '75000.00')
@@ -585,11 +667,11 @@ class PayrollWorkflowRegressionTest(TestCase):
         oct_period_id = oct_resp.data['id']
 
         # Generate October payroll
-        gen_oct = self.client.post(f'/api/v1/payroll/periods/{oct_period_id}/generate/')
+        gen_oct = self.client.post(f'/api/v1/payroll/periods/{oct_period_id}/generate/', {'organization': self.org.id})
         self.assertEqual(gen_oct.status_code, status.HTTP_200_OK)
 
         # Verify October record values
-        rec_oct = self.client.get(f'/api/v1/payroll/records/?period={oct_period_id}')
+        rec_oct = self.client.get(f'/api/v1/payroll/records/?period={oct_period_id}&organization={self.org.id}')
         self.assertEqual(rec_oct.status_code, status.HTTP_200_OK)
         record = rec_oct.data[0]
         self.assertEqual(record['present_days'], 0)
@@ -597,7 +679,7 @@ class PayrollWorkflowRegressionTest(TestCase):
         self.assertEqual(Decimal(record['net_salary']), Decimal('0.00'))
 
         # Check October reporting: 0 payout, full LOP, FULL_ABSENCE exception
-        summary_resp = self.client.get(f'/api/v1/payroll/reports/period-summary/?period={oct_period_id}')
+        summary_resp = self.client.get(f'/api/v1/payroll/reports/period-summary/?period={oct_period_id}&organization={self.org.id}')
         self.assertEqual(summary_resp.status_code, status.HTTP_200_OK)
         self.assertEqual(Decimal(summary_resp.data['summary']['total_net_salary']), Decimal('0.00'))
         self.assertEqual(Decimal(summary_resp.data['summary']['total_effective_paid_days']), Decimal('0.0'))
@@ -606,7 +688,7 @@ class PayrollWorkflowRegressionTest(TestCase):
             Decimal(record['basic_salary'])
         )
 
-        exc_resp = self.client.get(f'/api/v1/payroll/reports/exceptions/?period={oct_period_id}')
+        exc_resp = self.client.get(f'/api/v1/payroll/reports/exceptions/?period={oct_period_id}&organization={self.org.id}')
         self.assertEqual(exc_resp.status_code, status.HTTP_200_OK)
         exc_types = [e['type'] for e in exc_resp.data['exceptions']]
         self.assertIn('FULL_ABSENCE', exc_types)
@@ -622,10 +704,10 @@ class PayrollWorkflowRegressionTest(TestCase):
         self.assertEqual(sep_resp.status_code, status.HTTP_201_CREATED)
         sep_period_id = sep_resp.data['id']
 
-        gen_sep = self.client.post(f'/api/v1/payroll/periods/{sep_period_id}/generate/')
+        gen_sep = self.client.post(f'/api/v1/payroll/periods/{sep_period_id}/generate/', {'organization': self.org.id})
         self.assertEqual(gen_sep.status_code, status.HTTP_200_OK)
 
-        rec_sep = self.client.get(f'/api/v1/payroll/records/?period={sep_period_id}')
+        rec_sep = self.client.get(f'/api/v1/payroll/records/?period={sep_period_id}&organization={self.org.id}')
         self.assertEqual(rec_sep.status_code, status.HTTP_200_OK)
         sep_record = rec_sep.data[0]
         self.assertEqual(sep_record['present_days'], 10)
@@ -635,11 +717,11 @@ class PayrollWorkflowRegressionTest(TestCase):
         # Approve September and check payslip & locked period (mock time to after period close)
         with patch('django.utils.timezone.now') as mock_now:
             mock_now.return_value = datetime(2026, 10, 1, 12, 0, tzinfo=dt_timezone.utc)
-            appr_sep = self.client.post(f'/api/v1/payroll/periods/{sep_period_id}/approve/')
+            appr_sep = self.client.post(f'/api/v1/payroll/periods/{sep_period_id}/approve/', {'organization': self.org.id})
         self.assertEqual(appr_sep.status_code, status.HTTP_200_OK)
 
         # Re-generate locked period rejected
-        regen_resp = self.client.post(f'/api/v1/payroll/periods/{sep_period_id}/generate/')
+        regen_resp = self.client.post(f'/api/v1/payroll/periods/{sep_period_id}/generate/', {'organization': self.org.id})
         self.assertEqual(regen_resp.status_code, status.HTTP_400_BAD_REQUEST)
 
         # Employee self-service payslip matches finalized payroll
@@ -686,11 +768,13 @@ class FuturePeriodWarningTest(TestCase):
     def setUp(self):
         self.client = APIClient()
         self.org = Organization.objects.create(name='Warn Org')
+        from apps.organization.models import Branch
+        self.branch = Branch.objects.create(organization=self.org, name="Main")
         self.user = User.objects.create_user(email='warn@org.com', password='Pass123!', status='active')
         self.emp = Employee.objects.create(
             user=self.user,
             employee_code='WO01',
-            organization=self.org,
+            organization=self.org, branch=getattr(self, "branch", getattr(self, "branch1", getattr(self, "branch2", None))),
             employment_status=EmploymentStatus.ACTIVE,
         )
         CompensationHistory.objects.create(
@@ -783,6 +867,8 @@ class PayrollCalculationSemanticsRegressionTests(TestCase):
     def setUp(self):
         self.client = APIClient()
         self.org = Organization.objects.create(name='Regression Org')
+        from apps.organization.models import Branch
+        self.branch = Branch.objects.create(organization=self.org, name="Main")
         self.user = User.objects.create_user(
             email='superadmin@company.com',
             password='Password123!',
@@ -793,7 +879,7 @@ class PayrollCalculationSemanticsRegressionTests(TestCase):
         self.emp = Employee.objects.create(
             user=self.user,
             employee_code='ADMIN-001',
-            organization=self.org,
+            organization=self.org, branch=getattr(self, "branch", getattr(self, "branch1", getattr(self, "branch2", None))),
             employment_status=EmploymentStatus.ACTIVE,
         )
         # ₹100,000 monthly basic salary configured
@@ -805,7 +891,7 @@ class PayrollCalculationSemanticsRegressionTests(TestCase):
         )
         # Holiday on Jan 1, 2025 (New Year) -> 23 weekdays - 1 holiday = 22 working days
         Holiday.objects.create(
-            organization=self.org,
+            branch=self.branch,
             name='New Year',
             date=date(2025, 1, 1),
             is_active=True,
@@ -820,7 +906,6 @@ class PayrollCalculationSemanticsRegressionTests(TestCase):
         self.leave_type = LeaveType.objects.create(
             organization=self.org,
             name='Earned Leave',
-            annual_allocation=15,
         )
         # List of the 22 scheduled working dates in Jan 2025
         self.working_dates = [
@@ -968,7 +1053,7 @@ class PayrollCalculationSemanticsRegressionTests(TestCase):
         6. Weekend/holiday exclusion:
         Ensure working_days does not count excluded days (weekends & holidays).
         """
-        wd = _working_days_in_period(self.org.id, date(2025, 1, 1), date(2025, 1, 31))
+        wd = _working_days_in_period(self.branch.id, date(2025, 1, 1), date(2025, 1, 31))
         self.assertEqual(wd, 22)
         # Jan 1 is holiday (Wednesday) -> excluded
         # Jan 4, 5, 11, 12, 18, 19, 25, 26 are Saturdays/Sundays -> 8 weekend days excluded

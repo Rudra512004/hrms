@@ -12,6 +12,7 @@ import calendar
 from datetime import timedelta, date
 from django.utils import timezone
 from django.db.models import Count, F, Q
+from rest_framework.exceptions import PermissionDenied
 from apps.authorization.services import AuthorizationService
 from apps.attendance.models import Attendance, Holiday
 from apps.leaves.models import LeaveBalance, LeaveRequest
@@ -21,16 +22,37 @@ from apps.employees.models import Employee, WFHRequest
 
 class DashboardAggregationService:
     @classmethod
-    def get_dashboard_overview(cls, user):
+    def get_dashboard_overview(cls, user, branch_id=None):
         """
         Main entry point for retrieving Dashboard V2 metrics.
         Returns a structured dictionary with 'personal', 'team', and 'organization'.
+        Raises PermissionDenied (HTTP 403) if a requested branch_id is unauthorized.
         """
+        if branch_id:
+            try:
+                b_id = int(branch_id)
+            except (ValueError, TypeError):
+                raise PermissionDenied("You do not have permission to access this branch.")
+
+            emp_branches = AuthorizationService.get_authorized_branches(user, 'employee.view')
+            att_branches = AuthorizationService.get_authorized_branches(user, 'attendance.view_all')
+            leave_branches = AuthorizationService.get_authorized_branches(user, 'leave.view')
+            wfh_branches = AuthorizationService.get_authorized_branches(user, 'wfh.view')
+
+            is_authorized = (
+                emp_branches.filter(id=b_id).exists() or
+                att_branches.filter(id=b_id).exists() or
+                leave_branches.filter(id=b_id).exists() or
+                wfh_branches.filter(id=b_id).exists()
+            )
+            if not is_authorized:
+                raise PermissionDenied("You do not have permission to access this branch.")
+
         today = timezone.localdate()
 
         personal_data = cls.get_personal_data(user, today)
         team_data = cls.get_team_data(user, today)
-        organization_data = cls.get_organization_data(user, today)
+        organization_data = cls.get_organization_data(user, today, branch_id)
 
         return {
             'personal': personal_data,
@@ -98,9 +120,9 @@ class DashboardAggregationService:
 
         # 4. Upcoming holidays (max 3)
         upcoming_holidays = []
-        if employee.organization_id:
+        if employee.branch_id:
             holidays = Holiday.objects.filter(
-                organization_id=employee.organization_id,
+                branch_id=employee.branch_id,
                 is_active=True,
                 date__gte=today
             ).order_by('date')[:3]
@@ -224,7 +246,7 @@ class DashboardAggregationService:
         }
 
     @classmethod
-    def get_organization_data(cls, user, today):
+    def get_organization_data(cls, user, today, branch_id=None):
         """
         Aggregates organizational metrics.
         Gated by dynamic RBAC permissions:
@@ -239,19 +261,31 @@ class DashboardAggregationService:
 
         org_id = user.employee.organization_id
 
-        has_emp_view = AuthorizationService.has_permission(user, 'employee.view')
-        has_att_view = AuthorizationService.has_permission(user, 'attendance.view_all')
-        has_leave_view = AuthorizationService.has_permission(user, 'leave.view')
-        has_wfh_view = AuthorizationService.has_permission(user, 'wfh.view')
+        emp_branches = AuthorizationService.get_authorized_branches(user, 'employee.view')
+        att_branches = AuthorizationService.get_authorized_branches(user, 'attendance.view_all')
+        leave_branches = AuthorizationService.get_authorized_branches(user, 'leave.view')
+        wfh_branches = AuthorizationService.get_authorized_branches(user, 'wfh.view')
+
+        has_emp_view = emp_branches.exists()
+        has_att_view = att_branches.exists()
+        has_leave_view = leave_branches.exists()
+        has_wfh_view = wfh_branches.exists()
 
         if not (has_emp_view or has_att_view or has_leave_view or has_wfh_view):
             return None
+
+        def filter_branches(allowed_branches):
+            if not allowed_branches:
+                return []
+            if branch_id:
+                return allowed_branches.filter(id=int(branch_id))
+            return allowed_branches
 
         org_data = {}
 
         # 1. Workforce breakdown (employee.view)
         if has_emp_view:
-            emp_qs = Employee.objects.filter(organization_id=org_id)
+            emp_qs = Employee.objects.filter(branch__in=filter_branches(emp_branches))
             total_active = emp_qs.filter(employment_status='active', user__status='active').count()
             total_onboarding = emp_qs.filter(employment_status='onboarding').count()
             total_on_notice = emp_qs.filter(employment_status='on_notice').count()
@@ -295,13 +329,13 @@ class DashboardAggregationService:
         # 2. Org-wide attendance pulse (attendance.view_all)
         if has_att_view:
             emp_active_count = Employee.objects.filter(
-                organization_id=org_id,
+                branch__in=filter_branches(att_branches),
                 employment_status='active',
                 user__status='active'
             ).count()
 
             org_att = Attendance.objects.filter(
-                employee__organization_id=org_id,
+                employee__branch__in=filter_branches(att_branches),
                 employee__employment_status='active',
                 employee__user__status='active',
                 date=today
@@ -312,7 +346,7 @@ class DashboardAggregationService:
 
             now = timezone.now()
             leave_emp_ids = set(LeaveRequest.objects.filter(
-                employee__organization_id=org_id,
+                employee__branch__in=filter_branches(att_branches),
                 employee__employment_status='active',
                 employee__user__status='active',
                 status='approved',
@@ -329,7 +363,7 @@ class DashboardAggregationService:
             half_day_count = len(half_day_emp_ids)
 
             on_wfh_count = WFHRequest.objects.filter(
-                employee__organization_id=org_id,
+                employee__branch__in=filter_branches(att_branches),
                 employee__employment_status='active',
                 employee__user__status='active',
                 status='approved',
@@ -368,12 +402,12 @@ class DashboardAggregationService:
             pending_summary = {}
             if has_leave_view:
                 pending_summary['leaves_count'] = LeaveRequest.objects.filter(
-                    employee__organization_id=org_id,
+                    employee__branch__in=filter_branches(leave_branches),
                     status='pending'
                 ).count()
             if has_wfh_view:
                 pending_summary['wfh_count'] = WFHRequest.objects.filter(
-                    employee__organization_id=org_id,
+                    employee__branch__in=filter_branches(wfh_branches),
                     status='pending'
                 ).count()
             org_data['pending_approvals'] = pending_summary
@@ -389,13 +423,29 @@ class DashboardTrendsService:
     """
 
     @classmethod
-    def get_trends(cls, user, window: str):
+    def get_trends(cls, user, window: str, branch_id=None):
         """
         Main entry point for historical trends.
         Gated by organization isolation and granular dynamic RBAC permissions:
         - window='7d': requires attendance.view_all
         - window='6m': requires employee.view
+        Raises PermissionDenied (HTTP 403) if a requested branch_id is unauthorized.
         """
+        if branch_id:
+            try:
+                b_id = int(branch_id)
+            except (ValueError, TypeError):
+                raise PermissionDenied("You do not have permission to access this branch.")
+
+            if window == '7d':
+                att_branches = AuthorizationService.get_authorized_branches(user, 'attendance.view_all')
+                if not att_branches.filter(id=b_id).exists():
+                    raise PermissionDenied("You do not have permission to access attendance trends for this branch.")
+            elif window == '6m':
+                emp_branches = AuthorizationService.get_authorized_branches(user, 'employee.view')
+                if not emp_branches.filter(id=b_id).exists():
+                    raise PermissionDenied("You do not have permission to access workforce trends for this branch.")
+
         if not hasattr(user, 'employee') or not user.employee or not user.employee.organization_id:
             return {
                 'window': window,
@@ -414,10 +464,10 @@ class DashboardTrendsService:
 
         if window == '7d':
             if has_att_view:
-                attendance_trend = cls.get_7d_attendance_trend(org_id, today)
+                attendance_trend = cls.get_7d_attendance_trend(org_id, today, branch_id, user)
         elif window == '6m':
             if has_emp_view:
-                workforce_trend = cls.get_6m_workforce_trend(org_id, today)
+                workforce_trend = cls.get_6m_workforce_trend(org_id, today, branch_id, user)
 
         return {
             'window': window,
@@ -457,7 +507,7 @@ class DashboardTrendsService:
 
 
     @classmethod
-    def get_7d_attendance_trend(cls, org_id: int, today: date):
+    def get_7d_attendance_trend(cls, org_id: int, today: date, branch_id, user):
         """
         Calculates 7-day attendance trend ending on today.
         Batches data collection into 5 indexed queries (zero N+1 queries).
@@ -465,10 +515,14 @@ class DashboardTrendsService:
         start_date = today - timedelta(days=6)
         end_date = today
 
+        att_branches = AuthorizationService.get_authorized_branches(user, 'attendance.view_all')
+        if branch_id:
+            att_branches = att_branches.filter(id=branch_id)
+
         # 1. Employees query (batch)
         employees_list = list(
             Employee.objects.filter(
-                organization_id=org_id
+                branch__in=att_branches
             ).filter(
                 Q(exit_date__isnull=True) | Q(exit_date__gte=start_date)
             ).filter(
@@ -478,7 +532,7 @@ class DashboardTrendsService:
 
         # 2. Attendance records query (batch)
         att_records = Attendance.objects.filter(
-            employee__organization_id=org_id,
+            employee__branch__in=att_branches,
             date__range=(start_date, end_date)
         ).values('employee_id', 'date', 'status')
         att_map = {(r['date'], r['employee_id']): r['status'] for r in att_records}
@@ -486,7 +540,7 @@ class DashboardTrendsService:
         # 3. Approved leaves query (batch)
         leaves_list = list(
             LeaveRequest.objects.filter(
-                employee__organization_id=org_id,
+                employee__branch__in=att_branches,
                 status='approved',
                 start_date__lte=end_date,
                 end_date__gte=start_date
@@ -496,7 +550,7 @@ class DashboardTrendsService:
         # 4. Holidays query (batch)
         holidays_set = set(
             Holiday.objects.filter(
-                organization_id=org_id,
+                branch__in=att_branches,
                 is_active=True,
                 date__range=(start_date, end_date)
             ).values_list('date', flat=True)
@@ -505,7 +559,7 @@ class DashboardTrendsService:
         # 5. Approved WFH query (batch)
         wfh_records = list(
             WFHRequest.objects.filter(
-                employee__organization_id=org_id,
+                employee__branch__in=att_branches,
                 status='approved',
                 start_at__date__lte=end_date,
                 end_at__date__gte=start_date
@@ -591,14 +645,18 @@ class DashboardTrendsService:
         return trend_items
 
     @classmethod
-    def get_6m_workforce_trend(cls, org_id: int, today: date):
+    def get_6m_workforce_trend(cls, org_id: int, today: date, branch_id, user):
         """
         Calculates 6-month workforce and headcount trend ending in current month.
         Single batched query for all employee records (zero N+1 queries).
         """
+        emp_branches = AuthorizationService.get_authorized_branches(user, 'employee.view')
+        if branch_id:
+            emp_branches = emp_branches.filter(id=branch_id)
+
         employees_list = list(
             Employee.objects.filter(
-                organization_id=org_id
+                branch__in=emp_branches
             ).values('id', 'joining_date', 'exit_date', 'employment_status', 'user__status', 'created_at')
         )
 

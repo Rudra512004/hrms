@@ -1,7 +1,8 @@
 import React from 'react';
-import { Menu, User, LogOut, ChevronRight } from 'lucide-react';
+import { Menu, User, LogOut, ChevronRight, MapPin, ChevronDown } from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import { useBranchContext } from '../contexts/BranchContext';
 import { NotificationBell } from './NotificationBell';
 
 interface HeaderProps {
@@ -32,6 +33,8 @@ const routeLabels: Record<string, string> = {
   '/admin/branches': 'Branches',
   '/admin/holidays': 'Holidays',
   '/admin/shifts': 'Shifts',
+  '/admin/assets': 'Assets',
+  '/notifications': 'Notifications',
 };
 
 function getBreadcrumb(pathname: string): string {
@@ -48,6 +51,7 @@ export const Header: React.FC<HeaderProps> = ({ toggleSidebar }) => {
   const navigate = useNavigate();
   const location = useLocation();
   const { user, logout } = useAuth();
+  const { selectedBranch, selectBranch, branches, isLoading, error } = useBranchContext();
 
   const handleLogout = async () => {
     await logout();
@@ -85,14 +89,89 @@ export const Header: React.FC<HeaderProps> = ({ toggleSidebar }) => {
         </div>
       </div>
 
-      {/* Right: user info */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+      {/* Right: actions + user info */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+        {/* Branch Context Selector */}
+        <div
+          className="branch-selector-container"
+          style={{
+            position: 'relative',
+            display: 'flex',
+            alignItems: 'center',
+          }}
+        >
+          <MapPin
+            size={14}
+            style={{
+              position: 'absolute',
+              left: '9px',
+              color: 'var(--color-primary)',
+              pointerEvents: 'none',
+              zIndex: 1,
+            }}
+          />
+          <select
+            id="header-branch-selector"
+            aria-label="Select Branch Location"
+            value={selectedBranch.type === 'branch' ? selectedBranch.branchId : 'all'}
+            onChange={(e) => {
+              const val = e.target.value;
+              if (val === 'all') {
+                selectBranch('all');
+              } else {
+                selectBranch(Number(val));
+              }
+            }}
+            disabled={isLoading || !!error}
+            style={{
+              appearance: 'none',
+              paddingLeft: '28px',
+              paddingRight: '24px',
+              paddingTop: '5px',
+              paddingBottom: '5px',
+              height: '32px',
+              fontSize: 'var(--font-size-xs)',
+              fontWeight: 500,
+              color: 'var(--color-text-main)',
+              backgroundColor: 'var(--color-bg-subtle, #f8fafc)',
+              border: '1px solid var(--color-border)',
+              borderRadius: 'var(--radius-md, 6px)',
+              cursor: isLoading || !!error ? 'not-allowed' : 'pointer',
+              outline: 'none',
+              maxWidth: '180px',
+            }}
+          >
+            {isLoading ? (
+              <option value="all">Loading locations...</option>
+            ) : error ? (
+              <option value="all">Locations unavailable</option>
+            ) : (
+              <>
+                <option value="all">All Locations</option>
+                {branches.map((b) => (
+                  <option key={b.id} value={b.id}>
+                    {b.name}
+                  </option>
+                ))}
+              </>
+            )}
+          </select>
+          <ChevronDown
+            size={13}
+            style={{
+              position: 'absolute',
+              right: '7px',
+              color: 'var(--color-text-muted)',
+              pointerEvents: 'none',
+            }}
+          />
+        </div>
         <div
           className="hide-on-mobile"
           style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}
         >
           <span style={{ fontSize: 'var(--font-size-sm)', fontWeight: 600, color: 'var(--color-text-main)', lineHeight: 1.3 }}>
-            {user ? `${user.firstName} ${user.lastName}`.trim() || user.email : '…'}
+            {user ? `${user.firstName} ${user.lastName}`.trim() || user.email : 'â€¦'}
           </span>
           <span style={{ fontSize: 'var(--font-size-xs)', color: 'var(--color-text-muted)', lineHeight: 1.3 }}>
             {user?.email}

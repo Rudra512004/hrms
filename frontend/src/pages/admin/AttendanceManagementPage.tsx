@@ -1,12 +1,14 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { Card } from '../../components/Card';
 import { Table } from '../../components/Table';
 import { StatusBadge } from '../../components/StatusBadge';
 import { PageHeader } from '../../components/PageHeader';
 import { AlertBanner } from '../../components/AlertBanner';
-import { Loader2, Search, Calendar as CalendarIcon, CalendarDays } from 'lucide-react';
-import { attendanceService, type AttendanceRecord } from '../../services/attendance';
+import { Loader2, Search, Calendar as CalendarIcon, CalendarDays, Users, RefreshCw } from 'lucide-react';
+import { attendanceService, type AttendanceRecord, type ManagementAttendanceParams } from '../../services/attendance';
+import { organizationService, type Team } from '../../services/organization';
 import { useAuth } from '../../contexts/AuthContext';
+import { useBranchContext } from '../../contexts/BranchContext';
 
 const formatTimeOnly = (isoString: string | null) => {
   if (!isoString) return '--:--';
@@ -33,46 +35,134 @@ const parseDjangoDuration = (dur: string | null) => {
 
 export const AttendanceManagementPage: React.FC = () => {
   const { hasPermission } = useAuth();
+  const { branchId, selectedBranch } = useBranchContext();
+
   const [history, setHistory] = useState<AttendanceRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  // Filter states
   const [searchQuery, setSearchQuery] = useState('');
   const [dateFilter, setDateFilter] = useState(new Date().toISOString().split('T')[0]);
-  const [statusFilter, setStatusFilter] = useState('all');
+  const [teamFilter, setTeamFilter] = useState<string>('all');
+  const [statusFilter, setStatusFilter] = useState<string>('all');
 
+  // Teams list for dropdown
+  const [teams, setTeams] = useState<Team[]>([]);
+  const [teamsLoading, setTeamsLoading] = useState(false);
+
+  // Request cancellation ref
+  const abortControllerRef = useRef<AbortController | null>(null);
+
+  // Load authorized teams on mount
   useEffect(() => {
-    loadAttendance();
+    let isMounted = true;
+    const loadTeams = async () => {
+      try {
+        setTeamsLoading(true);
+        const data = await organizationService.listTeams();
+        if (isMounted) {
+          setTeams(Array.isArray(data) ? data : []);
+        }
+      } catch {
+        // Teams filter will simply be empty or fallback gracefully
+        if (isMounted) setTeams([]);
+      } finally {
+        if (isMounted) setTeamsLoading(false);
+      }
+    };
+    loadTeams();
+    return () => {
+      isMounted = false;
+    };
   }, []);
 
-  const loadAttendance = async () => {
+  const loadAttendance = useCallback(async () => {
+    if (!hasPermission('attendance.view_all')) {
+      setLoading(false);
+      return;
+    }
+
+    // Cancel any previous pending request
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+
     try {
       setLoading(true);
-      const data = await attendanceService.getManagementHistory();
-      setHistory(data);
+      setError(null);
+
+      const params: ManagementAttendanceParams = {};
+
+      // Only pass branch_id when a specific branch is selected; omit for All Locations
+      if (branchId !== null && branchId !== undefined) {
+        params.branch_id = branchId;
+      }
+
+      // Team filter
+      if (teamFilter && teamFilter !== 'all') {
+        params.team_id = parseInt(teamFilter, 10);
+      }
+
+      // Date filter
+      if (dateFilter && dateFilter.trim()) {
+        params.date = dateFilter.trim();
+      }
+
+      const data = await attendanceService.getManagementHistory(params, { signal: controller.signal });
+      if (abortControllerRef.current === controller) {
+        setHistory(Array.isArray(data) ? data : []);
+      }
     } catch (err: any) {
-      if (err?.response?.status === 403) {
-        setError('You do not have permission to view organization-wide attendance.');
-      } else {
-        setError('Failed to load attendance history. Please try again.');
+      if (err.name === 'AbortError') {
+        return; // Ignored aborted request
+      }
+      if (abortControllerRef.current === controller) {
+        if (err?.errorData?.detail) {
+          setError(err.errorData.detail);
+        } else if (err?.status === 403 || err?.response?.status === 403) {
+          setError('403 Forbidden: You do not have permission to view this attendance data.');
+        } else if (err?.message) {
+          setError(err.message);
+        } else {
+          setError('Failed to load attendance history. Please try again.');
+        }
+        setHistory([]);
       }
     } finally {
-      setLoading(false);
+      if (abortControllerRef.current === controller) {
+        setLoading(false);
+      }
     }
-  };
+  }, [hasPermission, branchId, teamFilter, dateFilter]);
 
+  // Refetch whenever branchId, teamFilter, or dateFilter changes
+  useEffect(() => {
+    // Reset data immediately on branch switch to avoid stale data display
+    setHistory([]);
+    loadAttendance();
+
+    return () => {
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
+    };
+  }, [loadAttendance]);
+
+  // Client-side search and status filtering over returned server records
   const filteredHistory = useMemo(() => {
     return history.filter((r) => {
-      const matchDate = dateFilter === '' || r.date === dateFilter;
       const matchStatus = statusFilter === 'all' || r.status === statusFilter;
-      const q = searchQuery.toLowerCase();
+      const q = searchQuery.toLowerCase().trim();
       const matchSearch =
         q === '' ||
         (r.employee_name && r.employee_name.toLowerCase().includes(q)) ||
         (r.employee_code && r.employee_code.toLowerCase().includes(q));
-      return matchDate && matchStatus && matchSearch;
+      return matchStatus && matchSearch;
     });
-  }, [history, dateFilter, statusFilter, searchQuery]);
+  }, [history, statusFilter, searchQuery]);
 
   const columns = [
     {
@@ -146,6 +236,18 @@ export const AttendanceManagementPage: React.FC = () => {
       title: 'Status',
       render: (r: AttendanceRecord) => <StatusBadge status={r.status as any} />,
     },
+    {
+      key: 'is_late',
+      title: 'Late',
+      render: (r: AttendanceRecord) =>
+        r.is_late ? (
+          <span className="badge badge-warning" data-testid={`late-badge-${r.id}`}>
+            Late
+          </span>
+        ) : (
+          <span style={{ color: 'var(--color-text-muted)', fontSize: 'var(--font-size-xs)' }}>—</span>
+        ),
+    },
   ];
 
   if (!hasPermission('attendance.view_all')) {
@@ -157,12 +259,28 @@ export const AttendanceManagementPage: React.FC = () => {
     );
   }
 
+  const branchTitle = selectedBranch.type === 'branch' && selectedBranch.branch?.name
+    ? `Branch: ${selectedBranch.branch.name}`
+    : 'All Locations';
+
   return (
     <div className="animate-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: 'var(--spacing-lg)' }}>
-      <PageHeader
-        title="Attendance Management"
-        subtitle="Organization-wide attendance overview and history."
-      />
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 'var(--spacing-md)' }}>
+        <PageHeader
+          title="Attendance Management"
+          subtitle={`Attendance overview for ${branchTitle}.`}
+        />
+        <button
+          className="btn btn-secondary btn-sm"
+          onClick={loadAttendance}
+          disabled={loading}
+          type="button"
+          style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+        >
+          <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
+          <span>Refresh</span>
+        </button>
+      </div>
 
       {error && <AlertBanner type="error" message={error} />}
 
@@ -175,9 +293,11 @@ export const AttendanceManagementPage: React.FC = () => {
             flexWrap: 'wrap',
             padding: 'var(--spacing-md) var(--spacing-lg)',
             borderBottom: '1px solid var(--color-border)',
+            alignItems: 'center',
           }}
         >
-          <div style={{ flex: '1 1 240px', position: 'relative' }}>
+          {/* Search */}
+          <div style={{ flex: '1 1 220px', position: 'relative' }}>
             <Search
               size={15}
               style={{
@@ -192,14 +312,15 @@ export const AttendanceManagementPage: React.FC = () => {
             <input
               className="input-field"
               style={{ paddingLeft: '34px' }}
-              placeholder="Search by name or employee code…"
+              placeholder="Search by name or code…"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               aria-label="Search employees"
             />
           </div>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: '0 1 200px' }}>
+          {/* Date Filter */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: '0 1 190px' }}>
             <CalendarIcon size={15} color="var(--color-text-muted)" style={{ flexShrink: 0 }} />
             <input
               type="date"
@@ -210,7 +331,27 @@ export const AttendanceManagementPage: React.FC = () => {
             />
           </div>
 
-          <div style={{ flex: '0 1 180px' }}>
+          {/* Team Filter */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: '0 1 180px' }}>
+            <Users size={15} color="var(--color-text-muted)" style={{ flexShrink: 0 }} />
+            <select
+              className="input-field"
+              value={teamFilter}
+              onChange={(e) => setTeamFilter(e.target.value)}
+              aria-label="Filter by team"
+              disabled={teamsLoading}
+            >
+              <option value="all">All Teams</option>
+              {teams.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.name}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Status Filter */}
+          <div style={{ flex: '0 1 160px' }}>
             <select
               className="input-field"
               value={statusFilter}
@@ -236,9 +377,9 @@ export const AttendanceManagementPage: React.FC = () => {
         </div>
 
         {loading ? (
-          <div className="loading-center">
+          <div className="loading-center" style={{ padding: 'var(--spacing-2xl)' }}>
             <Loader2 size={28} className="animate-spin" style={{ color: 'var(--color-primary)' }} />
-            <span>Loading attendance…</span>
+            <span style={{ marginTop: '8px' }}>Loading attendance records…</span>
           </div>
         ) : (
           <Table
@@ -249,8 +390,8 @@ export const AttendanceManagementPage: React.FC = () => {
             emptyTitle="No attendance records"
             emptyDescription={
               dateFilter
-                ? `No attendance found for ${dateFilter}.`
-                : 'No records match the current filters.'
+                ? `No attendance records found for ${dateFilter}.`
+                : 'No attendance records match the current filters.'
             }
           />
         )}

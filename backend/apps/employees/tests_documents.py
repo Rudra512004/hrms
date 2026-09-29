@@ -88,8 +88,9 @@ class EmployeeDocumentTests(TestCase):
         self.org_b = Organization.objects.create(name='Org B Doc', status='active')
 
         # Allow 127.0.0.0/8 so test client passes IsNetworkAllowed
-        OfficeNetwork.objects.create(
-            organization=self.org_a,
+        from apps.organization.models import Branch
+        self.branch_a = Branch.objects.create(organization=self.org_a, name='Branch A Doc')
+        OfficeNetwork.objects.create(branch=self.branch_a,
             name='Localhost',
             network='127.0.0.0/8',
             is_active=True
@@ -253,6 +254,15 @@ class EmployeeDocumentTests(TestCase):
         response = client.get(LIST_URL)
         self.assertIn(response.status_code, [status.HTTP_401_UNAUTHORIZED, status.HTTP_403_FORBIDDEN])
 
+    def test_14b_superadmin_without_employee_can_list_administrative_documents(self):
+        # Create a pure super admin
+        superadmin = User.objects.create_user(email='pure_super@admin.com', password='pw', is_superuser=True, status='active')
+        client = auth_client(superadmin)
+        response = client.get(LIST_URL)
+        # Super admin should be able to view documents administratively, 200 OK.
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertTrue(len(response.data) >= 1) # should see existing docs
+
     def test_15_audit_log_generated_on_upload_and_delete(self):
         client = auth_client(self.hr_user)
         before_upload = AuditLog.objects.filter(action='employee_document_uploaded').count()
@@ -324,4 +334,4 @@ class EmployeeDocumentTests(TestCase):
         )
         client = auth_client(self.emp_user)  # emp_user does not own other_doc and has no employee.document.view
         response = client.get(DOWNLOAD_URL(other_doc.id))
-        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)

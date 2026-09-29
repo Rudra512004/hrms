@@ -14,13 +14,20 @@ export interface EmployeeProfile {
   joining_date?: string | null;
   exit_date?: string | null;
   organization?: number;
-  department?: number;
-  designation?: number;
-  reporting_manager?: number;
-  organization_name?: string;
+  branch?: number | null;
+  branch_name?: string;
+  department?: number | null;
   department_name?: string;
+  team?: number | null;
+  team_name?: string;
+  designation?: number | null;
   designation_name?: string;
+  reporting_manager?: number | null;
   reporting_manager_name?: string;
+  resignation_date?: string | null;
+  exit_reason?: string;
+  notice_period_start?: string | null;
+  notice_period_end?: string | null;
 }
 
 export const employeeService = {

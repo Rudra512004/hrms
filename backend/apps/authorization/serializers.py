@@ -30,7 +30,7 @@ class UserRoleSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = UserRole
-        fields = ['id', 'user', 'role', 'role_name', 'assigned_by', 'assigned_at', 'expires_at', 'is_revoked', 'revoked_at']
+        fields = ['id', 'user', 'role', 'role_name', 'assigned_by', 'assigned_at', 'expires_at', 'is_revoked', 'revoked_at', 'scope', 'branch', 'team']
         read_only_fields = ['assigned_by', 'assigned_at', 'is_revoked', 'revoked_at']
 
 class UserPermissionGrantSerializer(serializers.ModelSerializer):
@@ -38,5 +38,5 @@ class UserPermissionGrantSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = UserPermissionGrant
-        fields = ['id', 'user', 'permission', 'permission_codename', 'granted_by', 'granted_at', 'expires_at', 'is_revoked', 'revoked_at']
+        fields = ['id', 'user', 'permission', 'permission_codename', 'granted_by', 'granted_at', 'expires_at', 'is_revoked', 'revoked_at', 'scope', 'branch', 'team']
         read_only_fields = ['granted_by', 'granted_at', 'is_revoked', 'revoked_at']
