@@ -32,7 +32,7 @@ export const OnboardingLayout: React.FC = () => {
   ];
 
   return (
-    <div style={{ display: 'flex', minHeight: '100vh', background: 'var(--color-bg-body)', fontFamily: 'Inter, system-ui, sans-serif' }}>
+    <div style={{ display: 'flex', minHeight: '100vh', background: 'transparent', position: 'relative', zIndex: 1, fontFamily: 'Inter, system-ui, sans-serif' }}>
       {/* Sidebar */}
       <aside style={{
         width: '220px', minHeight: '100vh',

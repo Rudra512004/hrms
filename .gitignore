@@ -31,6 +31,10 @@ Thumbs.db
 # Agent
 .agent/LOCAL_AGENT_IDENTITY.md
 
+# Static files
+staticfiles/
+backend/staticfiles/
+
 # Media / Uploads
 media/
 backend/media/

@@ -5,6 +5,7 @@ import './index.css'; // Design tokens and base styles
 import { AuthProvider } from './contexts/AuthContext';
 import { BranchProvider } from './contexts/BranchContext';
 import { ThemeProvider } from './contexts/ThemeContext';
+import { GlobalWatermark } from './components/GlobalWatermark';
 
 function App() {
   return (
@@ -12,6 +13,7 @@ function App() {
       <ThemeProvider>
         <AuthProvider>
           <BranchProvider>
+            <GlobalWatermark />
             <AppRouter />
           </BranchProvider>
         </AuthProvider>
