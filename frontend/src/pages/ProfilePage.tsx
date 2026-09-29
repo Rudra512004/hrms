@@ -94,7 +94,7 @@ const styles = {
 };
 
 export const ProfilePage: React.FC = () => {
-  const { hasPermission } = useAuth();
+  const { hasPermission, hasEmployeeProfile, user } = useAuth();
   const canEditAll = hasPermission('employee.update');
   const [profile, setProfile] = useState<EmployeeProfile | null>(null);
   const [loading, setLoading] = useState(true);
@@ -164,6 +164,11 @@ export const ProfilePage: React.FC = () => {
 
 
   useEffect(() => {
+    if (!hasEmployeeProfile) {
+      setLoading(false);
+      return;
+    }
+
     employeeService.getProfile()
       .then((p) => {
         setProfile(p);
@@ -186,7 +191,7 @@ export const ProfilePage: React.FC = () => {
         }
       })
       .finally(() => setLoading(false));
-  }, []);
+  }, [hasEmployeeProfile]);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
@@ -243,7 +248,7 @@ export const ProfilePage: React.FC = () => {
     );
   }
 
-  if (error || !profile) {
+  if (error || (hasEmployeeProfile && !profile)) {
     return (
       <div style={styles.centerState}>
         <ShieldAlert size={48} color="var(--color-status-danger)" style={{ marginBottom: 'var(--spacing-md)' }} />
@@ -279,18 +284,26 @@ export const ProfilePage: React.FC = () => {
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--spacing-lg)' }}>
               <div style={styles.formGroup}>
                 <label style={styles.label}>First Name</label>
-                {canEditAll ? (
-                  <input type="text" name="first_name" value={formData.first_name} onChange={handleChange} className="input-neumorphic" />
+                {hasEmployeeProfile ? (
+                  canEditAll ? (
+                    <input type="text" name="first_name" value={formData.first_name} onChange={handleChange} className="input-neumorphic" />
+                  ) : (
+                    <div style={styles.readOnlyValue}>{profile?.first_name}</div>
+                  )
                 ) : (
-                  <div style={styles.readOnlyValue}>{profile.first_name}</div>
+                  <div style={styles.readOnlyValue}>{user?.firstName || '—'}</div>
                 )}
               </div>
               <div style={styles.formGroup}>
                 <label style={styles.label}>Last Name</label>
-                {canEditAll ? (
-                  <input type="text" name="last_name" value={formData.last_name} onChange={handleChange} className="input-neumorphic" />
+                {hasEmployeeProfile ? (
+                  canEditAll ? (
+                    <input type="text" name="last_name" value={formData.last_name} onChange={handleChange} className="input-neumorphic" />
+                  ) : (
+                    <div style={styles.readOnlyValue}>{profile?.last_name}</div>
+                  )
                 ) : (
-                  <div style={styles.readOnlyValue}>{profile.last_name}</div>
+                  <div style={styles.readOnlyValue}>{user?.lastName || '—'}</div>
                 )}
               </div>
             </div>
@@ -301,108 +314,120 @@ export const ProfilePage: React.FC = () => {
           <div style={styles.section}>
             <h2 style={styles.sectionTitle}>
               <Building size={20} /> Company Information
-              {!canEditAll && <span style={styles.readOnlyBadge}>HR CONTROLLED</span>}
+              {!canEditAll && hasEmployeeProfile && <span style={styles.readOnlyBadge}>HR CONTROLLED</span>}
             </h2>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--spacing-lg)' }}>
               <div style={styles.formGroup}>
                 <label style={styles.label}>Company Email</label>
-                {canEditAll ? (
-                  <input type="email" name="email" value={formData.email} onChange={handleChange} className="input-neumorphic" />
+                {hasEmployeeProfile ? (
+                  canEditAll ? (
+                    <input type="email" name="email" value={formData.email} onChange={handleChange} className="input-neumorphic" />
+                  ) : (
+                    <div style={styles.readOnlyValue}>{profile?.email}</div>
+                  )
                 ) : (
-                  <div style={styles.readOnlyValue}>{profile.email}</div>
+                  <div style={styles.readOnlyValue}>{user?.email || '—'}</div>
                 )}
               </div>
-              <div style={styles.formGroup}>
-                <label style={styles.label}>Employee Code</label>
-                <div style={styles.readOnlyValue}>{profile.employee_code}</div>
-              </div>
-              <div style={styles.formGroup}>
-                <label style={styles.label}>Account Status</label>
-                <div style={{ marginTop: '8px' }}>
-                  <StatusBadge status={profile.status as any} />
-                </div>
-              </div>
+              {hasEmployeeProfile && (
+                <>
+                  <div style={styles.formGroup}>
+                    <label style={styles.label}>Employee Code</label>
+                    <div style={styles.readOnlyValue}>{profile?.employee_code}</div>
+                  </div>
+                  <div style={styles.formGroup}>
+                    <label style={styles.label}>Account Status</label>
+                    <div style={{ marginTop: '8px' }}>
+                      <StatusBadge status={profile?.status as any} />
+                    </div>
+                  </div>
+                </>
+              )}
             </div>
           </div>
         </Card>
 
-        <Card>
-          <div style={styles.section}>
-            <h2 style={styles.sectionTitle}>Personal Information</h2>
+        {hasEmployeeProfile && (
+          <Card>
+            <div style={styles.section}>
+              <h2 style={styles.sectionTitle}>Personal Information</h2>
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--spacing-lg)' }}>
-              <div style={styles.formGroup}>
-                <label style={styles.label}>Personal Email</label>
-                {canEditAll ? (
-                  <input type="email" name="personal_email" value={formData.personal_email} onChange={handleChange} className="input-neumorphic" />
-                ) : (
-                  <div style={styles.readOnlyValue}>{profile.personal_email || 'Not provided'}</div>
-                )}
-              </div>
-              <div style={styles.formGroup}>
-                <label style={styles.label}>Phone Number</label>
-                <input
-                  type="text"
-                  name="phone_number"
-                  value={formData.phone_number}
-                  onChange={handleChange}
-                  className="input-neumorphic"
-                  placeholder="+1234567890"
-                />
-              </div>
-            </div>
-
-            <div style={styles.formGroup}>
-              <label style={styles.label}>Address</label>
-              <textarea
-                name="address"
-                value={formData.address}
-                onChange={handleChange}
-                className="input-neumorphic"
-                style={{ minHeight: '80px', resize: 'vertical' }}
-                placeholder="123 Main St, City, Country"
-              />
-            </div>
-
-            <div style={{ marginTop: 'var(--spacing-md)' }}>
-              <h3 style={{ fontSize: '1rem', marginBottom: 'var(--spacing-md)', color: 'var(--color-text-main)' }}>Emergency Contact</h3>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--spacing-lg)' }}>
                 <div style={styles.formGroup}>
-                  <label style={styles.label}>Contact Name</label>
-                  <input
-                    type="text"
-                    name="emergency_contact_name"
-                    value={formData.emergency_contact_name}
-                    onChange={handleChange}
-                    className="input-neumorphic"
-                    placeholder="Jane Doe"
-                  />
+                  <label style={styles.label}>Personal Email</label>
+                  {canEditAll ? (
+                    <input type="email" name="personal_email" value={formData.personal_email} onChange={handleChange} className="input-neumorphic" />
+                  ) : (
+                    <div style={styles.readOnlyValue}>{profile?.personal_email || 'Not provided'}</div>
+                  )}
                 </div>
                 <div style={styles.formGroup}>
-                  <label style={styles.label}>Contact Phone</label>
+                  <label style={styles.label}>Phone Number</label>
                   <input
                     type="text"
-                    name="emergency_contact_phone"
-                    value={formData.emergency_contact_phone}
+                    name="phone_number"
+                    value={formData.phone_number}
                     onChange={handleChange}
                     className="input-neumorphic"
                     placeholder="+1234567890"
                   />
                 </div>
               </div>
-            </div>
-          </div>
-        </Card>
 
-        <button
-          type="submit"
-          disabled={saving}
-          className="btn btn-primary"
-          style={{ alignSelf: 'flex-start' }}
-        >
-          {saving ? <Loader2 size={20} style={{ animation: 'spin 1s linear infinite' }} /> : <Save size={20} />}
-          {saving ? 'Saving...' : 'Save Changes'}
-        </button>
+              <div style={styles.formGroup}>
+                <label style={styles.label}>Address</label>
+                <textarea
+                  name="address"
+                  value={formData.address}
+                  onChange={handleChange}
+                  className="input-neumorphic"
+                  style={{ minHeight: '80px', resize: 'vertical' }}
+                  placeholder="123 Main St, City, Country"
+                />
+              </div>
+
+              <div style={{ marginTop: 'var(--spacing-md)' }}>
+                <h3 style={{ fontSize: '1rem', marginBottom: 'var(--spacing-md)', color: 'var(--color-text-main)' }}>Emergency Contact</h3>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--spacing-lg)' }}>
+                  <div style={styles.formGroup}>
+                    <label style={styles.label}>Contact Name</label>
+                    <input
+                      type="text"
+                      name="emergency_contact_name"
+                      value={formData.emergency_contact_name}
+                      onChange={handleChange}
+                      className="input-neumorphic"
+                      placeholder="Jane Doe"
+                    />
+                  </div>
+                  <div style={styles.formGroup}>
+                    <label style={styles.label}>Contact Phone</label>
+                    <input
+                      type="text"
+                      name="emergency_contact_phone"
+                      value={formData.emergency_contact_phone}
+                      onChange={handleChange}
+                      className="input-neumorphic"
+                      placeholder="+1234567890"
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+          </Card>
+        )}
+
+        {hasEmployeeProfile && (
+          <button
+            type="submit"
+            disabled={saving}
+            className="btn btn-primary"
+            style={{ alignSelf: 'flex-start' }}
+          >
+            {saving ? <Loader2 size={20} style={{ animation: 'spin 1s linear infinite' }} /> : <Save size={20} />}
+            {saving ? 'Saving...' : 'Save Changes'}
+          </button>
+        )}
       </form>
 
       {/* Account Security & Password */}

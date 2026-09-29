@@ -35,6 +35,36 @@ class NotificationService:
             return False
 
     @staticmethod
+    def send_candidate_offer_email(candidate_email, candidate_name, organization_name, offer_letter_body, onboarding_link):
+        """Send offer letter and onboarding portal access link to a candidate."""
+        subject = f'Your Offer Letter from {organization_name}'
+        message = (
+            f"Dear {candidate_name},\n\n"
+            f"We are pleased to extend you an offer to join {organization_name}.\n\n"
+            f"--- OFFER LETTER ---\n\n"
+            f"{offer_letter_body}\n\n"
+            f"--- END OF OFFER LETTER ---\n\n"
+            f"To complete your onboarding, please click the link below to activate your account "
+            f"and access the onboarding portal:\n"
+            f"{onboarding_link}\n\n"
+            f"Please do not share this link with anyone. It will expire shortly.\n\n"
+            f"Regards,\nHR Team – {organization_name}"
+        )
+        try:
+            send_mail(
+                subject,
+                message,
+                settings.DEFAULT_FROM_EMAIL,
+                [candidate_email],
+                fail_silently=False,
+            )
+            return True
+        except Exception as e:
+            logger.error(f"Failed to send candidate offer email to {candidate_email}: {str(e)}")
+            return False
+
+
+    @staticmethod
     def send_password_reset_email(email, first_name, uid, token):
         subject = 'HRMS - Password Reset Request'
         frontend_url = getattr(settings, 'FRONTEND_URL', 'http://localhost:5173')

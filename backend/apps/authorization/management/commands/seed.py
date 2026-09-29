@@ -116,6 +116,19 @@ class Command(BaseCommand):
             {'codename': 'shift.manage', 'resource': 'shift', 'action': 'manage', 'name': 'Manage Shifts'},
             {'codename': 'shift_assignment.view', 'resource': 'shift_assignment', 'action': 'view', 'name': 'View Shift Assignments'},
             {'codename': 'shift_assignment.manage', 'resource': 'shift_assignment', 'action': 'manage', 'name': 'Manage Shift Assignments'},
+
+            # Candidate & Onboarding
+            {'codename': 'candidate.view',          'resource': 'candidate', 'action': 'view',          'name': 'View Candidates'},
+            {'codename': 'candidate.create',         'resource': 'candidate', 'action': 'create',         'name': 'Create Candidate'},
+            {'codename': 'candidate.update',         'resource': 'candidate', 'action': 'update',         'name': 'Update Candidate'},
+            {'codename': 'candidate.manage_status',  'resource': 'candidate', 'action': 'manage_status',  'name': 'Manage Candidate Status'},
+            {'codename': 'candidate.onboard',        'resource': 'candidate', 'action': 'onboard',        'name': 'Issue Offer / Start Onboarding'},
+            {'codename': 'candidate.verify',         'resource': 'candidate', 'action': 'verify',         'name': 'Verify Candidate Documents'},
+            {'codename': 'candidate.convert',        'resource': 'candidate', 'action': 'convert',        'name': 'Convert Candidate to Employee'},
+
+            # Letters
+            {'codename': 'letter.view',  'resource': 'letter', 'action': 'view',  'name': 'View Letter Templates'},
+            {'codename': 'letter.issue', 'resource': 'letter', 'action': 'issue', 'name': 'Create/Issue Letter Templates'},
         ]
 
         for p_data in permissions_data:

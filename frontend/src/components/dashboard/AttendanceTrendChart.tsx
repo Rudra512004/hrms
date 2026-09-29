@@ -214,7 +214,7 @@ export const AttendanceTrendChart: React.FC<AttendanceTrendChartProps> = ({ data
           overflow: 'hidden',
         }}
       >
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0 12px 8px' }}>
+        <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', padding: '0 12px 8px', gap: '8px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <Activity size={15} style={{ color: 'var(--color-primary)' }} />
             <span style={{ fontSize: 'var(--font-size-sm)', fontWeight: 600, color: 'var(--color-text-main)' }}>
@@ -237,7 +237,7 @@ export const AttendanceTrendChart: React.FC<AttendanceTrendChartProps> = ({ data
         <div style={{ width: '100%', overflowX: 'auto' }}>
           <svg
             viewBox={`0 0 ${svgWidth} ${svgHeight}`}
-            style={{ width: '100%', minWidth: '540px', height: 'auto', display: 'block' }}
+            style={{ width: '100%', minWidth: '300px', height: 'auto', display: 'block' }}
           >
             <defs>
               <linearGradient id="attendanceGradient" x1="0" y1="0" x2="0" y2="1">
@@ -550,7 +550,7 @@ export const AttendanceTrendChart: React.FC<AttendanceTrendChartProps> = ({ data
       )}
 
       {/* Day-by-Day Scannable Bar Strip */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '6px' }}>
+      <div style={{ display: 'flex', overflowX: 'auto', gap: '6px', paddingBottom: '6px', width: '100%' }}>
         {data.map((item, idx) => {
           const isWorking = item.is_working_day && item.attendance_percentage !== null;
           const isSelected = hoveredIndex === idx;
@@ -560,6 +560,8 @@ export const AttendanceTrendChart: React.FC<AttendanceTrendChartProps> = ({ data
               key={`day-card-${item.date}`}
               onClick={() => setHoveredIndex(hoveredIndex === idx ? null : idx)}
               style={{
+                flex: '1 1 55px',
+                minWidth: '55px',
                 padding: '8px 6px',
                 borderRadius: 'var(--radius-sm)',
                 backgroundColor: isSelected ? 'var(--color-primary-light)' : 'var(--color-bg-page)',

@@ -16,12 +16,15 @@ import {
   FileText,
   BarChart2,
   Package,
+  UserPlus,
 } from 'lucide-react';
 
 import { useAuth } from '../contexts/AuthContext';
 
 interface SidebarProps {
   isOpen: boolean;
+  isMobile?: boolean;
+  onNavigate?: () => void;
 }
 
 interface NavItem {
@@ -30,6 +33,7 @@ interface NavItem {
   icon: React.ElementType;
   permission?: string | string[];
   end?: boolean;
+  requiresEmployee?: boolean;
 }
 
 interface NavSection {
@@ -37,8 +41,8 @@ interface NavSection {
   items: NavItem[];
 }
 
-export const Sidebar: React.FC<SidebarProps> = ({ isOpen }) => {
-  const { hasPermission } = useAuth();
+export const Sidebar: React.FC<SidebarProps> = ({ isOpen, isMobile, onNavigate }) => {
+  const { hasPermission, hasEmployeeProfile } = useAuth();
 
   const navigation: NavSection[] = [
     {
@@ -51,6 +55,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen }) => {
       title: 'People',
       items: [
         { path: '/admin/employees',    label: 'Employees',     icon: Users,      permission: 'employee.view' },
+        { path: '/admin/candidates',   label: 'Candidates',    icon: UserPlus,   permission: 'candidate.view' },
         { path: '/admin/assets',       label: 'Assets',        icon: Package,    permission: 'asset.view' },
         { path: '/admin/organizations',label: 'Organizations', icon: Building2,  permission: 'organization.view' },
         { path: '/admin/departments',  label: 'Departments',   icon: GitBranch,  permission: 'department.view' },
@@ -62,10 +67,10 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen }) => {
     {
       title: 'Time',
       items: [
-        { path: '/attendance',         label: 'My Attendance',         icon: Clock },
+        { path: '/attendance',         label: 'My Attendance',         icon: Clock,        requiresEmployee: true },
         { path: '/admin/attendance',   label: 'Attendance Management', icon: CalendarDays, permission: 'attendance.view_all' },
-        { path: '/leaves',             label: 'My Leave',              icon: Calendar },
-        { path: '/calendar',           label: 'Calendar',              icon: CalendarDays },
+        { path: '/leaves',             label: 'My Leave',              icon: Calendar,     requiresEmployee: true },
+        { path: '/calendar',           label: 'Calendar',              icon: CalendarDays, requiresEmployee: true },
         { path: '/admin/leaves',       label: 'Leave Requests',        icon: Calendar,  permission: 'leave.view' },
         { path: '/admin/leave-types',  label: 'Leave Types',           icon: Settings,  permission: 'leave_type.manage' },
         { path: '/admin/wfh',          label: 'WFH Requests',          icon: Network,   permission: ['wfh.view', 'wfh.request'] },
@@ -78,7 +83,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen }) => {
     {
       title: 'Finance',
       items: [
-        { path: '/payslips', label: 'My Payslips', icon: FileText },
+        { path: '/payslips', label: 'My Payslips', icon: FileText, requiresEmployee: true },
         { path: '/payroll', label: 'Payroll', icon: DollarSign, permission: 'payroll.view' },
         { path: '/payroll/reports', label: 'Reports', icon: BarChart2, permission: 'payroll.view_reports' },
       ],
@@ -95,7 +100,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen }) => {
   ];
 
   return (
-    <aside className={`sidebar ${isOpen ? 'open' : 'closed'}`}>
+    <aside className={`sidebar ${isOpen ? 'open' : (isMobile ? 'closed-mobile' : 'closed')}`}>
       {/* Logo */}
       <div className="sidebar-logo" style={{ justifyContent: 'center', padding: isOpen ? '0 14px' : '0 8px' }}>
         {isOpen ? (
@@ -154,6 +159,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen }) => {
       <nav className="sidebar-menu" aria-label="Main navigation">
         {navigation.map((section, idx) => {
           const visibleItems = section.items.filter((item) => {
+            if (item.requiresEmployee && !hasEmployeeProfile) return false;
             if (!item.permission) return true;
             return Array.isArray(item.permission)
               ? item.permission.some((p) => hasPermission(p))
@@ -173,11 +179,12 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen }) => {
                   end={item.end !== undefined ? item.end : false}
                   className={({ isActive }) => `sidebar-link${isActive ? ' active' : ''}`}
                   title={!isOpen ? item.label : undefined}
+                  onClick={onNavigate}
                 >
                   <span className="sidebar-icon">
                     <item.icon size={18} />
                   </span>
-                  {isOpen && <span>{item.label}</span>}
+                  {isOpen && <span className="sidebar-label">{item.label}</span>}
                 </NavLink>
               ))}
             </div>
@@ -199,7 +206,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen }) => {
           }}
         >
           <span style={{ fontWeight: 600, color: '#94a3b8' }}>BEYONDSURE</span>
-          <span style={{ backgroundColor: 'rgba(112, 38, 227, 0.25)', color: '#c4b5fd', padding: '2px 6px', borderRadius: '4px', fontSize: '0.65rem', fontWeight: 600 }}>ENTERPRISE</span>
+          <span style={{ backgroundColor: 'var(--color-primary-glow)', color: 'var(--color-accent)', padding: '2px 6px', borderRadius: '4px', fontSize: '0.65rem', fontWeight: 600 }}>ENTERPRISE</span>
         </div>
       )}
     </aside>

@@ -47,6 +47,7 @@ def _employee_org(request):
             except (Organization.DoesNotExist, ValueError):
                 from rest_framework.exceptions import ValidationError
                 raise ValidationError({"organization": "Specified organization does not exist."})
+
         from rest_framework.exceptions import ValidationError
         raise ValidationError({"organization": "Organization context is required."})
 

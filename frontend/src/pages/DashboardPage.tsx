@@ -10,6 +10,8 @@ import {
   LogOut,
   Loader2,
   RefreshCw,
+  Briefcase,
+  ShieldAlert,
 } from 'lucide-react';
 
 import { useAuth } from '../contexts/AuthContext';
@@ -31,7 +33,7 @@ import {
 } from '../components/dashboard';
 
 export const DashboardPage: React.FC = () => {
-  const { user } = useAuth();
+  const { user, hasEmployeeProfile } = useAuth();
   const navigate = useNavigate();
 
   const [dashboardData, setDashboardData] = useState<DashboardOverviewResponse | null>(null);
@@ -212,8 +214,8 @@ export const DashboardPage: React.FC = () => {
       {/* Executive Welcome Hero Banner */}
       <div
         style={{
-          background: 'linear-gradient(135deg, rgba(112, 38, 227, 0.08) 0%, rgba(71, 191, 255, 0.06) 100%)',
-          border: '1px solid rgba(112, 38, 227, 0.16)',
+          background: 'linear-gradient(135deg, var(--color-primary-glow) 0%, rgba(71, 191, 255, 0.06) 100%)',
+          border: '1px solid var(--color-primary-border)',
           borderRadius: 'var(--radius-xl)',
           padding: '22px 26px',
           display: 'flex',
@@ -237,38 +239,58 @@ export const DashboardPage: React.FC = () => {
             >
               {greeting()}, {user.firstName || user.email.split('@')[0]}
             </h1>
-            <span
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '5px',
-                padding: '2px 8px',
-                borderRadius: 'var(--radius-full)',
-                fontSize: '0.7rem',
-                fontWeight: 600,
-                backgroundColor:
-                  attendanceToday && !attendanceToday.check_out
-                    ? 'rgba(5, 150, 105, 0.12)'
-                    : 'rgba(100, 116, 139, 0.1)',
-                color:
-                  attendanceToday && !attendanceToday.check_out
-                    ? 'var(--color-status-success)'
-                    : 'var(--color-text-muted)',
-                border:
-                  attendanceToday && !attendanceToday.check_out
-                    ? '1px solid rgba(5, 150, 105, 0.25)'
-                    : '1px solid rgba(100, 116, 139, 0.2)',
-              }}
-            >
-              <span style={{ width: 6, height: 6, borderRadius: '50%', backgroundColor: 'currentColor' }} />
-              {attendanceToday
-                ? attendanceToday.check_out
-                  ? 'Shift Completed'
-                  : attendanceToday.is_on_break
-                  ? 'On Break'
-                  : 'Clocked In'
-                : 'Not Clocked In'}
-            </span>
+            {hasEmployeeProfile ? (
+              <span
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '5px',
+                  padding: '2px 8px',
+                  borderRadius: 'var(--radius-full)',
+                  fontSize: '0.7rem',
+                  fontWeight: 600,
+                  backgroundColor:
+                    attendanceToday && !attendanceToday.check_out
+                      ? 'rgba(5, 150, 105, 0.12)'
+                      : 'rgba(100, 116, 139, 0.1)',
+                  color:
+                    attendanceToday && !attendanceToday.check_out
+                      ? 'var(--color-status-success)'
+                      : 'var(--color-text-muted)',
+                  border:
+                    attendanceToday && !attendanceToday.check_out
+                      ? '1px solid rgba(5, 150, 105, 0.25)'
+                      : '1px solid rgba(100, 116, 139, 0.2)',
+                }}
+              >
+                <span style={{ width: 6, height: 6, borderRadius: '50%', backgroundColor: 'currentColor' }} />
+                {attendanceToday
+                  ? attendanceToday.check_out
+                    ? 'Shift Completed'
+                    : attendanceToday.is_on_break
+                    ? 'On Break'
+                    : 'Clocked In'
+                  : 'Not Clocked In'}
+              </span>
+            ) : (
+              <span
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '5px',
+                  padding: '2px 10px',
+                  borderRadius: 'var(--radius-full)',
+                  fontSize: '0.72rem',
+                  fontWeight: 600,
+                  backgroundColor: 'var(--color-primary-light)',
+                  color: 'var(--color-primary)',
+                  border: '1px solid var(--color-primary-border)',
+                }}
+              >
+                <ShieldAlert size={12} />
+                System Administrator
+              </span>
+            )}
           </div>
           <p style={{ color: 'var(--color-text-muted)', margin: 0, fontSize: 'var(--font-size-sm)' }}>
             {dateStr} • BeyondSure HRMS Workspace
@@ -277,24 +299,40 @@ export const DashboardPage: React.FC = () => {
 
         {/* Quick actions inside banner */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-          {!attendanceToday ? (
-            <button className="btn btn-primary" onClick={handleCheckIn} disabled={actionLoading} type="button">
-              {actionLoading ? <Loader2 size={15} className="animate-spin" /> : <LogIn size={15} />}
-              Web Check In
-            </button>
-          ) : !attendanceToday.check_out ? (
-            <button className="btn btn-primary" onClick={handleCheckOut} disabled={actionLoading} type="button">
-              {actionLoading ? <Loader2 size={15} className="animate-spin" /> : <LogOut size={15} />}
-              Check Out
-            </button>
-          ) : null}
+          {hasEmployeeProfile ? (
+            <>
+              {!attendanceToday ? (
+                <button className="btn btn-primary" onClick={handleCheckIn} disabled={actionLoading} type="button">
+                  {actionLoading ? <Loader2 size={15} className="animate-spin" /> : <LogIn size={15} />}
+                  Web Check In
+                </button>
+              ) : !attendanceToday.check_out ? (
+                <button className="btn btn-primary" onClick={handleCheckOut} disabled={actionLoading} type="button">
+                  {actionLoading ? <Loader2 size={15} className="animate-spin" /> : <LogOut size={15} />}
+                  Check Out
+                </button>
+              ) : null}
 
-          <button className="btn btn-secondary" onClick={() => navigate('/leaves')} type="button">
-            <Calendar size={15} /> Apply Leave
-          </button>
-          <button className="btn btn-secondary" onClick={() => navigate('/payslips')} type="button">
-            My Payslips
-          </button>
+              <button className="btn btn-secondary" onClick={() => navigate('/leaves')} type="button">
+                <Calendar size={15} /> Apply Leave
+              </button>
+              <button className="btn btn-secondary" onClick={() => navigate('/payslips')} type="button">
+                My Payslips
+              </button>
+            </>
+          ) : (
+            <>
+              <button className="btn btn-primary" onClick={() => navigate('/admin/employees')} type="button">
+                <Users size={15} /> Employees
+              </button>
+              <button className="btn btn-secondary" onClick={() => navigate('/admin/attendance')} type="button">
+                <Clock size={15} /> Attendance
+              </button>
+              <button className="btn btn-secondary" onClick={() => navigate('/admin/leaves')} type="button">
+                <Calendar size={15} /> Leave Requests
+              </button>
+            </>
+          )}
           <button
             className="btn btn-ghost"
             onClick={() => fetchDashboardData()}
@@ -412,13 +450,22 @@ export const DashboardPage: React.FC = () => {
             />
           )}
 
-          {/* Card 4: Available Leave Balance */}
-          <StatCard
-            title="Available Leave Days"
-            value={`${totalLeaveRemaining}d`}
-            icon={Coffee}
-            color="#059669"
-          />
+          {/* Card 4: Available Leave Balance OR Workforce Breakdown */}
+          {hasEmployeeProfile ? (
+            <StatCard
+              title="Available Leave Days"
+              value={`${totalLeaveRemaining}d`}
+              icon={Coffee}
+              color="#059669"
+            />
+          ) : (
+            <StatCard
+              title="Onboarding / On Notice"
+              value={`${org?.workforce?.total_onboarding ?? 0} / ${org?.workforce?.total_on_notice ?? 0}`}
+              icon={Briefcase}
+              color="#059669"
+            />
+          )}
         </div>
       )}
 
@@ -442,16 +489,18 @@ export const DashboardPage: React.FC = () => {
 
           {/* Operational & Actions Rail (Right) */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--spacing-lg)', minWidth: 0 }}>
-            {/* Personal Attendance Terminal */}
-            <PersonalAttendanceWidget
-              attendance={attendanceToday || null}
-              actionLoading={actionLoading}
-              actionError={actionError}
-              onCheckIn={handleCheckIn}
-              onCheckOut={handleCheckOut}
-              onStartBreak={handleStartBreak}
-              onEndBreak={handleEndBreak}
-            />
+            {/* Personal Attendance Terminal (Employees Only) */}
+            {hasEmployeeProfile && (
+              <PersonalAttendanceWidget
+                attendance={attendanceToday || null}
+                actionLoading={actionLoading}
+                actionError={actionError}
+                onCheckIn={handleCheckIn}
+                onCheckOut={handleCheckOut}
+                onStartBreak={handleStartBreak}
+                onEndBreak={handleEndBreak}
+              />
+            )}
 
             {/* Pending Approvals Command Center */}
             <PendingApprovalsWidget
@@ -463,11 +512,13 @@ export const DashboardPage: React.FC = () => {
             {/* Categorized Quick Actions */}
             <QuickActionsWidget hasTeam={Boolean(team)} hasOrg={Boolean(org?.workforce || org?.attendance_today)} />
 
-            {/* Leave Balances with Progress Indicators */}
-            <LeaveBalanceWidget balances={leaveBalances} />
+            {/* Leave Balances with Progress Indicators (Employees Only) */}
+            {hasEmployeeProfile && <LeaveBalanceWidget balances={leaveBalances} />}
 
             {/* Upcoming Company Holidays */}
-            {personal && <UpcomingHolidaysWidget holidays={personal.upcoming_holidays} />}
+            {personal?.upcoming_holidays && personal.upcoming_holidays.length > 0 && (
+              <UpcomingHolidaysWidget holidays={personal.upcoming_holidays} />
+            )}
           </div>
         </div>
       )}

@@ -43,7 +43,17 @@ import { ShiftsPage } from '../pages/admin/ShiftsPage';
 import { AssetsPage } from '../pages/admin/AssetsPage';
 import { WorkingCalendarPage } from '../pages/admin/WorkingCalendarPage';
 import { AttendancePolicyPage } from '../pages/admin/AttendancePolicyPage';
+import { CandidatesPage } from '../pages/admin/CandidatesPage';
+import { CandidateDetailPage } from '../pages/admin/CandidateDetailPage';
+import { LetterTemplatesPage } from '../pages/admin/LetterTemplatesPage';
 import { ProtectedRoute } from '../components/ProtectedRoute';
+import { OnboardingRoute } from '../components/OnboardingRoute';
+import { OnboardingLayout } from '../layouts/OnboardingLayout';
+import { OnboardingActivatePage } from '../pages/onboarding/OnboardingActivatePage';
+import { OnboardingOverviewPage } from '../pages/onboarding/OnboardingOverviewPage';
+import { OnboardingProfilePage } from '../pages/onboarding/OnboardingProfilePage';
+import { OnboardingDocumentsPage } from '../pages/onboarding/OnboardingDocumentsPage';
+import { OnboardingLettersPage } from '../pages/onboarding/OnboardingLettersPage';
 
 export const AppRouter: React.FC = () => {
   return (
@@ -65,10 +75,13 @@ export const AppRouter: React.FC = () => {
         <Route element={<ProtectedRoute />}>
           <Route path="/" element={<Navigate to="/dashboard" replace />} />
           <Route path="/dashboard" element={<DashboardPage />} />
-          <Route path="/attendance" element={<AttendancePage />} />
-          <Route path="/leaves" element={<LeavePage />} />
-          <Route path="/calendar" element={<CalendarPage />} />
-          <Route path="/payslips" element={<MyPayslipsPage />} />
+          {/* Employee Self-Service Routes — require an employee profile */}
+          <Route element={<ProtectedRoute requiresEmployee />}>
+            <Route path="/attendance" element={<AttendancePage />} />
+            <Route path="/leaves" element={<LeavePage />} />
+            <Route path="/calendar" element={<CalendarPage />} />
+            <Route path="/payslips" element={<MyPayslipsPage />} />
+          </Route>
           <Route path="/profile" element={<ProfilePage />} />
 
 
@@ -157,10 +170,32 @@ export const AppRouter: React.FC = () => {
           <Route element={<ProtectedRoute requiredPermission="audit.view" />}>
             <Route path="/admin/audit-logs" element={<AuditLogsPage />} />
           </Route>
+
+          {/* Candidate & Onboarding — templates MUST come before :id param route */}
+          <Route element={<ProtectedRoute requiredPermission="letter.view" />}>
+            <Route path="/admin/candidates/templates" element={<LetterTemplatesPage />} />
+          </Route>
+
+          <Route element={<ProtectedRoute requiredPermission="candidate.view" />}>
+            <Route path="/admin/candidates" element={<CandidatesPage />} />
+            <Route path="/admin/candidates/:id" element={<CandidateDetailPage />} />
+          </Route>
         </Route>
 
         {/* Catch-all within AppLayout */}
         <Route path="*" element={<NotFoundPage />} />
+      </Route>
+
+      {/* Candidate Onboarding Portal — public activation, then guarded portal */}
+      <Route path="/onboarding/activate" element={<OnboardingActivatePage />} />
+
+      <Route element={<OnboardingLayout />}>
+        <Route element={<OnboardingRoute />}>
+          <Route path="/onboarding" element={<OnboardingOverviewPage />} />
+          <Route path="/onboarding/profile" element={<OnboardingProfilePage />} />
+          <Route path="/onboarding/documents" element={<OnboardingDocumentsPage />} />
+          <Route path="/onboarding/letters" element={<OnboardingLettersPage />} />
+        </Route>
       </Route>
     </Routes>
   );

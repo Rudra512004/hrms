@@ -33,7 +33,7 @@ class LeaveRequestIntegrationTests(TestCase):
         self.org2 = Organization.objects.create(name="Org 2")
         self.branch2 = Branch.objects.create(organization=self.org2, name="Branch 2")
 
-        self.user1 = User.objects.create(email="emp1@test.com", is_staff=True, is_superuser=True)
+        self.user1 = User.objects.create(email="emp1@test.com", is_staff=True, status='active')
         self.client.force_authenticate(user=self.user1)
 
         self.employee1 = Employee.objects.create(

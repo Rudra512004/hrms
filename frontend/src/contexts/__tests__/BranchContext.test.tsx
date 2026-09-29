@@ -9,6 +9,7 @@ import {
   BRANCH_STORAGE_KEY,
 } from '../BranchContext';
 import { Header } from '../../components/Header';
+import { ThemeProvider } from '../ThemeContext';
 import { organizationService, type Branch } from '../../services/organization';
 import * as AuthContextModule from '../AuthContext';
 
@@ -132,9 +133,7 @@ describe('C5.2 BranchContext & Header Integration Suite', () => {
 
     render(
       <MemoryRouter>
-        <BranchProvider>
-          <Header toggleSidebar={vi.fn()} isSidebarOpen={true} />
-        </BranchProvider>
+        <ThemeProvider><BranchProvider><Header toggleSidebar={vi.fn()} isSidebarOpen={true} /></BranchProvider></ThemeProvider>
       </MemoryRouter>
     );
 
@@ -259,7 +258,7 @@ describe('C5.2 BranchContext & Header Integration Suite', () => {
     render(
       <MemoryRouter>
         <BranchProvider>
-          <Header toggleSidebar={vi.fn()} isSidebarOpen={true} />
+          <ThemeProvider><Header toggleSidebar={vi.fn()} isSidebarOpen={true} /></ThemeProvider>
           <TestConsumer />
         </BranchProvider>
       </MemoryRouter>

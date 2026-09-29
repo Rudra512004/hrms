@@ -64,7 +64,7 @@ export const OrgWorkforceWidget: React.FC<OrgWorkforceWidgetProps> = ({ workforc
                 width: 34,
                 height: 34,
                 borderRadius: 'var(--radius-sm)',
-                backgroundColor: 'rgba(112, 38, 227, 0.1)',
+                backgroundColor: 'var(--color-primary-glow)',
                 color: 'var(--color-primary)',
                 display: 'flex',
                 alignItems: 'center',
@@ -254,7 +254,7 @@ export const OrgWorkforceWidget: React.FC<OrgWorkforceWidgetProps> = ({ workforc
                       gap: '8px',
                     }}
                   >
-                    <span style={{ fontWeight: 500, color: 'var(--color-text-main)' }}>{b.name}</span>
+                    <span style={{ fontWeight: 500, color: 'var(--color-text-main)' }}>{b.name || 'Headquarters'}</span>
                     <span
                       style={{
                         padding: '1px 6px',

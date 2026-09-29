@@ -9,7 +9,7 @@ const styles = {
     minHeight: '100vh',
     width: '100%',
     backgroundColor: 'var(--color-bg-body)',
-    backgroundImage: 'radial-gradient(ellipse at 50% 0%, rgba(112, 38, 227, 0.07) 0%, var(--color-bg-body) 65%)',
+    backgroundImage: 'radial-gradient(ellipse at 50% 0%, var(--color-primary-glow) 0%, var(--color-bg-body) 65%)',
     padding: 'var(--spacing-md)',
   }
 };

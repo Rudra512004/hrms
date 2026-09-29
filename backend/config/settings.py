@@ -47,6 +47,7 @@ INSTALLED_APPS = [
     'apps.assets',
     'apps.notifications',
     'apps.dashboard',
+    'apps.candidates',
     'django_filters',
 ]
 

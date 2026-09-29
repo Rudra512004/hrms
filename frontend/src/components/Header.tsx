@@ -1,8 +1,9 @@
 import React from 'react';
-import { Menu, User, LogOut, ChevronRight, MapPin, ChevronDown } from 'lucide-react';
+import { Menu, User, LogOut, ChevronRight, MapPin, ChevronDown, Sun, Moon } from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useBranchContext } from '../contexts/BranchContext';
+import { useTheme } from '../contexts/ThemeContext';
 import { NotificationBell } from './NotificationBell';
 
 interface HeaderProps {
@@ -52,6 +53,7 @@ export const Header: React.FC<HeaderProps> = ({ toggleSidebar }) => {
   const location = useLocation();
   const { user, logout } = useAuth();
   const { selectedBranch, selectBranch, branches, isLoading, error } = useBranchContext();
+  const { setTheme, isDark } = useTheme();
 
   const handleLogout = async () => {
     await logout();
@@ -79,11 +81,11 @@ export const Header: React.FC<HeaderProps> = ({ toggleSidebar }) => {
           className="hide-on-mobile"
           style={{ display: 'flex', alignItems: 'center', gap: '6px', minWidth: 0 }}
         >
-          <span style={{ fontSize: 'var(--font-size-xs)', color: 'var(--color-primary)', fontWeight: 600, letterSpacing: '0.04em' }}>
+          <span style={{ fontSize: 'var(--font-size-xs)', color: 'rgba(255,255,255,0.55)', fontWeight: 600, letterSpacing: '0.04em' }}>
             BEYONDSURE HRMS
           </span>
-          <ChevronRight size={12} color="var(--color-text-muted)" />
-          <span style={{ fontSize: 'var(--font-size-sm)', fontWeight: 600, color: 'var(--color-text-main)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          <ChevronRight size={12} color="rgba(255,255,255,0.4)" />
+          <span style={{ fontSize: 'var(--font-size-sm)', fontWeight: 600, color: '#FFFFFF', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
             {breadcrumb}
           </span>
         </div>
@@ -93,7 +95,7 @@ export const Header: React.FC<HeaderProps> = ({ toggleSidebar }) => {
       <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
         {/* Branch Context Selector */}
         <div
-          className="branch-selector-container"
+          className="branch-selector-container hide-on-mobile"
           style={{
             position: 'relative',
             display: 'flex',
@@ -132,9 +134,9 @@ export const Header: React.FC<HeaderProps> = ({ toggleSidebar }) => {
               height: '32px',
               fontSize: 'var(--font-size-xs)',
               fontWeight: 500,
-              color: 'var(--color-text-main)',
-              backgroundColor: 'var(--color-bg-subtle, #f8fafc)',
-              border: '1px solid var(--color-border)',
+              color: '#ffffff',
+              backgroundColor: 'rgba(255,255,255,0.08)',
+              border: '1px solid rgba(255,255,255,0.15)',
               borderRadius: 'var(--radius-md, 6px)',
               cursor: isLoading || !!error ? 'not-allowed' : 'pointer',
               outline: 'none',
@@ -161,7 +163,7 @@ export const Header: React.FC<HeaderProps> = ({ toggleSidebar }) => {
             style={{
               position: 'absolute',
               right: '7px',
-              color: 'var(--color-text-muted)',
+              color: 'rgba(255,255,255,0.6)',
               pointerEvents: 'none',
             }}
           />
@@ -170,13 +172,23 @@ export const Header: React.FC<HeaderProps> = ({ toggleSidebar }) => {
           className="hide-on-mobile"
           style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}
         >
-          <span style={{ fontSize: 'var(--font-size-sm)', fontWeight: 600, color: 'var(--color-text-main)', lineHeight: 1.3 }}>
-            {user ? `${user.firstName} ${user.lastName}`.trim() || user.email : 'â€¦'}
+          <span style={{ fontSize: 'var(--font-size-sm)', fontWeight: 600, color: '#FFFFFF', lineHeight: 1.3 }}>
+            {user?.firstName || user?.lastName ? `${user.firstName || ''} ${user.lastName || ''}`.trim() : 'Admin User'}
           </span>
-          <span style={{ fontSize: 'var(--font-size-xs)', color: 'var(--color-text-muted)', lineHeight: 1.3 }}>
+          <span style={{ fontSize: 'var(--font-size-xs)', color: 'rgba(255,255,255,0.6)', lineHeight: 1.3 }}>
             {user?.email}
           </span>
         </div>
+
+        <button
+          className="header-toggle"
+          onClick={() => setTheme(isDark ? 'light' : 'dark')}
+          title="Toggle Theme"
+          type="button"
+          aria-label="Toggle Theme"
+        >
+          {isDark ? <Sun size={18} /> : <Moon size={18} />}
+        </button>
 
         <NotificationBell />
 
@@ -188,10 +200,10 @@ export const Header: React.FC<HeaderProps> = ({ toggleSidebar }) => {
             width: 36,
             height: 36,
             borderRadius: '50%',
-            background: 'linear-gradient(135deg, var(--color-primary) 0%, #8b5cf6 100%)',
+            background: 'var(--color-primary)',
             color: '#ffffff',
             border: 'none',
-            boxShadow: '0 2px 8px rgba(112, 38, 227, 0.28)',
+            boxShadow: '0 2px 8px var(--color-primary-glow)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',

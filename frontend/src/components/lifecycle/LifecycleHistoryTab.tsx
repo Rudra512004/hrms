@@ -36,10 +36,10 @@ const getEventBadge = (eventType: string) => {
     case 'promotion':
       return {
         label: 'Promotion',
-        color: '#7026e3',
+        color: 'var(--color-primary)',
         bg: '#f5f3ff',
         border: '#ddd6fe',
-        icon: <ArrowUpRight size={14} color="#7026e3" />,
+        icon: <ArrowUpRight size={14} color="var(--color-primary)" />,
       };
     case 'exit':
       return {

@@ -486,7 +486,7 @@ export const CalendarPage: React.FC = () => {
               }
 
               if (isToday) {
-                borderColor = 'var(--color-primary, #7026e3)';
+                borderColor = 'var(--color-primary, var(--color-primary))';
               }
 
               return (

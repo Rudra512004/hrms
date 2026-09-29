@@ -43,7 +43,7 @@ class AttendanceAPITests(TestCase):
         )
 
         self.super_user = User.objects.create_user(email='super@example.com', password='Password123!', status='active', is_superuser=True)
-        self.super_employee = Employee.objects.create(user=self.super_user, employee_code='EMP02', organization=self.org, branch=self.branch)
+        self.super_employee = Employee.objects.create(user=self.super_user, employee_code='EMP02', organization=self.org, branch=self.branch, personal_email='super@ext.com')
 
     def test_office_ip_check_in(self):
         self.client.force_authenticate(user=self.user)
@@ -57,9 +57,10 @@ class AttendanceAPITests(TestCase):
 
 
     def test_superadmin_access(self):
+        # Superadmins are explicitly prevented from checking in
         self.client.force_authenticate(user=self.super_user)
         response = self.client.post(reverse('attendance-check-in'), REMOTE_ADDR=self.external_ip)
-        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
 
     def test_duplicate_check_in(self):
         self.client.force_authenticate(user=self.user)

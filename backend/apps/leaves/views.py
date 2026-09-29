@@ -339,9 +339,9 @@ class LeaveRequestViewSet(viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         from rest_framework.exceptions import ValidationError
-        employee = getattr(self.request.user, 'employee', None)
-        if not employee:
+        if self.request.user.is_superuser or not getattr(self.request.user, 'employee', None):
             raise ValidationError({"detail": "Employee profile not found."})
+        employee = self.request.user.employee
 
         if getattr(employee, 'employment_status', None) == 'exited':
             raise ValidationError({"detail": "Exited employees cannot request leave."})
@@ -732,7 +732,7 @@ class EmployeeCalendarView(APIView):
             employee = target_employee
         else:
             # Default: own calendar
-            if not caller_emp:
+            if user.is_superuser or not caller_emp:
                 return Response(
                     {"detail": "Employee profile not found."},
                     status=status.HTTP_404_NOT_FOUND

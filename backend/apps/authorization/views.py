@@ -33,6 +33,12 @@ class CurrentUserPermissionsView(APIView):
             is_active=True
         ).values_list('name', flat=True)
 
+        # Determine whether this user has a linked employee profile.
+        # Super Admin accounts do NOT have employee profiles and must NOT
+        # access employee self-service endpoints (attendance, leaves, payslips).
+        has_employee = (not user.is_superuser) and hasattr(user, 'employee') and user.employee is not None
+        employee_code = user.employee.employee_code if (has_employee and hasattr(user, 'employee') and user.employee) else None
+
         return Response({
             'user': {
                 'id': user.id,
@@ -40,6 +46,8 @@ class CurrentUserPermissionsView(APIView):
                 'first_name': user.first_name,
                 'last_name': user.last_name,
                 'is_superuser': user.is_superuser,
+                'has_employee_profile': has_employee,
+                'employee_code': employee_code,
             },
             'roles': list(roles),
             'permissions': list(perms)

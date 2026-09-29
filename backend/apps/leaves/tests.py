@@ -420,6 +420,8 @@ class AdminLeaveTypeAPITests(TestCase):
             self.assertEqual(req.reason, 'Updated reason')
 
     def test_cannot_edit_other_employee_pending_leave(self):
+        self.branch.working_calendar.work_days = '0,1,2,3,4,5,6'
+        self.branch.working_calendar.save()
         other_user = User.objects.create_user(email='other@example.com', password='Password123!', status='active')
         other_emp = Employee.objects.create(user=other_user, employee_code='EMP99', organization=self.org, branch=self.branch)
         req = LeaveRequest.objects.create(

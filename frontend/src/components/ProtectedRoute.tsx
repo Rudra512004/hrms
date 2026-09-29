@@ -5,10 +5,15 @@ import { Loader2, AlertCircle } from 'lucide-react';
 
 interface ProtectedRouteProps {
   requiredPermission?: string | string[];
+  /**
+   * When true, this route is only accessible to users who have an employee profile.
+   * Super Admin accounts without an employee record will be redirected to /dashboard.
+   */
+  requiresEmployee?: boolean;
 }
 
-export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ requiredPermission }) => {
-  const { user, loading, error, hasPermission } = useAuth();
+export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ requiredPermission, requiresEmployee }) => {
+  const { user, loading, error, hasPermission, hasEmployeeProfile } = useAuth();
 
   if (loading) {
     return (
@@ -21,6 +26,11 @@ export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ requiredPermissi
 
   if (error || !user) {
     return <Navigate to="/login" replace />;
+  }
+
+  // Employee-only routes: redirect non-employee users (e.g. Super Admin) to dashboard
+  if (requiresEmployee && !hasEmployeeProfile) {
+    return <Navigate to="/dashboard" replace />;
   }
 
   if (requiredPermission) {

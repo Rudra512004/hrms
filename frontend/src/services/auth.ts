@@ -10,12 +10,13 @@
 
 export interface User {
   id: string;
-  hrmsId?: string; // Assigned later in the identity lifecycle
+  hrmsId?: string; // Employee code — only set for users with an employee profile
   email: string;
   firstName: string;
   lastName: string;
   status?: string;
   isSuperuser?: boolean;
+  hasEmployeeProfile: boolean; // True only if linked to an Employee record
 }
 
 export interface AuthSession {
@@ -100,6 +101,7 @@ export const authService = {
             hrmsId: data.user.employee_code,
             status: data.user.status,
             isSuperuser: Boolean(data.user.is_superuser),
+            hasEmployeeProfile: Boolean(data.user.has_employee_profile),
           },
           roles: data.roles || [],
           permissions: data.permissions || [],

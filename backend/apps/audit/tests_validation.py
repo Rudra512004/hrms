@@ -75,7 +75,7 @@ class OnboardingEmailSecurityTests(TestCase):
         self.client = APIClient()
         org, branch = make_org()
         make_office_network(branch)
-        self.admin = User.objects.create_superuser(email='admin@co.com', password='Admin1234!')
+        self.admin = User.objects.create_user(email='admin@co.com', password='Admin1234!', status='active')
         Employee.objects.create(user=self.admin, employee_code='ADM001', personal_email='admin.personal@ext.com', organization=org, branch=branch)
         grant(self.admin, 'employee.create')
 
@@ -229,11 +229,11 @@ class AuditCoverageTests(TestCase):
         self.org, self.branch = make_org()
         make_office_network(self.branch)
 
-        self.admin = User.objects.create_superuser(email='admin3@co.com', password='Admin3Pass!')
+        self.admin = User.objects.create_user(email='admin3@co.com', password='Admin3Pass!', status='active')
         self.admin_emp = Employee.objects.create(user=self.admin, employee_code='ADM003', personal_email='admin3.personal@ext.com', organization=self.org, branch=self.branch)
 
         # Second user for WFH approve (can't approve own request)
-        self.approver = User.objects.create_superuser(email='approver@co.com', password='Approver123!')
+        self.approver = User.objects.create_user(email='approver@co.com', password='Approver123!', status='active')
         Employee.objects.create(user=self.approver, employee_code='APR001', personal_email='approver.personal@ext.com', organization=self.org, branch=self.branch)
 
         self.branch.working_calendar.work_days = '0,1,2,3,4,5,6'
@@ -249,7 +249,7 @@ class AuditCoverageTests(TestCase):
         )
 
         for codename in [
-            'employee.create', 'employee.status',
+            'employee.create', 'employee.status', 'employee.view',
             'role.assign', 'role.revoke', 'role.view',
             'permission.assign', 'permission.revoke', 'permission.view',
             'wfh.request', 'wfh.approve', 'wfh.reject', 'wfh.cancel', 'wfh.view',

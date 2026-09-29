@@ -1,7 +1,8 @@
 import React from 'react';
-import { Calendar, Laptop, Receipt, Users, ShieldAlert, Clock, ArrowRight } from 'lucide-react';
+import { Calendar, Laptop, Receipt, Users, ShieldAlert, Clock, ArrowRight, Settings, Network } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { Card } from '../Card';
+import { useAuth } from '../../contexts/AuthContext';
 
 interface QuickActionsWidgetProps {
   hasTeam?: boolean;
@@ -13,44 +14,80 @@ export const QuickActionsWidget: React.FC<QuickActionsWidgetProps> = ({
   hasOrg = false,
 }) => {
   const navigate = useNavigate();
+  const { hasEmployeeProfile } = useAuth();
 
-  const routineActions = [
-    {
-      title: 'Attendance Log',
-      description: 'View punch times & breaks',
-      icon: Clock,
-      color: '#d97706',
-      bg: '#fffbeb',
-      onClick: () => navigate('/attendance'),
-    },
-    {
-      title: 'Apply Leave',
-      description: 'Submit time off or sick leave',
-      icon: Calendar,
-      color: 'var(--color-primary)',
-      bg: 'var(--color-primary-light)',
-      onClick: () => navigate('/leaves'),
-    },
-    {
-      title: 'Request WFH',
-      description: 'Submit remote work request',
-      icon: Laptop,
-      color: '#0284c7',
-      bg: '#f0f9ff',
-      onClick: () => navigate('/leaves'),
-    },
-    {
-      title: 'My Payslips',
-      description: 'View monthly pay statements',
-      icon: Receipt,
-      color: '#059669',
-      bg: '#ecfdf5',
-      onClick: () => navigate('/payslips'),
-    },
-  ];
+  const routineActions = hasEmployeeProfile
+    ? [
+        {
+          title: 'Attendance Log',
+          description: 'View punch times & breaks',
+          icon: Clock,
+          color: '#d97706',
+          bg: '#fffbeb',
+          onClick: () => navigate('/attendance'),
+        },
+        {
+          title: 'Apply Leave',
+          description: 'Submit time off or sick leave',
+          icon: Calendar,
+          color: 'var(--color-primary)',
+          bg: 'var(--color-primary-light)',
+          onClick: () => navigate('/leaves'),
+        },
+        {
+          title: 'Request WFH',
+          description: 'Submit remote work request',
+          icon: Laptop,
+          color: '#0284c7',
+          bg: '#f0f9ff',
+          onClick: () => navigate('/leaves'),
+        },
+        {
+          title: 'My Payslips',
+          description: 'View monthly pay statements',
+          icon: Receipt,
+          color: '#059669',
+          bg: '#ecfdf5',
+          onClick: () => navigate('/payslips'),
+        },
+      ]
+    : [
+        {
+          title: 'Staff Directory',
+          description: 'Browse all company employees',
+          icon: Users,
+          color: '#2563eb',
+          bg: '#eff6ff',
+          onClick: () => navigate('/admin/employees'),
+        },
+        {
+          title: 'Attendance Mgmt',
+          description: 'Manage workforce attendance',
+          icon: Clock,
+          color: '#d97706',
+          bg: '#fffbeb',
+          onClick: () => navigate('/admin/attendance'),
+        },
+        {
+          title: 'Leave Requests',
+          description: 'Review pending leave submissions',
+          icon: Calendar,
+          color: 'var(--color-primary)',
+          bg: 'var(--color-primary-light)',
+          onClick: () => navigate('/admin/leaves'),
+        },
+        {
+          title: 'Audit Logs',
+          description: 'Review security & system logs',
+          icon: Settings,
+          color: '#dc2626',
+          bg: '#fef2f2',
+          onClick: () => navigate('/admin/audit-logs'),
+        },
+      ];
 
   const elevatedActions = [];
-  if (hasTeam) {
+  if (hasEmployeeProfile && hasTeam) {
     elevatedActions.push({
       title: 'Team Approvals',
       description: 'Review direct report requests',
@@ -61,7 +98,7 @@ export const QuickActionsWidget: React.FC<QuickActionsWidgetProps> = ({
     });
   }
 
-  if (hasOrg) {
+  if (hasEmployeeProfile && hasOrg) {
     elevatedActions.push({
       title: 'Staff Directory',
       description: 'Browse all company employees',
@@ -77,6 +114,23 @@ export const QuickActionsWidget: React.FC<QuickActionsWidgetProps> = ({
       color: '#dc2626',
       bg: '#fef2f2',
       onClick: () => navigate('/admin/audit-logs'),
+    });
+  } else if (!hasEmployeeProfile) {
+    elevatedActions.push({
+      title: 'Roles & Permissions',
+      description: 'Manage RBAC permissions',
+      icon: ShieldAlert,
+      color: '#7c3aed',
+      bg: '#f5f3ff',
+      onClick: () => navigate('/admin/roles'),
+    });
+    elevatedActions.push({
+      title: 'Office Networks',
+      description: 'Configure branch IP rules',
+      icon: Network,
+      color: '#0284c7',
+      bg: '#f0f9ff',
+      onClick: () => navigate('/admin/office-networks'),
     });
   }
 

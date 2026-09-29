@@ -9,6 +9,12 @@ interface AuthContextType {
   loading: boolean;
   error: string | null;
   hasPermission: (permission: string) => boolean;
+  /**
+   * True if the authenticated user is linked to an Employee record.
+   * Super Admin accounts do NOT have employee profiles.
+   * Use this to gate ALL employee self-service UI (attendance, leaves, payslips, punch in/out).
+   */
+  hasEmployeeProfile: boolean;
   refreshAuth: () => Promise<void>;
   logout: () => Promise<void>;
 }
@@ -65,6 +71,10 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     setSession(null);
   };
 
+  // Derived: whether the current user has an employee profile.
+  // Defaults to false if session is not loaded yet or user has no employee.
+  const hasEmployeeProfile = Boolean(session?.user?.hasEmployeeProfile);
+
   return (
     <AuthContext.Provider 
       value={{ 
@@ -72,8 +82,9 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         roles: session?.roles || [], 
         permissions: session?.permissions || [], 
         loading, 
-        error, 
+        error,
         hasPermission,
+        hasEmployeeProfile,
         refreshAuth: loadAuth,
         logout
       }}

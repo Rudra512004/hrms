@@ -95,14 +95,14 @@ const styles = {
   button: {
     width: '100%',
     padding: '11px 16px',
-    background: 'linear-gradient(135deg, var(--color-primary) 0%, #8b5cf6 100%)',
+    background: 'var(--color-primary)',
     color: 'white',
     border: '1px solid var(--color-primary)',
     borderRadius: 'var(--radius-md)',
     fontSize: 'var(--font-size-sm)',
     fontWeight: 600,
     cursor: 'pointer',
-    boxShadow: '0 4px 14px rgba(112, 38, 227, 0.28)',
+    boxShadow: '0 4px 14px var(--color-primary-glow)',
     transition: 'all 0.18s cubic-bezier(0.4, 0, 0.2, 1)',
   },
   link: {

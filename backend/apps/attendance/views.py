@@ -81,7 +81,7 @@ class AttendanceViewSet(viewsets.GenericViewSet):
 
     def get_queryset(self):
         user = self.request.user
-        if hasattr(user, 'employee'):
+        if not user.is_superuser and hasattr(user, 'employee'):
             return Attendance.objects.filter(employee=user.employee)
         return Attendance.objects.none()
 
@@ -92,7 +92,7 @@ class AttendanceViewSet(viewsets.GenericViewSet):
 
     @action(detail=False, methods=['post'], url_path='check-in')
     def check_in(self, request):
-        if not hasattr(request.user, 'employee'):
+        if request.user.is_superuser or not hasattr(request.user, 'employee'):
             return Response({'detail': 'Employee profile not found.'}, status=status.HTTP_404_NOT_FOUND)
 
         employee = request.user.employee
@@ -140,7 +140,7 @@ class AttendanceViewSet(viewsets.GenericViewSet):
 
     @action(detail=False, methods=['post'], url_path='check-out')
     def check_out(self, request):
-        if not hasattr(request.user, 'employee'):
+        if request.user.is_superuser or not hasattr(request.user, 'employee'):
             return Response({'detail': 'Employee profile not found.'}, status=status.HTTP_404_NOT_FOUND)
 
         employee = request.user.employee
@@ -200,7 +200,7 @@ class AttendanceViewSet(viewsets.GenericViewSet):
 
     @action(detail=False, methods=['post'], url_path='start-break')
     def start_break(self, request):
-        if not hasattr(request.user, 'employee'):
+        if request.user.is_superuser or not hasattr(request.user, 'employee'):
             return Response({'detail': 'Employee profile not found.'}, status=status.HTTP_404_NOT_FOUND)
 
         employee = request.user.employee
@@ -240,7 +240,7 @@ class AttendanceViewSet(viewsets.GenericViewSet):
 
     @action(detail=False, methods=['post'], url_path='end-break')
     def end_break(self, request):
-        if not hasattr(request.user, 'employee'):
+        if request.user.is_superuser or not hasattr(request.user, 'employee'):
             return Response({'detail': 'Employee profile not found.'}, status=status.HTTP_404_NOT_FOUND)
 
         employee = request.user.employee

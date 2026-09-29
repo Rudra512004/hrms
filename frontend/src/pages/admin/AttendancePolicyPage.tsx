@@ -295,7 +295,7 @@ export const AttendancePolicyPage: React.FC = () => {
                     border: '1px solid var(--color-border)',
                   }}
                 >
-                  <div style={{ padding: '8px', borderRadius: 'var(--radius-md)', backgroundColor: 'rgba(139, 92, 246, 0.1)', color: '#8b5cf6' }}>
+                  <div style={{ padding: '8px', borderRadius: 'var(--radius-md)', backgroundColor: 'var(--color-primary-glow)', color: 'var(--color-primary)' }}>
                     <ShieldCheck size={20} />
                   </div>
                   <div style={{ flex: 1 }}>

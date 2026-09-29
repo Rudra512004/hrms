@@ -640,7 +640,7 @@ export const EmployeesPage: React.FC = () => {
               boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
             }}
           >
-            {e.first_name?.[0] || ''}{e.last_name?.[0] || ''}
+            { ((e.first_name?.[0] || '') + (e.last_name?.[0] || '')).toUpperCase() || '?' }
           </div>
           <div style={{ minWidth: 0 }}>
             <div style={{ fontWeight: 600, color: 'var(--color-text-main)', fontSize: 'var(--font-size-sm)' }}>
@@ -686,7 +686,7 @@ export const EmployeesPage: React.FC = () => {
       render: (e: EmployeeProfile) => (
         <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
           <button
-            style={{ ...styles.actionBtn, padding: '5px', borderRadius: '6px', backgroundColor: 'rgba(112, 38, 227, 0.08)' }}
+            style={{ ...styles.actionBtn, padding: '5px', borderRadius: '6px', backgroundColor: 'var(--color-primary-glow)' }}
             onClick={() => navigate(`/admin/employees/${e.id}`)}
             title="View Profile"
             data-testid={`view-profile-${e.id}`}
