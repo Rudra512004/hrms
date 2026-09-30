@@ -6,7 +6,24 @@ logger = logging.getLogger(__name__)
 
 class NotificationService:
     @staticmethod
-    def send_employee_onboarding_email(personal_email, first_name, employee_code, uid, token):
+    def send_tenant_owner_verification_email(recipient_email, first_name, uid, token):
+        frontend_url = getattr(settings, 'FRONTEND_URL', 'http://localhost:5173')
+        activation_link = f"{frontend_url}/activate?uid={uid}&token={token}"
+        try:
+            send_mail(
+                'Verify your BeyondSure HRMS account',
+                f"Hello {first_name},\n\nVerify your email and set your password to start your organization setup:\n{activation_link}\n\nDo not share this link.",
+                settings.DEFAULT_FROM_EMAIL,
+                [recipient_email],
+                fail_silently=False,
+            )
+            return True
+        except Exception as e:
+            logger.error(f"Failed to send tenant owner verification email to {recipient_email}: {str(e)}")
+            return False
+
+    @staticmethod
+    def send_employee_onboarding_email(recipient_email, first_name, employee_code, uid, token):
         subject = 'Welcome to HRMS - Your account is ready'
         frontend_url = getattr(settings, 'FRONTEND_URL', 'http://localhost:5173')
         activation_link = f"{frontend_url}/activate?uid={uid}&token={token}"
@@ -26,12 +43,12 @@ class NotificationService:
                 subject,
                 message,
                 settings.DEFAULT_FROM_EMAIL,
-                [personal_email],
+                [recipient_email],
                 fail_silently=False,
             )
             return True
         except Exception as e:
-            logger.error(f"Failed to send onboarding email to {personal_email}: {str(e)}")
+            logger.error(f"Failed to send onboarding email to {recipient_email}: {str(e)}")
             return False
 
     @staticmethod

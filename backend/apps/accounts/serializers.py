@@ -16,6 +16,44 @@ class UserSerializer(serializers.ModelSerializer):
         fields = ('id', 'email', 'first_name', 'last_name', 'status', 'is_staff', 'is_superuser', 'created_at', 'updated_at', 'employee_code')
         read_only_fields = fields
 
+
+class AccountProfileSerializer(serializers.ModelSerializer):
+    """Safe self-service fields for accounts without an Employee profile."""
+
+    class Meta:
+        model = User
+        fields = ('first_name', 'last_name')
+
+    def validate_first_name(self, value):
+        value = value.strip()
+        if not value:
+            raise serializers.ValidationError('First name is required.')
+        return value
+
+
+class TenantOwnerRegistrationSerializer(serializers.Serializer):
+    email = serializers.EmailField()
+    first_name = serializers.CharField(max_length=150)
+    last_name = serializers.CharField(max_length=150)
+
+    def validate_email(self, value):
+        value = User.objects.normalize_email(value)
+        if User.objects.filter(email=value).exists():
+            raise serializers.ValidationError('An account already exists for this email. Please sign in or reset its password.')
+        return value
+
+    def validate_first_name(self, value):
+        return AccountProfileSerializer().validate_first_name(value)
+
+    def validate_last_name(self, value):
+        return AccountProfileSerializer().validate_last_name(value)
+
+    def validate_last_name(self, value):
+        value = value.strip()
+        if not value:
+            raise serializers.ValidationError('Last name is required.')
+        return value
+
 class LoginSerializer(serializers.Serializer):
     email = serializers.EmailField()
     password = serializers.CharField(write_only=True)

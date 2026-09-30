@@ -62,12 +62,12 @@ const styles: Record<string, React.CSSProperties> = {
 
 export const OrganizationLaunchpadPage: React.FC = () => {
   const navigate = useNavigate();
-  const { user } = useAuth();
+  const { user, hasPermission, refreshAuth } = useAuth();
   const [form, setForm] = useState<SetupForm>(initialForm);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const isSuperAdmin = Boolean(user?.isSuperuser);
+  const canLaunch = Boolean(user?.isSuperuser || user?.canCreateOrganization || hasPermission('organization.manage'));
   const hasCompleteCoordinates = Boolean(form.latitude) === Boolean(form.longitude);
   const hasValidNetwork = !form.ipEnabled || (Boolean(form.networkName.trim()) && Boolean(form.networkCidr.trim()));
   const hasValidRadius = Number(form.radius) >= 100;
@@ -83,7 +83,7 @@ export const OrganizationLaunchpadPage: React.FC = () => {
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
-    if (!canSubmit || !isSuperAdmin) {
+    if (!canSubmit || !canLaunch) {
       if (!hasCompleteCoordinates) setError('Enter both latitude and longitude, or leave both blank.');
       else if (!hasValidNetwork) setError('An office-network policy needs both a network name and CIDR range.');
       else if (!hasValidRadius) setError('The geo-fence radius must be at least 100 meters.');
@@ -114,7 +114,9 @@ export const OrganizationLaunchpadPage: React.FC = () => {
           wfh_bypasses_office_restrictions: true,
         },
       };
-      await organizationService.createOrganizationSetup(payload);
+      if (user?.isSuperuser) await organizationService.createOrganizationSetup(payload);
+      else await organizationService.createTenantOrganizationSetup(payload);
+      await refreshAuth();
       navigate('/admin/organizations');
     } catch (requestError: any) {
       const data = requestError?.errorData;
@@ -147,8 +149,8 @@ export const OrganizationLaunchpadPage: React.FC = () => {
         <Link to="/admin/organizations" className="btn btn-secondary">View organizations</Link>
       </div>
 
-      {!isSuperAdmin && (
-        <div style={styles.error} role="alert"><ShieldCheck size={18} /> Only a Super Admin can launch a new organization. You can still use the linked screens to administer resources you are authorized to manage.</div>
+      {!canLaunch && (
+        <div style={styles.error} role="alert"><ShieldCheck size={18} /> Verify a tenant-owner account before launching an organization. Existing organization administrators can continue using the linked configuration screens.</div>
       )}
 
       <div className="organization-launchpad-grid" style={styles.grid}>
@@ -159,18 +161,18 @@ export const OrganizationLaunchpadPage: React.FC = () => {
             {error && <div style={styles.error} role="alert"><AlertCircle size={18} /> {error}</div>}
 
             <div style={styles.fieldGrid}>
-              <label style={{ ...styles.field, ...styles.full }}><span style={styles.label}>Organization name</span><input style={styles.input} value={form.organizationName} onChange={e => update('organizationName', e.target.value)} placeholder="e.g. BeyondSure India Pvt. Ltd." required disabled={!isSuperAdmin} /></label>
-              <label style={{ ...styles.field, ...styles.full }}><span style={styles.label}>First branch / location</span><input style={styles.input} value={form.branchName} onChange={e => update('branchName', e.target.value)} placeholder="e.g. Bengaluru HQ" required disabled={!isSuperAdmin} /></label>
-              <label style={{ ...styles.field, ...styles.full }}><span style={styles.label}>Address <span className="text-muted">(optional)</span></span><input style={styles.input} value={form.address} onChange={e => update('address', e.target.value)} placeholder="Office address" disabled={!isSuperAdmin} /></label>
-              <label style={styles.field}><span style={styles.label}>Latitude <span className="text-muted">(optional)</span></span><input style={styles.input} inputMode="decimal" value={form.latitude} onChange={e => update('latitude', e.target.value)} placeholder="12.9716" disabled={!isSuperAdmin} /></label>
-              <label style={styles.field}><span style={styles.label}>Longitude <span className="text-muted">(optional)</span></span><input style={styles.input} inputMode="decimal" value={form.longitude} onChange={e => update('longitude', e.target.value)} placeholder="77.5946" disabled={!isSuperAdmin} /></label>
-              <label style={styles.field}><span style={styles.label}>Geo-fence radius (meters)</span><input style={styles.input} type="number" min="100" value={form.radius} onChange={e => update('radius', e.target.value)} disabled={!isSuperAdmin} /></label>
+              <label style={{ ...styles.field, ...styles.full }}><span style={styles.label}>Organization name</span><input style={styles.input} value={form.organizationName} onChange={e => update('organizationName', e.target.value)} placeholder="e.g. BeyondSure India Pvt. Ltd." required disabled={!canLaunch} /></label>
+              <label style={{ ...styles.field, ...styles.full }}><span style={styles.label}>First branch / location</span><input style={styles.input} value={form.branchName} onChange={e => update('branchName', e.target.value)} placeholder="e.g. Bengaluru HQ" required disabled={!canLaunch} /></label>
+              <label style={{ ...styles.field, ...styles.full }}><span style={styles.label}>Address <span className="text-muted">(optional)</span></span><input style={styles.input} value={form.address} onChange={e => update('address', e.target.value)} placeholder="Office address" disabled={!canLaunch} /></label>
+              <label style={styles.field}><span style={styles.label}>Latitude <span className="text-muted">(optional)</span></span><input style={styles.input} inputMode="decimal" value={form.latitude} onChange={e => update('latitude', e.target.value)} placeholder="12.9716" disabled={!canLaunch} /></label>
+              <label style={styles.field}><span style={styles.label}>Longitude <span className="text-muted">(optional)</span></span><input style={styles.input} inputMode="decimal" value={form.longitude} onChange={e => update('longitude', e.target.value)} placeholder="77.5946" disabled={!canLaunch} /></label>
+              <label style={styles.field}><span style={styles.label}>Geo-fence radius (meters)</span><input style={styles.input} type="number" min="100" value={form.radius} onChange={e => update('radius', e.target.value)} disabled={!canLaunch} /></label>
             </div>
 
             <hr style={styles.divider} />
             <h2 style={styles.sectionTitle}><CalendarDays size={20} color="var(--color-primary)" /> Working schedule</h2>
             <p style={styles.sectionHelp}>Choose standard working days. Fine-grained recurring rules can be configured after launch.</p>
-            <div style={styles.days}>{weekdayOptions.map(([value, label]) => <button key={value} type="button" style={{ ...styles.day, ...(form.workDays.includes(value) ? styles.daySelected : {}) }} onClick={() => toggleDay(value)} disabled={!isSuperAdmin} aria-pressed={form.workDays.includes(value)}>{label}</button>)}</div>
+            <div style={styles.days}>{weekdayOptions.map(([value, label]) => <button key={value} type="button" style={{ ...styles.day, ...(form.workDays.includes(value) ? styles.daySelected : {}) }} onClick={() => toggleDay(value)} disabled={!canLaunch} aria-pressed={form.workDays.includes(value)}>{label}</button>)}</div>
 
             <hr style={styles.divider} />
             <h2 style={styles.sectionTitle}><ShieldCheck size={20} color="var(--color-primary)" /> Attendance policy</h2>
@@ -179,11 +181,11 @@ export const OrganizationLaunchpadPage: React.FC = () => {
               ['gpsEnabled', 'Require office GPS', 'Validate check-in against the branch geo-fence.'],
               ['ipEnabled', 'Require office IP network', 'Allow check-in only from an approved office network.'],
               ['wfhEnabled', 'Allow work-from-home requests', 'Employees can request approved remote work.'],
-            ].map(([key, title, help]) => <label key={key} style={styles.toggleRow}><span style={styles.toggleLabel}><strong>{title}</strong><span style={styles.toggleHelp}>{help}</span></span><input type="checkbox" checked={Boolean(form[key as keyof SetupForm])} onChange={e => update(key as 'gpsEnabled' | 'ipEnabled' | 'wfhEnabled', e.target.checked)} disabled={!isSuperAdmin} /></label>)}
+            ].map(([key, title, help]) => <label key={key} style={styles.toggleRow}><span style={styles.toggleLabel}><strong>{title}</strong><span style={styles.toggleHelp}>{help}</span></span><input type="checkbox" checked={Boolean(form[key as keyof SetupForm])} onChange={e => update(key as 'gpsEnabled' | 'ipEnabled' | 'wfhEnabled', e.target.checked)} disabled={!canLaunch} /></label>)}
 
-            {form.ipEnabled && <div style={{ ...styles.fieldGrid, marginTop: 'var(--spacing-md)' }}><label style={styles.field}><span style={styles.label}>Network name</span><input style={styles.input} value={form.networkName} onChange={e => update('networkName', e.target.value)} placeholder="HQ network" disabled={!isSuperAdmin} /></label><label style={styles.field}><span style={styles.label}>CIDR network</span><input style={styles.input} value={form.networkCidr} onChange={e => update('networkCidr', e.target.value)} placeholder="203.0.113.0/24" disabled={!isSuperAdmin} /></label></div>}
+            {form.ipEnabled && <div style={{ ...styles.fieldGrid, marginTop: 'var(--spacing-md)' }}><label style={styles.field}><span style={styles.label}>Network name</span><input style={styles.input} value={form.networkName} onChange={e => update('networkName', e.target.value)} placeholder="HQ network" disabled={!canLaunch} /></label><label style={styles.field}><span style={styles.label}>CIDR network</span><input style={styles.input} value={form.networkCidr} onChange={e => update('networkCidr', e.target.value)} placeholder="203.0.113.0/24" disabled={!canLaunch} /></label></div>}
 
-            <button className="btn btn-primary" style={styles.primary} type="submit" disabled={!canSubmit || !isSuperAdmin || saving}>{saving ? <Loader2 size={18} className="animate-spin" /> : <CheckCircle2 size={18} />} Create organization and first branch</button>
+            <button className="btn btn-primary" style={styles.primary} type="submit" disabled={!canSubmit || !canLaunch || saving}>{saving ? <Loader2 size={18} className="animate-spin" /> : <CheckCircle2 size={18} />} Create organization and first branch</button>
           </form>
         </Card>
 

@@ -4,7 +4,7 @@ from rest_framework.views import APIView
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.authtoken.models import Token
 from rest_framework.throttling import AnonRateThrottle
-from .serializers import LoginSerializer, UserSerializer, ActivateSerializer
+from .serializers import LoginSerializer, UserSerializer, AccountProfileSerializer, TenantOwnerRegistrationSerializer, ActivateSerializer
 from apps.authorization.permissions import IsNetworkAllowed
 from apps.audit.services import AuditService
 from rest_framework.exceptions import ValidationError
@@ -16,6 +16,41 @@ class LoginRateThrottle(AnonRateThrottle):
 
 class ActivationThrottle(AnonRateThrottle):
     rate = '10/minute'
+
+
+class RegistrationThrottle(AnonRateThrottle):
+    rate = '5/hour'
+
+
+class TenantOwnerRegistrationView(APIView):
+    permission_classes = [AllowAny]
+    throttle_classes = [RegistrationThrottle]
+
+    def post(self, request, *args, **kwargs):
+        serializer = TenantOwnerRegistrationSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        user = User.objects.create_user(
+            email=serializer.validated_data['email'],
+            first_name=serializer.validated_data['first_name'],
+            last_name=serializer.validated_data['last_name'],
+        )
+        from .models import TenantOwnerRegistration
+        TenantOwnerRegistration.objects.create(user=user)
+
+        uid = urlsafe_base64_encode(force_bytes(user.pk))
+        token = default_token_generator.make_token(user)
+        from apps.notifications.services import NotificationService
+        email_sent = NotificationService.send_tenant_owner_verification_email(
+            recipient_email=user.email,
+            first_name=user.first_name,
+            uid=uid,
+            token=token,
+        )
+        AuditService.log(
+            action='tenant_owner_registration_requested', actor=user, target_type='user', target_id=user.id,
+            metadata={'verification_email_sent': email_sent}, request=request,
+        )
+        return Response({'detail': 'Check your email to verify your account and set a password.'}, status=status.HTTP_201_CREATED)
 
 
 class LoginView(APIView):
@@ -70,6 +105,20 @@ class MeView(APIView):
         serializer = UserSerializer(request.user)
         return Response(serializer.data, status=status.HTTP_200_OK)
 
+    def patch(self, request, *args, **kwargs):
+        serializer = AccountProfileSerializer(request.user, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        user = serializer.save()
+        AuditService.log(
+            action='account_profile_updated',
+            actor=user,
+            target_type='user',
+            target_id=user.id,
+            metadata={'fields': sorted(serializer.validated_data.keys())},
+            request=request,
+        )
+        return Response(UserSerializer(user).data, status=status.HTTP_200_OK)
+
 class ActivateView(APIView):
     permission_classes = [AllowAny]
     throttle_classes = [ActivationThrottle]
@@ -78,6 +127,11 @@ class ActivateView(APIView):
         serializer = ActivateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         user = serializer.save()
+        registration = getattr(user, 'tenant_owner_registration', None)
+        if registration and registration.verified_at is None:
+            from django.utils import timezone
+            registration.verified_at = timezone.now()
+            registration.save(update_fields=['verified_at'])
 
         AuditService.log(
             action='account_activation',

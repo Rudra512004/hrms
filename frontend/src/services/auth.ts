@@ -17,6 +17,7 @@ export interface User {
   status?: string;
   isSuperuser?: boolean;
   hasEmployeeProfile: boolean; // True only if linked to an Employee record
+  canCreateOrganization?: boolean;
 }
 
 export interface AuthSession {
@@ -102,6 +103,7 @@ export const authService = {
             status: data.user.status,
             isSuperuser: Boolean(data.user.is_superuser),
             hasEmployeeProfile: Boolean(data.user.has_employee_profile),
+            canCreateOrganization: Boolean(data.user.can_create_organization),
           },
           roles: data.roles || [],
           permissions: data.permissions || [],
@@ -114,6 +116,35 @@ export const authService = {
     } catch (e) {
       console.error('Failed to fetch user', e);
       return null;
+    }
+  },
+
+  registerTenantOwner: async (data: { email: string; first_name: string; last_name: string }): Promise<string> => {
+    const response = await fetch('/api/v1/auth/register/', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data),
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      const firstError = Object.values(payload)[0];
+      throw new Error(Array.isArray(firstError) ? firstError[0] : 'Unable to create your account.');
+    }
+    return payload.detail;
+  },
+
+  updateAccountProfile: async (data: { first_name: string; last_name: string }): Promise<void> => {
+    const token = localStorage.getItem('auth_token');
+    const response = await fetch('/api/v1/auth/me/', {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { 'Authorization': `Token ${token}` } : {}),
+      },
+      body: JSON.stringify(data),
+    });
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      const firstError = Object.values(errorData)[0];
+      throw new Error(Array.isArray(firstError) ? firstError[0] : 'Unable to save account profile.');
     }
   },
 

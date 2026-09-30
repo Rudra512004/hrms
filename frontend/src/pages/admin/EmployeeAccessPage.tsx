@@ -180,22 +180,10 @@ export const EmployeeAccessPage: React.FC = () => {
     if (!employeeId) return;
     setLoading(true);
     try {
-      // API expects the user ID for role assignments, not employee ID. 
-      // BUT in our API contract, the management endpoint gets the employee.
-      // Wait, UserRole uses User ID. Does getEmployee return user id?
-      // Yes, employee has id. We assume employee id == user id or the backend handles it.
-      // Actually, according to the contract, employee management uses Employee ID.
-      // Authorization uses User ID. Often they are the same or we need to extract user id.
-      // Let's assume Employee ID is used for now.
       const emp = await employeeManagementService.getEmployee(Number(employeeId));
       setEmployee(emp);
-
-      // In this HRMS implementation, the backend /api/v1/authorization/user-roles/?user=X
-      // expects the User ID. If employee.id is the employee ID, we might need user.id.
-      // The API contract for employee response returns id (which is Employee ID).
-      // We will use the employee ID as the user ID for simplicity, assuming a 1:1 mapping in the system 
-      // or that the backend handles it appropriately.
-      const userId = emp.id;
+      const userId = emp.user_id;
+      if (!userId) throw new Error('This employee account cannot receive access assignments.');
 
       const [uRoles, uPerms, roles, perms, effPerms] = await Promise.all([
         authorizationManagementService.listUserRoles(userId),
@@ -228,11 +216,11 @@ export const EmployeeAccessPage: React.FC = () => {
 
   const handleAssignRole = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedRoleId || !employee) return;
+    if (!selectedRoleId || !employee?.user_id) return;
     setSaving(true);
     setFormError(null);
     try {
-      await authorizationManagementService.assignRole(employee.id, Number(selectedRoleId));
+      await authorizationManagementService.assignRole(employee.user_id, Number(selectedRoleId));
       setIsRoleModalOpen(false);
       loadData();
     } catch (err: any) {
@@ -246,11 +234,11 @@ export const EmployeeAccessPage: React.FC = () => {
 
   const handleGrantPermission = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedPermId || !employee) return;
+    if (!selectedPermId || !employee?.user_id) return;
     setSaving(true);
     setFormError(null);
     try {
-      await authorizationManagementService.grantPermission(employee.id, Number(selectedPermId));
+      await authorizationManagementService.grantPermission(employee.user_id, Number(selectedPermId));
       setIsPermModalOpen(false);
       loadData();
     } catch (err: any) {

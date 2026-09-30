@@ -94,7 +94,7 @@ const styles = {
 };
 
 export const ProfilePage: React.FC = () => {
-  const { hasPermission, hasEmployeeProfile, user } = useAuth();
+  const { hasPermission, hasEmployeeProfile, user, refreshAuth } = useAuth();
   const canEditAll = hasPermission('employee.update');
   const [profile, setProfile] = useState<EmployeeProfile | null>(null);
   const [loading, setLoading] = useState(true);
@@ -165,6 +165,12 @@ export const ProfilePage: React.FC = () => {
 
   useEffect(() => {
     if (!hasEmployeeProfile) {
+      setFormData((current) => ({
+        ...current,
+        first_name: user?.firstName || '',
+        last_name: user?.lastName || '',
+        email: user?.email || '',
+      }));
       setLoading(false);
       return;
     }
@@ -191,7 +197,7 @@ export const ProfilePage: React.FC = () => {
         }
       })
       .finally(() => setLoading(false));
-  }, [hasEmployeeProfile]);
+  }, [hasEmployeeProfile, user]);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
@@ -207,6 +213,16 @@ export const ProfilePage: React.FC = () => {
     setSaveSuccess(false);
 
     try {
+      if (!hasEmployeeProfile) {
+        await authService.updateAccountProfile({
+          first_name: formData.first_name,
+          last_name: formData.last_name,
+        });
+        await refreshAuth();
+        setSaveSuccess(true);
+        setTimeout(() => setSaveSuccess(false), 3000);
+        return;
+      }
       const updatedProfile = await employeeService.updateProfile(formData);
       setProfile(updatedProfile);
       setFormData({
@@ -290,9 +306,7 @@ export const ProfilePage: React.FC = () => {
                   ) : (
                     <div style={styles.readOnlyValue}>{profile?.first_name}</div>
                   )
-                ) : (
-                  <div style={styles.readOnlyValue}>{user?.firstName || '—'}</div>
-                )}
+                ) : <input type="text" name="first_name" value={formData.first_name} onChange={handleChange} className="input-neumorphic" required />}
               </div>
               <div style={styles.formGroup}>
                 <label style={styles.label}>Last Name</label>
@@ -302,9 +316,7 @@ export const ProfilePage: React.FC = () => {
                   ) : (
                     <div style={styles.readOnlyValue}>{profile?.last_name}</div>
                   )
-                ) : (
-                  <div style={styles.readOnlyValue}>{user?.lastName || '—'}</div>
-                )}
+                ) : <input type="text" name="last_name" value={formData.last_name} onChange={handleChange} className="input-neumorphic" required />}
               </div>
             </div>
           </div>
@@ -417,7 +429,7 @@ export const ProfilePage: React.FC = () => {
           </Card>
         )}
 
-        {hasEmployeeProfile && (
+        {(hasEmployeeProfile || user?.isSuperuser) && (
           <button
             type="submit"
             disabled={saving}
@@ -425,7 +437,7 @@ export const ProfilePage: React.FC = () => {
             style={{ alignSelf: 'flex-start' }}
           >
             {saving ? <Loader2 size={20} style={{ animation: 'spin 1s linear infinite' }} /> : <Save size={20} />}
-            {saving ? 'Saving...' : 'Save Changes'}
+            {saving ? 'Saving...' : hasEmployeeProfile ? 'Save Changes' : 'Save Account Profile'}
           </button>
         )}
       </form>

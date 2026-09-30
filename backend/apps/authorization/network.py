@@ -53,7 +53,11 @@ class NetworkAccessService:
         ip = NetworkAccessService.get_client_ip(request)
         employee = getattr(user, 'employee', None)
         if not employee:
-            return False
+            # Tenant owners are headless administration accounts, not employees.
+            # They must be able to configure their own organization remotely;
+            # employee attendance and self-service access remains IP/WFH checked.
+            from .services import AuthorizationService
+            return AuthorizationService.get_primary_organization(user) is not None
 
         if NetworkAccessService.is_wfh_active(employee):
             return True

@@ -991,7 +991,7 @@ export const EmployeesPage: React.FC = () => {
                   </div>
                   {hasPermission('employee.view_sensitive') ? (
                     <div style={styles.formGroup}>
-                      <label style={styles.label}>Personal Email</label>
+                      <label style={styles.label}>Invitation Email <span className="text-muted">(optional)</span></label>
                       <input
                         style={styles.input}
                         type="email"
@@ -1005,6 +1005,7 @@ export const EmployeesPage: React.FC = () => {
                       {fieldErrors.personal_email && (
                         <span style={styles.fieldError} data-testid="error-personal-email">{fieldErrors.personal_email}</span>
                       )}
+                      <span className="text-muted" style={{ fontSize: 'var(--font-size-xs)', marginTop: 4 }}>If omitted, the activation invite is sent to the work email above.</span>
                     </div>
                   ) : (
                     <div style={{ fontSize: '0.9rem', color: 'var(--color-text-muted)', fontStyle: 'italic', marginBottom: '16px' }}>

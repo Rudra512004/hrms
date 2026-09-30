@@ -5,6 +5,24 @@ from django.db.models import Q
 
 class AuthorizationService:
     @staticmethod
+    def get_primary_organization(user):
+        """Return the sole organization context for an employee or scoped admin.
+
+        Platform Super Admins intentionally have no tenant context. Tenant
+        owners are headless accounts, so their context comes from an active
+        organization-scoped role rather than an Employee record.
+        """
+        if not user or not user.is_authenticated or user.is_superuser:
+            return None
+        if hasattr(user, 'employee') and user.employee and user.employee.organization_id:
+            return user.employee.organization
+        user_role = user.user_roles.filter(
+            is_revoked=False,
+            role__is_active=True,
+            role__organization__isnull=False,
+        ).select_related('role__organization').first()
+        return user_role.role.organization if user_role else None
+    @staticmethod
     def get_effective_permissions(user, branch_id=None, team_id=None, global_only=False):
         if not user.is_authenticated or not user.is_active:
             return set()
@@ -104,7 +122,16 @@ class AuthorizationService:
         if has_org_role or has_org_grant:
             if hasattr(user, 'employee') and user.employee:
                 return Branch.objects.filter(is_active=True, organization_id=user.employee.organization_id)
-            return Branch.objects.filter(is_active=True)
+            organization_ids = set(UserRole.objects.filter(
+                user=user, is_revoked=False, scope=ScopeChoices.ORGANIZATION,
+                role__is_active=True, role__role_permissions__permission__codename=permission_codename,
+                role__role_permissions__permission__is_active=True,
+            ).exclude(expires_at__lt=now).values_list('role__organization_id', flat=True))
+            organization_ids.update(UserPermissionGrant.objects.filter(
+                user=user, is_revoked=False, scope=ScopeChoices.ORGANIZATION,
+                permission__codename=permission_codename, permission__is_active=True,
+            ).exclude(expires_at__lt=now).values_list('branch__organization_id', flat=True))
+            return Branch.objects.filter(is_active=True, organization_id__in=organization_ids)
 
         # Collect branch-scoped permissions
         branch_ids = set()
@@ -164,7 +191,12 @@ class AuthorizationService:
         if has_org_role or has_org_grant:
             if hasattr(user, 'employee') and user.employee:
                 return Team.objects.filter(is_active=True, department__branch__organization_id=user.employee.organization_id)
-            return Team.objects.filter(is_active=True)
+            organization_ids = set(UserRole.objects.filter(
+                user=user, is_revoked=False, scope=ScopeChoices.ORGANIZATION,
+                role__is_active=True, role__role_permissions__permission__codename=permission_codename,
+                role__role_permissions__permission__is_active=True,
+            ).exclude(expires_at__lt=now).values_list('role__organization_id', flat=True))
+            return Team.objects.filter(is_active=True, department__branch__organization_id__in=organization_ids)
 
         # 1. Collect teams explicitly granted via TEAM scope
         team_ids = set()

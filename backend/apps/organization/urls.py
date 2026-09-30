@@ -1,6 +1,6 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
-from .views import OfficeNetworkViewSet, OrganizationViewSet, DepartmentViewSet, DesignationViewSet, BranchViewSet, WorkingCalendarViewSet, OrganizationSetupViewSet, TeamViewSet
+from .views import OfficeNetworkViewSet, OrganizationViewSet, DepartmentViewSet, DesignationViewSet, BranchViewSet, WorkingCalendarViewSet, OrganizationSetupViewSet, TenantOrganizationSetupView, TeamViewSet
 
 router = DefaultRouter()
 router.register(r'organizations', OrganizationViewSet, basename='organization')
@@ -13,5 +13,6 @@ router.register(r'working-calendars', WorkingCalendarViewSet, basename='working-
 router.register(r'setup', OrganizationSetupViewSet, basename='setup')
 
 urlpatterns = [
+    path('self-setup/', TenantOrganizationSetupView.as_view(), name='tenant-organization-setup'),
     path('', include(router.urls)),
 ]

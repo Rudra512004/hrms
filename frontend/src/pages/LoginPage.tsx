@@ -154,7 +154,7 @@ const S: Record<string, React.CSSProperties> = {
   formLogo: {
     display: 'flex',
     justifyContent: 'center',
-    marginBottom: '40px',
+    marginBottom: '28px',
   },
 
   formLogoImg: {
@@ -177,8 +177,43 @@ const S: Record<string, React.CSSProperties> = {
     fontSize: 'var(--font-size-sm)',
     color: 'var(--color-text-muted)',
     textAlign: 'center',
-    marginBottom: '32px',
+    marginBottom: '20px',
     lineHeight: 1.55,
+  },
+
+  accountChoice: {
+    display: 'grid',
+    gridTemplateColumns: '1fr 1fr',
+    gap: '4px',
+    padding: '4px',
+    marginBottom: '28px',
+    borderRadius: 'var(--radius-md)',
+    background: 'var(--color-bg-secondary)',
+    border: '1px solid var(--color-border)',
+  },
+
+  accountChoiceActive: {
+    display: 'flex',
+    justifyContent: 'center',
+    alignItems: 'center',
+    minHeight: '38px',
+    borderRadius: 'var(--radius-sm)',
+    background: 'var(--color-bg-card)',
+    color: 'var(--color-primary)',
+    fontWeight: 600,
+    fontSize: 'var(--font-size-sm)',
+    boxShadow: 'var(--shadow-xs)',
+  },
+
+  accountChoiceLink: {
+    display: 'flex',
+    justifyContent: 'center',
+    alignItems: 'center',
+    minHeight: '38px',
+    borderRadius: 'var(--radius-sm)',
+    color: 'var(--color-text-sub)',
+    fontWeight: 600,
+    fontSize: 'var(--font-size-sm)',
   },
 
   formGroup: {
@@ -501,6 +536,11 @@ export const LoginPage: React.FC = () => {
 
           <h2 style={S.title}>Welcome&nbsp;Back</h2>
           <p style={S.subtitle}>Sign in to your organisation workspace</p>
+
+          <div style={S.accountChoice} aria-label="Account access options">
+            <span style={S.accountChoiceActive}>Sign in</span>
+            <Link to="/register" style={S.accountChoiceLink}>Sign up</Link>
+          </div>
 
           {error && <div style={S.errorBox}>{error}</div>}
 

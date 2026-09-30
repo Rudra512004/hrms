@@ -66,3 +66,18 @@ class User(AbstractBaseUser, PermissionsMixin):
 
     def __str__(self):
         return self.email
+
+
+class TenantOwnerRegistration(models.Model):
+    """A verified self-service account that may launch one tenant organization."""
+    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='tenant_owner_registration')
+    verified_at = models.DateTimeField(null=True, blank=True)
+    organization = models.OneToOneField(
+        'organization.Organization', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='owner_registration'
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    @property
+    def can_launch_organization(self):
+        return self.verified_at is not None and self.organization_id is None

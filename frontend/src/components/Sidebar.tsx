@@ -50,7 +50,7 @@ interface NavSection {
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({ isOpen, isMobile, onNavigate }) => {
-  const { hasPermission, hasEmployeeProfile } = useAuth();
+  const { hasPermission, hasEmployeeProfile, user } = useAuth();
 
   const navigation: NavSection[] = [
     {
@@ -183,6 +183,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, isMobile, onNavigate }
         {navigation.map((section, idx) => {
           const visibleItems = section.items.filter((item) => {
             if (item.requiresEmployee && !hasEmployeeProfile) return false;
+            if (item.path === '/admin/organization-launchpad' && user?.canCreateOrganization) return true;
             if (!item.permission) return true;
             return Array.isArray(item.permission)
               ? item.permission.some((p) => hasPermission(p))

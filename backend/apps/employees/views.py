@@ -42,6 +42,24 @@ class EmployeeSelfServiceView(APIView):
         serializer = EmployeeSerializer(employee)
         return Response(serializer.data, status=status.HTTP_200_OK)
 
+    def patch(self, request, *args, **kwargs):
+        try:
+            employee = request.user.employee
+        except Employee.DoesNotExist:
+            return Response({'detail': 'Employee profile not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+        serializer = EmployeeSelfServiceSerializer(employee, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        AuditService.log(
+            action='employee_updated',
+            actor=request.user,
+            target_type='employee',
+            target_id=employee.id,
+            request=request,
+        )
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
 
 class EmployeeLettersView(APIView):
     permission_classes = [IsAuthenticated, IsNetworkAllowed]
@@ -78,24 +96,6 @@ class EmployeeAnnouncementsView(APIView):
         ).filter(Q(branch__isnull=True) | Q(branch=employee.branch)).order_by('-published_at')
         return Response(AnnouncementSerializer(queryset, many=True).data)
 
-    def patch(self, request, *args, **kwargs):
-        try:
-            employee = request.user.employee
-        except Employee.DoesNotExist:
-            return Response({'detail': 'Employee profile not found.'}, status=status.HTTP_404_NOT_FOUND)
-
-        serializer = EmployeeSelfServiceSerializer(employee, data=request.data, partial=True)
-        serializer.is_valid(raise_exception=True)
-        serializer.save()
-        AuditService.log(
-            action='employee_updated',
-            actor=request.user,
-            target_type='employee',
-            target_id=employee.id,
-            request=request
-        )
-        return Response(serializer.data, status=status.HTTP_200_OK)
-
 class ProvisionEmployeeView(APIView):
     permission_classes = [HasRequiredPermission, IsNetworkAllowed]
     required_permission = 'employee.create'
@@ -122,7 +122,7 @@ class ProvisionEmployeeView(APIView):
         }
 
         email_sent = NotificationService.send_employee_onboarding_email(
-            personal_email=employee.personal_email,
+            recipient_email=employee.personal_email or employee.user.email,
             first_name=employee.user.first_name,
             employee_code=employee.employee_code,
             uid=uid,
@@ -189,7 +189,11 @@ class EmployeeManagementViewSet(viewsets.ModelViewSet):
             else:
                 qs = qs.filter(Q(branch__in=authorized_branches) | Q(team__in=authorized_teams))
         else:
-            return Employee.objects.none()
+            from apps.authorization.services import AuthorizationService
+            organization = AuthorizationService.get_primary_organization(user)
+            if not organization:
+                return Employee.objects.none()
+            qs = qs.filter(organization=organization)
 
         return qs
 
@@ -215,7 +219,7 @@ class EmployeeManagementViewSet(viewsets.ModelViewSet):
         }
 
         email_sent = NotificationService.send_employee_onboarding_email(
-            personal_email=employee.personal_email,
+            recipient_email=employee.personal_email or employee.user.email,
             first_name=employee.user.first_name,
             employee_code=employee.employee_code,
             uid=uid,

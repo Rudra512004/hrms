@@ -129,6 +129,13 @@ export const organizationService = {
     return handleResponse<Organization>(response);
   },
 
+  createTenantOrganizationSetup: async (data: OrganizationSetupPayload): Promise<Organization> => {
+    const response = await fetch('/api/v1/organization/self-setup/', {
+      method: 'POST', headers: getHeaders(true), body: JSON.stringify(data),
+    });
+    return handleResponse<Organization>(response);
+  },
+
   getOrganizationReadiness: async (id: number): Promise<OrganizationReadiness> => {
     const response = await fetch(`/api/v1/organization/organizations/${id}/readiness/`, {
       headers: getHeaders(false),

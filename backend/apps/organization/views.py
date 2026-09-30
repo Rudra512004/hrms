@@ -1,13 +1,14 @@
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
-from django.db import IntegrityError
+from django.db import IntegrityError, transaction
 from rest_framework.exceptions import ValidationError
 from .models import OfficeNetwork, Organization, Department, Designation, Branch, Team, WorkingCalendar
 from .services import OrganizationReadinessService
 from .serializers import OfficeNetworkSerializer, OrganizationSerializer, DepartmentSerializer, DesignationSerializer, BranchSerializer, WorkingCalendarSerializer, OrganizationSetupSerializer, TeamSerializer, AttendancePolicySerializer
 from apps.authorization.permissions import require_permission, IsNetworkAllowed
 from rest_framework.permissions import IsAuthenticated
+from rest_framework.views import APIView
 from apps.audit.services import AuditService
 
 
@@ -21,14 +22,8 @@ def _get_request_user_org(request):
     user = getattr(request, 'user', None)
     if not user or not user.is_authenticated:
         return None
-    if hasattr(user, 'employee') and user.employee and user.employee.organization_id:
-        return user.employee.organization
-    user_role = user.user_roles.filter(
-        is_revoked=False, role__organization__isnull=False
-    ).select_related('role__organization').first()
-    if user_role and user_role.role.organization:
-        return user_role.role.organization
-    return None
+    from apps.authorization.services import AuthorizationService
+    return AuthorizationService.get_primary_organization(user)
 
 
 class OrganizationConfigurationAuditMixin:
@@ -86,6 +81,46 @@ class OrganizationSetupViewSet(viewsets.ModelViewSet):
             organization=organization,
         )
 
+
+class TenantOrganizationSetupView(APIView):
+    """Launch exactly one organization for a verified, self-service owner."""
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, *args, **kwargs):
+        registration = getattr(request.user, 'tenant_owner_registration', None)
+        if not registration or not registration.can_launch_organization:
+            raise ValidationError({'detail': 'This verified account cannot create another organization.'})
+
+        serializer = OrganizationSetupSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        with transaction.atomic():
+            organization = serializer.save()
+            from apps.authorization.models import Permission, Role, RolePermission, ScopeChoices, UserRole
+            owner_role = Role.objects.create(
+                organization=organization,
+                name='Organization Owner',
+                description='Full administrative access within this organization only.',
+            )
+            RolePermission.objects.bulk_create([
+                RolePermission(role=owner_role, permission=permission)
+                for permission in Permission.objects.filter(is_active=True)
+            ])
+            UserRole.objects.create(
+                user=request.user,
+                role=owner_role,
+                assigned_by=request.user,
+                scope=ScopeChoices.ORGANIZATION,
+            )
+            registration.organization = organization
+            registration.save(update_fields=['organization'])
+
+        AuditService.log(
+            action='tenant_organization_launched', actor=request.user, target_type='organization',
+            target_id=organization.pk, metadata={'branch_count': organization.branches.count()},
+            request=request, organization=organization,
+        )
+        return Response(OrganizationSerializer(organization).data, status=status.HTTP_201_CREATED)
+
 class WorkingCalendarViewSet(OrganizationConfigurationAuditMixin, viewsets.ModelViewSet):
     serializer_class = WorkingCalendarSerializer
     audit_resource = 'working_calendar'
@@ -130,6 +165,10 @@ class OrganizationViewSet(OrganizationConfigurationAuditMixin, viewsets.ModelVie
         return [IsAuthenticated(), permission()]
 
     def perform_create(self, serializer):
+        if not self.request.user.is_superuser:
+            # Organizations are tenant boundaries. Client accounts can only
+            # create their one tenant through the verified self-setup flow.
+            raise ValidationError({'detail': 'Use the verified organization launch flow to create a tenant.'})
         organization = serializer.save()
         self._audit('organization_created', organization)
 

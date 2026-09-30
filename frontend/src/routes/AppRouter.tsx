@@ -8,6 +8,7 @@ import { AuthLayout } from '../layouts/AuthLayout';
 // Pages
 import { DashboardPage } from '../pages/DashboardPage';
 import { LoginPage } from '../pages/LoginPage';
+import { RegisterOrganizationPage } from '../pages/RegisterOrganizationPage';
 import { ForgotPasswordPage } from '../pages/ForgotPasswordPage';
 import { ResetPasswordPage } from '../pages/ResetPasswordPage';
 import { ActivateAccountPage } from '../pages/ActivateAccountPage';
@@ -75,6 +76,7 @@ export const AppRouter: React.FC = () => {
       {/* Public Routes */}
       <Route element={<AuthLayout />}>
         <Route path="/login" element={<LoginPage />} />
+        <Route path="/register" element={<RegisterOrganizationPage />} />
         <Route path="/forgot-password" element={<ForgotPasswordPage />} />
         <Route path="/reset-password" element={<ResetPasswordPage />} />
         <Route path="/reset-password/:uid/:token" element={<ResetPasswordPage />} />
@@ -155,9 +157,7 @@ export const AppRouter: React.FC = () => {
           <Route element={<ProtectedRoute requiredPermission="announcement.view" />}><Route path="/admin/announcements" element={<AnnouncementsPage />} /></Route>
 
 
-          <Route element={<ProtectedRoute requiredPermission="organization.manage" />}>
-            <Route path="/admin/organization-launchpad" element={<OrganizationLaunchpadPage />} />
-          </Route>
+          <Route path="/admin/organization-launchpad" element={<OrganizationLaunchpadPage />} />
 
           <Route element={<ProtectedRoute requiredPermission="department.view" />}>
             <Route path="/admin/departments" element={<DepartmentsPage />} />

@@ -21,6 +21,7 @@ class PerformanceReviewSerializer(serializers.ModelSerializer):
     def get_reviewer_name(self,x): return (f'{x.reviewer.user.first_name} {x.reviewer.user.last_name}'.strip() or x.reviewer.user.email) if x.reviewer else None
 
 class EmployeeSerializer(serializers.ModelSerializer):
+    user_id = serializers.IntegerField(source='user.id', read_only=True)
     email = serializers.EmailField(source='user.email', read_only=True)
     first_name = serializers.CharField(source='user.first_name', read_only=True)
     last_name = serializers.CharField(source='user.last_name', read_only=True)
@@ -33,7 +34,7 @@ class EmployeeSerializer(serializers.ModelSerializer):
     class Meta:
         model = Employee
         fields = (
-            'id', 'email', 'first_name', 'last_name', 'status', 'employee_code', 'personal_email',
+            'id', 'user_id', 'email', 'first_name', 'last_name', 'status', 'employee_code', 'personal_email',
             'phone_number', 'address', 'emergency_contact_name', 'emergency_contact_phone',
             'organization', 'branch', 'branch_name', 'department', 'department_name',
             'team', 'team_name',
@@ -150,14 +151,15 @@ class ProvisionEmployeeSerializer(serializers.Serializer):
         if request and request.user.is_authenticated:
             if hasattr(request.user, 'employee') and request.user.employee and request.user.employee.organization_id:
                 org = request.user.employee.organization
+            elif not request.user.is_superuser:
+                from apps.authorization.services import AuthorizationService
+                org = AuthorizationService.get_primary_organization(request.user)
             elif request.user.is_superuser:
                 org_id = self.initial_data.get('organization') if hasattr(self, 'initial_data') else None
                 if org_id:
                     org = Organization.objects.filter(id=org_id).first()
                 if not org and hasattr(request.user, 'employee') and request.user.employee and request.user.employee.organization_id:
                     org = request.user.employee.organization
-                if not org:
-                    org = Organization.objects.first()
 
         if not org:
             raise serializers.ValidationError({'organization': 'Cannot provision employee without a valid organization.'})
@@ -252,7 +254,7 @@ class ProvisionEmployeeSerializer(serializers.Serializer):
                     # We should also ensure they have 'role.assign' or similar if that's a requirement, but for now we assign it
                     # based on their ability to provision. Wait, user said: "Verify: requester can assign the role".
                     from apps.authorization.services import AuthorizationService
-                    if not AuthorizationService.has_permission(request.user, 'role.manage') and not request.user.is_superuser:
+                    if not AuthorizationService.has_permission(request.user, 'role.assign') and not request.user.is_superuser:
                          raise serializers.ValidationError({'role': 'You do not have permission to assign roles.'})
                     UserRole.objects.create(user=user, role=role)
 
