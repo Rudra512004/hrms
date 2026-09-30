@@ -1032,19 +1032,21 @@ export const EmployeesPage: React.FC = () => {
                     <span style={styles.fieldError} data-testid="error-joining-date">{fieldErrors.joining_date}</span>
                   )}
                 </div>
-                <div style={{ ...styles.formGroup, flex: 1 }}>
-                  <label style={styles.label}>Exit Date</label>
-                  <input
-                    type="date"
-                    style={styles.input}
-                    value={formData.exit_date}
-                    onChange={(e) => setFormData({ ...formData, exit_date: e.target.value })}
-                    data-testid="input-exit-date"
-                  />
-                  {fieldErrors.exit_date && (
-                    <span style={styles.fieldError} data-testid="error-exit-date">{fieldErrors.exit_date}</span>
-                  )}
-                </div>
+                {editingEmployee && (
+                  <div style={{ ...styles.formGroup, flex: 1 }}>
+                    <label style={styles.label}>Exit Date</label>
+                    <input
+                      type="date"
+                      style={styles.input}
+                      value={formData.exit_date}
+                      onChange={(e) => setFormData({ ...formData, exit_date: e.target.value })}
+                      data-testid="input-exit-date"
+                    />
+                    {fieldErrors.exit_date && (
+                      <span style={styles.fieldError} data-testid="error-exit-date">{fieldErrors.exit_date}</span>
+                    )}
+                  </div>
+                )}
               </div>
 
               <h3 style={styles.sectionTitle}>Organizational Placement</h3>
