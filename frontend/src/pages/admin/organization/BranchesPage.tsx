@@ -20,6 +20,17 @@ const parseDMS = (input: string) => {
   return null;
 };
 
+const parseSingleDMS = (input: string) => {
+  const regex = /^\s*(?:lat-?\s*|long-?\s*)?(\d+)°(\d+)'([\d.]+)"([NSEW])\s*$/i;
+  const match = input.match(regex);
+  if (match) {
+    let val = parseInt(match[1]) + parseInt(match[2])/60 + parseFloat(match[3])/3600;
+    if (['S', 'W'].includes(match[4].toUpperCase())) val = -val;
+    return val.toFixed(6);
+  }
+  return null;
+};
+
 const styles = {
   header: {
     display: 'flex',
@@ -370,40 +381,43 @@ export const BranchesPage: React.FC = () => {
                   onChange={(e) => setFormData({...formData, address: e.target.value})}
                 />
               </div>
-              <div style={styles.formGroup}>
-                <label style={styles.label}>Coordinates (Paste DMS format here)</label>
-                <input 
-                  type="text"
-                  placeholder='e.g., lat- 18°36&#39;19.7"N long- 73°45&#39;09.6"E'
-                  style={styles.input} 
-                  onChange={(e) => {
-                    const parsed = parseDMS(e.target.value);
-                    if (parsed) {
-                      setFormData({...formData, latitude: parsed.latitude, longitude: parsed.longitude});
-                      e.target.value = ''; // clear after parsing
-                    }
-                  }}
-                />
-              </div>
               <div style={{ display: 'flex', gap: '16px' }}>
                 <div style={{...styles.formGroup, flex: 1}}>
                   <label style={styles.label}>Latitude</label>
                   <input 
-                    type="number"
-                    step="0.000001"
+                    type="text"
+                    placeholder='e.g., 18.605472 or 18°36&#39;19.7"N'
                     style={styles.input} 
                     value={formData.latitude}
-                    onChange={(e) => setFormData({...formData, latitude: e.target.value})}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      const fullParsed = parseDMS(val);
+                      if (fullParsed) {
+                        setFormData({...formData, latitude: fullParsed.latitude, longitude: fullParsed.longitude});
+                      } else {
+                        const single = parseSingleDMS(val);
+                        setFormData({...formData, latitude: single !== null ? single : val});
+                      }
+                    }}
                   />
                 </div>
                 <div style={{...styles.formGroup, flex: 1}}>
                   <label style={styles.label}>Longitude</label>
                   <input 
-                    type="number"
-                    step="0.000001"
+                    type="text"
+                    placeholder='e.g., 73.752667 or 73°45&#39;09.6"E'
                     style={styles.input} 
                     value={formData.longitude}
-                    onChange={(e) => setFormData({...formData, longitude: e.target.value})}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      const fullParsed = parseDMS(val);
+                      if (fullParsed) {
+                        setFormData({...formData, latitude: fullParsed.latitude, longitude: fullParsed.longitude});
+                      } else {
+                        const single = parseSingleDMS(val);
+                        setFormData({...formData, longitude: single !== null ? single : val});
+                      }
+                    }}
                   />
                 </div>
               </div>
