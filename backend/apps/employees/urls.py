@@ -1,6 +1,6 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
-from .views import EmployeeSelfServiceView, ProvisionEmployeeView, WFHRequestViewSet, EmployeeManagementViewSet, EmployeeDocumentViewSet
+from .views import EmployeeSelfServiceView, EmployeeLettersView, EmployeeHolidaysView, EmployeeAnnouncementsView, ProvisionEmployeeView, WFHRequestViewSet, EmployeeManagementViewSet, EmployeeDocumentViewSet
 from .review_views import ReviewCycleViewSet, PerformanceReviewViewSet
 
 router = DefaultRouter()
@@ -12,6 +12,9 @@ router.register(r'reviews', PerformanceReviewViewSet, basename='performance-revi
 
 urlpatterns = [
     path('me/', EmployeeSelfServiceView.as_view(), name='employee-me'),
+    path('me/letters/', EmployeeLettersView.as_view(), name='employee-letters'),
+    path('me/holidays/', EmployeeHolidaysView.as_view(), name='employee-holidays'),
+    path('me/announcements/', EmployeeAnnouncementsView.as_view(), name='employee-announcements'),
     path('', ProvisionEmployeeView.as_view(), name='employee-provision'),
     path('', include(router.urls)),
 ]

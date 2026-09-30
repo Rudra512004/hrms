@@ -10,6 +10,7 @@ from django.utils.encoding import force_bytes
 from django.contrib.auth.tokens import default_token_generator
 from django.conf import settings
 from django.db import transaction
+from django.db.models import Q
 from django.utils import timezone
 from apps.authorization.permissions import HasRequiredPermission, IsNetworkAllowed, require_permission
 from apps.authorization.services import AuthorizationService
@@ -40,6 +41,42 @@ class EmployeeSelfServiceView(APIView):
 
         serializer = EmployeeSerializer(employee)
         return Response(serializer.data, status=status.HTTP_200_OK)
+
+
+class EmployeeLettersView(APIView):
+    permission_classes = [IsAuthenticated, IsNetworkAllowed]
+
+    def get(self, request, *args, **kwargs):
+        from apps.candidates.models import Candidate
+        from apps.candidates.serializers import IssuedLetterSerializer
+        candidate = Candidate.objects.filter(user=request.user).first()
+        return Response(IssuedLetterSerializer(candidate.issued_letters.all() if candidate else [], many=True).data)
+
+
+class EmployeeHolidaysView(APIView):
+    permission_classes = [IsAuthenticated, IsNetworkAllowed]
+
+    def get(self, request, *args, **kwargs):
+        from apps.attendance.models import Holiday
+        from apps.attendance.serializers import HolidaySerializer
+        employee = getattr(request.user, 'employee', None)
+        queryset = Holiday.objects.filter(branch=employee.branch, is_active=True).order_by('date') if employee and employee.branch_id else []
+        return Response(HolidaySerializer(queryset, many=True).data)
+
+
+class EmployeeAnnouncementsView(APIView):
+    permission_classes = [IsAuthenticated, IsNetworkAllowed]
+
+    def get(self, request, *args, **kwargs):
+        from apps.notifications.models import Announcement
+        from apps.notifications.serializers import AnnouncementSerializer
+        employee = getattr(request.user, 'employee', None)
+        if not employee or not employee.organization_id:
+            return Response([])
+        queryset = Announcement.objects.filter(organization=employee.organization, is_published=True).filter(
+            Q(expires_at__isnull=True) | Q(expires_at__gt=timezone.now())
+        ).filter(Q(branch__isnull=True) | Q(branch=employee.branch)).order_by('-published_at')
+        return Response(AnnouncementSerializer(queryset, many=True).data)
 
     def patch(self, request, *args, **kwargs):
         try:
@@ -89,7 +126,7 @@ class ProvisionEmployeeView(APIView):
             first_name=employee.user.first_name,
             employee_code=employee.employee_code,
             uid=uid,
-            token=token, organization=employee.organization
+            token=token
         )
         response_data['onboarding_email_status'] = 'sent' if email_sent else 'failed'
 
@@ -182,7 +219,7 @@ class EmployeeManagementViewSet(viewsets.ModelViewSet):
             first_name=employee.user.first_name,
             employee_code=employee.employee_code,
             uid=uid,
-            token=token, organization=employee.organization
+            token=token
         )
         response_data['onboarding_email_status'] = 'sent' if email_sent else 'failed'
 

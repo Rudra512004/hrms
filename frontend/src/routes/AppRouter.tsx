@@ -33,7 +33,6 @@ import { EmployeeAccessPage } from '../pages/admin/EmployeeAccessPage';
 import { AuditLogsPage } from '../pages/admin/AuditLogsPage';
 import { OrganizationControlCenterPage } from '../pages/admin/OrganizationControlCenterPage';
 import { AnnouncementsPage } from '../pages/admin/AnnouncementsPage';
-import { EmailAutomationPage } from '../pages/admin/EmailAutomationPage';
 import { DailyRosterPage } from '../pages/admin/DailyRosterPage';
 import { BreakTypesPage } from '../pages/admin/BreakTypesPage';
 import { LocationAlertsPage } from '../pages/admin/LocationAlertsPage';
@@ -41,6 +40,8 @@ import { ProjectsPage } from '../pages/admin/ProjectsPage';
 import { TimesheetPolicyPage } from '../pages/admin/TimesheetPolicyPage';
 import { TimesheetsPage } from '../pages/TimesheetsPage';
 import { ReviewsPage } from '../pages/ReviewsPage';
+import { MyAssetsPage } from '../pages/MyAssetsPage';
+import { EmployeeInformationPage } from '../pages/EmployeeInformationPage';
 import { AdminLeaveTypesPage } from '../pages/admin/AdminLeaveTypesPage';
 import { RolesPage } from '../pages/admin/RolesPage';
 import { RolePermissionsPage } from '../pages/admin/RolePermissionsPage';
@@ -95,6 +96,10 @@ export const AppRouter: React.FC = () => {
             <Route path="/payslips" element={<MyPayslipsPage />} />
             <Route path="/timesheets" element={<TimesheetsPage />} />
             <Route path="/reviews" element={<ReviewsPage />} />
+            <Route path="/my-assets" element={<MyAssetsPage />} />
+            <Route path="/my-letters" element={<EmployeeInformationPage mode="letters" />} />
+            <Route path="/holidays" element={<EmployeeInformationPage mode="holidays" />} />
+            <Route path="/announcements" element={<EmployeeInformationPage mode="announcements" />} />
           </Route>
           <Route path="/profile" element={<ProfilePage />} />
 
@@ -149,9 +154,6 @@ export const AppRouter: React.FC = () => {
           </Route>
           <Route element={<ProtectedRoute requiredPermission="announcement.view" />}><Route path="/admin/announcements" element={<AnnouncementsPage />} /></Route>
 
-          <Route element={<ProtectedRoute requiredPermission="email_automation.manage" />}>
-            <Route path="/admin/email-automation" element={<EmailAutomationPage />} />
-          </Route>
 
           <Route element={<ProtectedRoute requiredPermission="organization.manage" />}>
             <Route path="/admin/organization-launchpad" element={<OrganizationLaunchpadPage />} />

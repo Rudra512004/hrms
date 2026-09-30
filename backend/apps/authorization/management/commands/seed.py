@@ -133,7 +133,6 @@ class Command(BaseCommand):
             # Communications
             {'codename': 'announcement.view', 'resource': 'announcement', 'action': 'view', 'name': 'View Announcements'},
             {'codename': 'announcement.manage', 'resource': 'announcement', 'action': 'manage', 'name': 'Manage Announcements'},
-            {'codename': 'email_automation.manage', 'resource': 'email_automation', 'action': 'manage', 'name': 'Manage Email Automation'},
         ]
 
         for p_data in permissions_data:

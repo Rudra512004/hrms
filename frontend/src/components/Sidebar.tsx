@@ -25,7 +25,6 @@ import {
   MapPin,
   FolderKanban,
   Star,
-  Mail,
 } from 'lucide-react';
 
 import { useAuth } from '../contexts/AuthContext';
@@ -88,6 +87,10 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, isMobile, onNavigate }
         { path: '/calendar',           label: 'Calendar',              icon: CalendarDays, requiresEmployee: true },
         { path: '/timesheets',         label: 'My Timesheets',         icon: Clock,        requiresEmployee: true },
         { path: '/reviews',            label: 'My Reviews',            icon: Star,         requiresEmployee: true },
+        { path: '/my-letters',         label: 'My Letters',            icon: FileText,     requiresEmployee: true },
+        { path: '/my-assets',          label: 'My Assets',             icon: Package,      requiresEmployee: true },
+        { path: '/holidays',           label: 'Holidays',              icon: CalendarDays, requiresEmployee: true },
+        { path: '/announcements',      label: 'Announcements',         icon: Bell,         requiresEmployee: true },
         { path: '/admin/leaves',       label: 'Leave Requests',        icon: Calendar,  permission: 'leave.view' },
         { path: '/admin/leave-types',  label: 'Leave Types',           icon: Settings,  permission: 'leave_type.manage' },
         { path: '/admin/wfh',          label: 'WFH Requests',          icon: Network,   permission: ['wfh.view', 'wfh.request'] },
@@ -112,7 +115,6 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, isMobile, onNavigate }
       items: [
         { path: '/admin/control-center', label: 'Control Center', icon: SlidersHorizontal, permission: 'organization.view' },
         { path: '/admin/announcements', label: 'Announcements', icon: Bell, permission: 'announcement.view' },
-        { path: '/admin/email-automation', label: 'Email & Automation', icon: Mail, permission: 'email_automation.manage' },
         { path: '/admin/roles',          label: 'Roles & Permissions', icon: ShieldAlert, permission: 'role.view' },
         { path: '/admin/audit-logs',     label: 'Audit Logs',          icon: Settings,    permission: 'audit.view' },
         { path: '/admin/office-networks',label: 'Office Networks',     icon: Network,     permission: 'office_network.view' },

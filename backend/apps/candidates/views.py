@@ -251,7 +251,6 @@ class CandidateViewSet(viewsets.ModelViewSet):
             organization_name=candidate.organization.name,
             offer_letter_body=rendered_body,
             onboarding_link=onboarding_link,
-            organization=candidate.organization,
         )
 
         AuditService.log(
