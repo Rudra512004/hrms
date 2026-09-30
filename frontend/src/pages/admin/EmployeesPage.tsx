@@ -507,6 +507,25 @@ export const EmployeesPage: React.FC = () => {
     setFormError(null);
     setFieldErrors({});
 
+    // Manual frontend validation since we bypassed HTML5 validation
+    if (!editingEmployee) {
+      const missingFields: Record<string, string> = {};
+      if (!formData.first_name.trim()) missingFields.first_name = "First name is required.";
+      if (!formData.last_name.trim()) missingFields.last_name = "Last name is required.";
+      if (!formData.email.trim()) missingFields.email = "Work email is required.";
+      
+      if (Object.keys(missingFields).length > 0) {
+        setFieldErrors(missingFields);
+        setFormError("Please fill out all required basic information fields.");
+        setSaving(false);
+        setTimeout(() => {
+          const modal = document.getElementById('employee-modal-content');
+          if (modal) modal.scrollTo({ top: 0, behavior: 'smooth' });
+        }, 100);
+        return;
+      }
+    }
+
     try {
       if (editingEmployee) {
         // Ordinary update via PATCH:
@@ -593,6 +612,14 @@ export const EmployeesPage: React.FC = () => {
       } else {
         setFormError(err.message || "An unexpected error occurred while saving.");
       }
+      
+      // Scroll to top of modal so user can see the error
+      setTimeout(() => {
+        const modal = document.getElementById('employee-modal-content');
+        if (modal) {
+          modal.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+      }, 100);
     } finally {
       setSaving(false);
     }
@@ -878,7 +905,7 @@ export const EmployeesPage: React.FC = () => {
       {/* Create / Edit Modal */}
       {isModalOpen && (
         <div style={styles.modalOverlay}>
-          <div style={styles.modalContent}>
+          <div id="employee-modal-content" style={styles.modalContent}>
             <h2 style={{ marginTop: 0 }}>{editingEmployee ? 'Edit Employee Info' : 'Provision Employee'}</h2>
 
             {formError && (
@@ -887,7 +914,7 @@ export const EmployeesPage: React.FC = () => {
               </div>
             )}
 
-            <form onSubmit={handleSave}>
+            <form onSubmit={handleSave} noValidate>
               <h3 style={styles.sectionTitle}>Basic Information</h3>
               {editingEmployee && (
                 <div style={{ marginBottom: '16px', padding: '12px', backgroundColor: 'var(--color-bg-body)', borderRadius: 'var(--radius-md)' }}>
