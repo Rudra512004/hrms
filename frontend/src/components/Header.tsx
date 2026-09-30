@@ -144,14 +144,14 @@ export const Header: React.FC<HeaderProps> = ({ toggleSidebar }) => {
             }}
           >
             {isLoading ? (
-              <option value="all">Loading locations...</option>
+              <option value="all" style={{ color: '#000', backgroundColor: '#fff' }}>Loading locations...</option>
             ) : error ? (
-              <option value="all">Locations unavailable</option>
+              <option value="all" style={{ color: '#000', backgroundColor: '#fff' }}>Locations unavailable</option>
             ) : (
               <>
-                <option value="all">All Locations</option>
+                <option value="all" style={{ color: '#000', backgroundColor: '#fff' }}>All Locations</option>
                 {branches.map((b) => (
-                  <option key={b.id} value={b.id}>
+                  <option key={b.id} value={b.id} style={{ color: '#000', backgroundColor: '#fff' }}>
                     {b.name}
                   </option>
                 ))}
