@@ -64,14 +64,14 @@ const S: Record<string, React.CSSProperties> = {
     zIndex: 1,
     display: 'flex',
     flexDirection: 'column',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     width: '100%',
-    maxWidth: '420px',
+    maxWidth: '480px',
   },
 
   /* BeyondSure logo — large, white (inverted), prominent */
   brandLogo: {
-    width: 'clamp(180px, 22vw, 260px)',
+    width: 'clamp(180px, 22vw, 240px)',
     height: 'auto',
     objectFit: 'contain',
     display: 'block',
@@ -82,65 +82,40 @@ const S: Record<string, React.CSSProperties> = {
 
   /* Primary headline */
   brandTagline: {
-    fontSize: 'clamp(1.45rem, 2.2vw, 1.85rem)',
+    fontSize: 'clamp(1.75rem, 2.5vw, 2.25rem)',
     fontWeight: 700,
     color: 'rgba(255,255,255,0.97)',
     letterSpacing: '-0.028em',
-    lineHeight: 1.25,
-    marginBottom: '18px',
-    textAlign: 'center',
+    lineHeight: 1.2,
+    marginBottom: '20px',
+    textAlign: 'left',
   },
 
   /* Supporting paragraph */
   brandSub: {
-    fontSize: 'clamp(0.9rem, 1.1vw, 1.0rem)',
-    color: 'rgba(255,255,255,0.56)',
-    lineHeight: 1.7,
-    textAlign: 'center',
-    maxWidth: '360px',
-    marginBottom: '52px',
+    fontSize: 'clamp(1rem, 1.2vw, 1.15rem)',
+    color: 'rgba(255,255,255,0.7)',
+    lineHeight: 1.6,
+    textAlign: 'left',
+    maxWidth: '440px',
+    marginBottom: '48px',
   },
 
   /* Capability list */
   featureList: {
     display: 'flex',
     flexDirection: 'column',
-    gap: '20px',
-    width: '100%',
-    maxWidth: '380px',
-    marginBottom: '0',
-  },
-
-  featureItem: {
-    display: 'flex',
-    alignItems: 'center',
     gap: '16px',
-    color: 'rgba(255,255,255,0.78)',
-    fontSize: '0.9rem',
-    fontWeight: 500,
-    letterSpacing: '0.002em',
-  },
-
-  featureIcon: {
-    width: '38px',
-    height: '38px',
-    borderRadius: '11px',
-    background: 'rgba(255,255,255,0.08)',
-    border: '1px solid rgba(255,255,255,0.11)',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    flexShrink: 0,
-    /* Soft green tint for the icons */
-    color: 'rgba(134,239,172,0.85)',
+    width: '100%',
+    marginBottom: '0',
   },
 
   brandFooter: {
     marginTop: '60px',
-    fontSize: '0.75rem',
-    color: 'rgba(255,255,255,0.22)',
-    textAlign: 'center',
-    letterSpacing: '0.06em',
+    fontSize: '0.85rem',
+    color: 'rgba(255,255,255,0.4)',
+    textAlign: 'left',
+    letterSpacing: '0.04em',
     textTransform: 'uppercase',
   },
 
@@ -161,10 +136,8 @@ const S: Record<string, React.CSSProperties> = {
     alignItems: 'center',
     justifyContent: 'center',
     padding: '56px 48px',
-    /* Matte glass surface — watermark faintly visible through it */
-    background: 'var(--surface-matte-bg)',
-    backdropFilter: 'blur(var(--surface-matte-blur))',
-    WebkitBackdropFilter: 'blur(var(--surface-matte-blur))',
+    /* Solid background to hide global watermark */
+    background: 'var(--color-bg-card)',
     position: 'relative',
     zIndex: 2,
     minWidth: 0,
@@ -176,15 +149,15 @@ const S: Record<string, React.CSSProperties> = {
     maxWidth: '460px',
   },
 
-  /* Mobile-only logo (shown when brand panel hides) */
+  /* Logo at the top of the form */
   formLogo: {
     display: 'flex',
     justifyContent: 'center',
-    marginBottom: '36px',
+    marginBottom: '40px',
   },
 
   formLogoImg: {
-    width: '160px',
+    width: '180px',
     height: 'auto',
     objectFit: 'contain',
   },
@@ -493,9 +466,9 @@ export const LoginPage: React.FC = () => {
 
           <ul style={S.featureList}>
             {FEATURES.map(({ Icon, label }) => (
-              <li key={label} style={S.featureItem}>
-                <span style={S.featureIcon}>
-                  <Icon size={17} strokeWidth={1.8} />
+              <li key={label} className="login-feature-card">
+                <span className="icon-wrapper">
+                  <Icon size={20} strokeWidth={1.8} />
                 </span>
                 {label}
               </li>
@@ -516,10 +489,10 @@ export const LoginPage: React.FC = () => {
       <div className="login-form-panel" style={S.formPanel}>
         <div style={S.formInner}>
 
-          {/* Mobile-only logo — shown when brand panel is hidden */}
-          <div className="login-mobile-logo" style={S.formLogo}>
+          {/* Original logo shown always above the form */}
+          <div className="login-form-logo" style={S.formLogo}>
             <img
-              src="/beyondsure-PNG-Logo2.png"
+              src="/logo.webp"
               alt="BeyondSure HRMS"
               style={S.formLogoImg}
             />

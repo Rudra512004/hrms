@@ -1688,3 +1688,47 @@ textarea.input-field {
 .spin {
   animation: spin 1s linear infinite;
 }
+
+/* ═══════════════════════════════════════════
+   LOGIN FEATURE CARDS
+═══════════════════════════════════════════ */
+.login-feature-card {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 16px 20px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 14px;
+  color: rgba(255, 255, 255, 0.88);
+  font-size: 0.95rem;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  width: 100%;
+  cursor: default;
+}
+.login-feature-card:hover {
+  background: rgba(255, 255, 255, 0.09);
+  border-color: rgba(255, 255, 255, 0.15);
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+}
+.login-feature-card .icon-wrapper {
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  background: rgba(134, 239, 172, 0.12);
+  border: 1px solid rgba(134, 239, 172, 0.25);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  color: rgba(134, 239, 172, 0.95);
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.login-feature-card:hover .icon-wrapper {
+  background: rgba(134, 239, 172, 0.25);
+  transform: scale(1.08);
+  box-shadow: 0 4px 12px rgba(134, 239, 172, 0.2);
+}
