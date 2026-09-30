@@ -145,6 +145,8 @@ class ProvisionEmployeeSerializer(serializers.Serializer):
                     org = Organization.objects.filter(id=org_id).first()
                 if not org and hasattr(request.user, 'employee') and request.user.employee and request.user.employee.organization_id:
                     org = request.user.employee.organization
+                if not org:
+                    org = Organization.objects.first()
 
         if not org:
             raise serializers.ValidationError({'organization': 'Cannot provision employee without a valid organization.'})

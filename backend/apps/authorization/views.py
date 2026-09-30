@@ -82,15 +82,19 @@ class RoleViewSet(viewsets.ModelViewSet):
             org_id = self.request.data.get('organization')
             if org_id:
                 try:
+                    from apps.organization.models import Organization
                     org = Organization.objects.get(id=org_id)
                 except Organization.DoesNotExist:
                     raise ValidationError({'organization': 'Specified organization does not exist.'})
-            elif hasattr(user, 'employee') and user.employee.organization_id:
+            elif hasattr(user, 'employee') and user.employee and user.employee.organization_id:
                 org = user.employee.organization
             else:
-                raise ValidationError({'organization': 'Organization context is required.'})
+                from apps.organization.models import Organization
+                org = Organization.objects.first()
+                if not org:
+                    raise ValidationError({'organization': 'Organization context is required.'})
         else:
-            if hasattr(user, 'employee') and user.employee.organization_id:
+            if hasattr(user, 'employee') and user.employee and user.employee.organization_id:
                 org = user.employee.organization
             else:
                 raise ValidationError({'organization': 'User does not belong to an organization.'})
