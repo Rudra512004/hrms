@@ -66,7 +66,7 @@ const S: Record<string, React.CSSProperties> = {
     flexDirection: 'column',
     alignItems: 'flex-start',
     width: '100%',
-    maxWidth: '480px',
+    maxWidth: '640px',
   },
 
   /* BeyondSure logo — large, white (inverted), prominent */
@@ -103,11 +103,12 @@ const S: Record<string, React.CSSProperties> = {
 
   /* Capability list */
   featureList: {
-    display: 'flex',
-    flexDirection: 'column',
+    display: 'grid',
+    gridTemplateColumns: 'repeat(2, 1fr)',
     gap: '16px',
     width: '100%',
     marginBottom: '0',
+    paddingLeft: '0',
   },
 
   brandFooter: {
