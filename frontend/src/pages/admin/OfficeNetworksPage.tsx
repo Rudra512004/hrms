@@ -5,6 +5,7 @@ import { Table } from '../../components/Table';
 import { StatusBadge } from '../../components/StatusBadge';
 import { Plus, Edit2, Trash2, Power, AlertCircle, Loader2 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
+import { branchService, type Branch } from '../../services/branch';
 
 
 const styles = {
@@ -109,17 +110,19 @@ const styles = {
 export const OfficeNetworksPage: React.FC = () => {
   const { hasPermission } = useAuth();
   const [networks, setNetworks] = useState<OfficeNetwork[]>([]);
+  const [branches, setBranches] = useState<Branch[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingNetwork, setEditingNetwork] = useState<OfficeNetwork | null>(null);
-  const [formData, setFormData] = useState({ name: '', network: '', description: '', is_active: true });
+  const [formData, setFormData] = useState({ branch: '', name: '', network: '', description: '', is_active: true });
   const [formError, setFormError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     loadNetworks();
+    branchService.getAll().then(setBranches).catch(() => setBranches([]));
   }, []);
 
   const loadNetworks = async () => {
@@ -141,14 +144,14 @@ export const OfficeNetworksPage: React.FC = () => {
 
   const openCreateModal = () => {
     setEditingNetwork(null);
-    setFormData({ name: '', network: '', description: '', is_active: true });
+    setFormData({ branch: '', name: '', network: '', description: '', is_active: true });
     setFormError(null);
     setIsModalOpen(true);
   };
 
   const openEditModal = (network: OfficeNetwork) => {
     setEditingNetwork(network);
-    setFormData({ name: network.name, network: network.network, description: network.description, is_active: network.is_active });
+    setFormData({ branch: String(network.branch), name: network.name, network: network.network, description: network.description, is_active: network.is_active });
     setFormError(null);
     setIsModalOpen(true);
   };
@@ -159,10 +162,10 @@ export const OfficeNetworksPage: React.FC = () => {
     setFormError(null);
 
     try {
-      // API requires organization ID. Usually in a multi-tenant app it's passed or derived.
-      // For this HRMS, we assume org ID 1 or the backend handles it. If backend requires it, we add it.
-      // Let's pass organization: 1 as per contract example.
-      const payload = { ...formData, organization: 1 };
+      const payload = {
+        ...formData,
+        branch: Number(formData.branch),
+      };
       
       if (editingNetwork) {
         await officeNetworkService.update(editingNetwork.id, payload);
@@ -285,6 +288,19 @@ export const OfficeNetworksPage: React.FC = () => {
             )}
 
             <form onSubmit={handleSave}>
+              <div style={styles.formGroup}>
+                <label style={styles.label}>Branch</label>
+                <select
+                  style={styles.input}
+                  value={formData.branch}
+                  onChange={(e) => setFormData({ ...formData, branch: e.target.value })}
+                  required
+                  disabled={Boolean(editingNetwork)}
+                >
+                  <option value="">Select a branch</option>
+                  {branches.map((branch) => <option key={branch.id} value={branch.id}>{branch.name}</option>)}
+                </select>
+              </div>
               <div style={styles.formGroup}>
                 <label style={styles.label}>Name</label>
                 <input 

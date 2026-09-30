@@ -468,6 +468,62 @@ textarea.input-field {
   min-height: 80px;
 }
 
+/* Some established pages pre-date the shared .input-field component and use
+   native inputs directly. Keep those controls visually aligned with the
+   application shell without changing their markup or behaviour. */
+.app-content .input-neumorphic,
+.app-content .input-select,
+.app-content input:not([type='checkbox']):not([type='radio']):not([type='range']):not([type='file']):not([type='button']):not([type='submit']):not([type='reset']),
+.app-content select,
+.app-content textarea {
+  min-height: 40px;
+  padding: 9px 12px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background-color: var(--surface-control-bg);
+  color: var(--color-text-main);
+  font: inherit;
+  line-height: 1.5;
+  outline: none;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.app-content select {
+  padding-right: 36px;
+  cursor: pointer;
+}
+
+.app-content textarea {
+  min-height: 80px;
+  resize: vertical;
+}
+
+.app-content .input-neumorphic:focus,
+.app-content .input-select:focus,
+.app-content input:not([type='checkbox']):not([type='radio']):not([type='range']):not([type='file']):not([type='button']):not([type='submit']):not([type='reset']):focus,
+.app-content select:focus,
+.app-content textarea:focus {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px var(--color-primary-glow);
+}
+
+.app-content input::placeholder,
+.app-content textarea::placeholder {
+  color: var(--color-text-muted);
+  opacity: 0.8;
+}
+
+[data-theme='dark'] .app-content input[type='date'],
+[data-theme='dark'] .app-content input[type='datetime-local'],
+[data-theme='dark'] .app-content select {
+  color-scheme: dark;
+}
+
+.app-content select option {
+  background: var(--surface-control-bg);
+  color: var(--color-text-main);
+}
+
 .form-label {
   display: block;
   font-size: var(--font-size-sm);

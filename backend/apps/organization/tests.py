@@ -8,7 +8,7 @@ User = get_user_model()
 
 class OrganizationSetupTests(APITestCase):
     def setUp(self):
-        self.superadmin = User.objects.create_user(email='super@admin.com', password='password', is_superuser=True)
+        self.superadmin = User.objects.create_user(email='super@admin.com', password='password', is_superuser=True, status='active')
         self.normal_user = User.objects.create_user(email='normal@user.com', password='password')
         self.url = '/api/v1/organization/setup/'
 
@@ -46,6 +46,9 @@ class OrganizationSetupTests(APITestCase):
         self.assertTrue(org.branches.first().attendance_policy.is_office_gps_enabled)
         self.assertTrue(Branch.objects.filter(organization=org, name='HQ').exists())
         self.assertTrue(OfficeNetwork.objects.filter(branch=org.branches.first(), name='HQ WiFi').exists())
+        networks = self.client.get('/api/v1/organization/office-networks/')
+        self.assertEqual(networks.status_code, 200)
+        self.assertTrue(any(item['network'] == '192.168.1.0/24' for item in networks.data))
         audit = AuditLog.objects.get(action='organization_launched', organization=org)
         self.assertEqual(audit.metadata, {'branch_count': 1})
 
