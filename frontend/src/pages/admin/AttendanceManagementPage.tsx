@@ -307,6 +307,7 @@ export const AttendanceManagementPage: React.FC = () => {
       { header: 'Date', accessor: (r) => r.date },
       { header: 'Check In', accessor: (r) => r.check_in ? formatTimeOnly(r.check_in) : '--:--' },
       { header: 'Check Out', accessor: (r) => r.check_out ? formatTimeOnly(r.check_out) : '--:--' },
+      { header: 'Distance (m)', accessor: (r) => r.distance_from_branch != null ? `${r.distance_from_branch}m` : 'N/A' },
       { header: 'Status', accessor: (r) => r.status },
       { header: 'Late', accessor: (r) => r.is_late ? 'Yes' : 'No' },
       {
@@ -365,6 +366,13 @@ export const AttendanceManagementPage: React.FC = () => {
       title: 'Check Out',
       render: (r: AttendanceRecord) => (
         <span style={{ fontVariantNumeric: 'tabular-nums' }}>{formatTimeOnly(r.check_out)}</span>
+      ),
+    },
+    {
+      key: 'distance',
+      title: 'Distance',
+      render: (r: AttendanceRecord) => (
+        <span style={{ fontVariantNumeric: 'tabular-nums' }}>{r.distance_from_branch != null ? `${r.distance_from_branch}m` : '—'}</span>
       ),
     },
     {

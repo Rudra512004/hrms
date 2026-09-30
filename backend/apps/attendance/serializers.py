@@ -12,11 +12,12 @@ class AttendanceSerializer(serializers.ModelSerializer):
     breaks = AttendanceBreakSerializer(many=True, read_only=True)
     employee_name = serializers.SerializerMethodField()
     employee_code = serializers.CharField(source='employee.employee_code', read_only=True)
+    distance_from_branch = serializers.SerializerMethodField()
 
     class Meta:
         model = Attendance
-        fields = ['id', 'employee', 'employee_name', 'employee_code', 'date', 'check_in', 'check_out', 'status', 'is_late', 'total_break_duration', 'productive_work_duration', 'is_on_break', 'breaks']
-        read_only_fields = ['id', 'employee', 'employee_name', 'employee_code', 'date', 'check_in', 'check_out', 'status', 'is_late', 'total_break_duration', 'productive_work_duration', 'is_on_break', 'breaks']
+        fields = ['id', 'employee', 'employee_name', 'employee_code', 'date', 'check_in', 'check_out', 'status', 'is_late', 'total_break_duration', 'productive_work_duration', 'is_on_break', 'breaks', 'distance_from_branch']
+        read_only_fields = ['id', 'employee', 'employee_name', 'employee_code', 'date', 'check_in', 'check_out', 'status', 'is_late', 'total_break_duration', 'productive_work_duration', 'is_on_break', 'breaks', 'distance_from_branch']
 
     def get_is_on_break(self, obj):
         return obj.breaks.filter(ended_at__isnull=True).exists()
@@ -25,6 +26,15 @@ class AttendanceSerializer(serializers.ModelSerializer):
         if not obj.employee or not obj.employee.user:
             return None
         return f"{obj.employee.user.first_name} {obj.employee.user.last_name}".strip()
+
+    def get_distance_from_branch(self, obj):
+        if obj.check_in_latitude and obj.check_in_longitude and obj.employee.branch and obj.employee.branch.latitude and obj.employee.branch.longitude:
+            from .utils import calculate_haversine_distance
+            return round(calculate_haversine_distance(
+                obj.check_in_latitude, obj.check_in_longitude,
+                obj.employee.branch.latitude, obj.employee.branch.longitude
+            ))
+        return None
 
 class HolidaySerializer(serializers.ModelSerializer):
     class Meta:

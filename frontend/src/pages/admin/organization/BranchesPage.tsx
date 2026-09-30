@@ -7,6 +7,19 @@ import { StatusBadge } from '../../../components/StatusBadge';
 import { Plus, Edit2, Trash2, Power, AlertCircle, Loader2 } from 'lucide-react';
 import { useAuth } from '../../../contexts/AuthContext';
 
+const parseDMS = (input: string) => {
+  const regex = /(?:lat-?\s*)?(\d+)°(\d+)'([\d.]+)"([NS])(?:.*long-?\s*)?(\d+)°(\d+)'([\d.]+)"([EW])/i;
+  const match = input.match(regex);
+  if (match) {
+    let lat = parseInt(match[1]) + parseInt(match[2])/60 + parseFloat(match[3])/3600;
+    if (match[4].toUpperCase() === 'S') lat = -lat;
+    let lon = parseInt(match[5]) + parseInt(match[6])/60 + parseFloat(match[7])/3600;
+    if (match[8].toUpperCase() === 'W') lon = -lon;
+    return { latitude: lat.toFixed(6), longitude: lon.toFixed(6) };
+  }
+  return null;
+};
+
 const styles = {
   header: {
     display: 'flex',
@@ -355,6 +368,21 @@ export const BranchesPage: React.FC = () => {
                   style={{...styles.input, minHeight: '60px'}} 
                   value={formData.address}
                   onChange={(e) => setFormData({...formData, address: e.target.value})}
+                />
+              </div>
+              <div style={styles.formGroup}>
+                <label style={styles.label}>Coordinates (Paste DMS format here)</label>
+                <input 
+                  type="text"
+                  placeholder='e.g., lat- 18°36&#39;19.7"N long- 73°45&#39;09.6"E'
+                  style={styles.input} 
+                  onChange={(e) => {
+                    const parsed = parseDMS(e.target.value);
+                    if (parsed) {
+                      setFormData({...formData, latitude: parsed.latitude, longitude: parsed.longitude});
+                      e.target.value = ''; // clear after parsing
+                    }
+                  }}
                 />
               </div>
               <div style={{ display: 'flex', gap: '16px' }}>

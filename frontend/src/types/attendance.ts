@@ -14,6 +14,7 @@ export interface AttendanceRecord {
   employee: number;
   employee_name?: string;
   employee_code?: string;
+  distance_from_branch?: number | null;
   date: string;
   check_in: string | null;
   check_out: string | null;
