@@ -1,11 +1,38 @@
 from rest_framework import serializers
-from .models import Attendance, AttendanceBreak, Holiday, Shift
+from .models import Attendance, AttendanceBreak, Holiday, Shift, BreakType, TimesheetPolicy, Project, Timesheet, TimeEntry
 
 class AttendanceBreakSerializer(serializers.ModelSerializer):
+    break_type_name = serializers.CharField(source='break_type.name', read_only=True)
     class Meta:
         model = AttendanceBreak
-        fields = ['id', 'started_at', 'ended_at']
-        read_only_fields = ['id', 'started_at', 'ended_at']
+        fields = ['id', 'break_type', 'break_type_name', 'started_at', 'ended_at']
+        read_only_fields = ['id', 'break_type', 'break_type_name', 'started_at', 'ended_at']
+
+class BreakTypeSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = BreakType
+        fields = ['id', 'organization', 'name', 'max_duration_minutes', 'is_active', 'created_at', 'updated_at']
+        read_only_fields = ['id', 'created_at', 'updated_at']
+        extra_kwargs = {'organization': {'required': False}}
+
+class TimesheetPolicySerializer(serializers.ModelSerializer):
+    class Meta:
+        model=TimesheetPolicy; fields=['id','organization','cadence','requires_manager_approval','lock_on_submit','manager_can_reopen','updated_at']; read_only_fields=['id','organization','updated_at']
+
+class ProjectSerializer(serializers.ModelSerializer):
+    class Meta:
+        model=Project; fields=['id','organization','name','code','is_active']; read_only_fields=['id','organization']
+
+class TimeEntrySerializer(serializers.ModelSerializer):
+    project_name=serializers.CharField(source='project.name',read_only=True)
+    class Meta:
+        model=TimeEntry; fields=['id','timesheet','project','project_name','work_date','minutes','note']; read_only_fields=['id','timesheet']
+
+class TimesheetSerializer(serializers.ModelSerializer):
+    employee_name=serializers.SerializerMethodField(); entries=TimeEntrySerializer(many=True,read_only=True)
+    class Meta:
+        model=Timesheet; fields=['id','employee','employee_name','period_start','period_end','status','submitted_at','reviewed_at','reviewer_comment','entries']; read_only_fields=['id','employee','employee_name','status','submitted_at','reviewed_at','reviewer_comment','entries']
+    def get_employee_name(self,obj): return f'{obj.employee.user.first_name} {obj.employee.user.last_name}'.strip() or obj.employee.user.email
 
 class AttendanceSerializer(serializers.ModelSerializer):
     is_on_break = serializers.SerializerMethodField()

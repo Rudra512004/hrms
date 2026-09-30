@@ -4,9 +4,11 @@ from rest_framework.response import Response
 from django.db import IntegrityError
 from rest_framework.exceptions import ValidationError
 from .models import OfficeNetwork, Organization, Department, Designation, Branch, Team, WorkingCalendar
+from .services import OrganizationReadinessService
 from .serializers import OfficeNetworkSerializer, OrganizationSerializer, DepartmentSerializer, DesignationSerializer, BranchSerializer, WorkingCalendarSerializer, OrganizationSetupSerializer, TeamSerializer, AttendancePolicySerializer
 from apps.authorization.permissions import require_permission, IsNetworkAllowed
 from rest_framework.permissions import IsAuthenticated
+from apps.audit.services import AuditService
 
 
 def _get_request_user_org(request):
@@ -29,14 +31,64 @@ def _get_request_user_org(request):
     return None
 
 
+class OrganizationConfigurationAuditMixin:
+    """Adds a privacy-safe audit event for organization configuration changes."""
+    audit_resource = ''
+
+    def _audit_organization(self, instance):
+        if isinstance(instance, Organization):
+            return instance
+        if hasattr(instance, 'organization_id'):
+            return instance.organization
+        if hasattr(instance, 'branch_id'):
+            return instance.branch.organization
+        if hasattr(instance, 'department_id'):
+            return instance.department.branch.organization
+        return None
+
+    def _audit(self, action, instance, metadata=None):
+        AuditService.log(
+            action=action,
+            actor=self.request.user,
+            target_type=self.audit_resource,
+            target_id=instance.pk,
+            metadata=metadata or {},
+            request=self.request,
+            organization=self._audit_organization(instance),
+        )
+
+    def perform_update(self, serializer):
+        changed_fields = sorted(serializer.validated_data.keys())
+        instance = serializer.save()
+        self._audit(f'{self.audit_resource}_updated', instance, {'fields': changed_fields})
+
+    def perform_destroy(self, instance):
+        self._audit(f'{self.audit_resource}_deleted', instance)
+        instance.delete()
+
+
 class OrganizationSetupViewSet(viewsets.ModelViewSet):
     serializer_class = OrganizationSetupSerializer
     from apps.authorization.permissions import IsSuperAdmin
     permission_classes = [IsAuthenticated, IsSuperAdmin]
     queryset = Organization.objects.all()
 
-class WorkingCalendarViewSet(viewsets.ModelViewSet):
+    def perform_create(self, serializer):
+        organization = serializer.save()
+        AuditService.log(
+            action='organization_launched',
+            actor=self.request.user,
+            target_type='organization',
+            target_id=organization.pk,
+            # Deliberately avoid address, network, and policy details in audit metadata.
+            metadata={'branch_count': organization.branches.count()},
+            request=self.request,
+            organization=organization,
+        )
+
+class WorkingCalendarViewSet(OrganizationConfigurationAuditMixin, viewsets.ModelViewSet):
     serializer_class = WorkingCalendarSerializer
+    audit_resource = 'working_calendar'
     permission_classes = [IsAuthenticated, IsNetworkAllowed, require_permission('organization.update')]
 
     def get_queryset(self):
@@ -57,8 +109,9 @@ class WorkingCalendarViewSet(viewsets.ModelViewSet):
             # Usually handled automatically or via BranchViewSet.
             pass
 
-class OrganizationViewSet(viewsets.ModelViewSet):
+class OrganizationViewSet(OrganizationConfigurationAuditMixin, viewsets.ModelViewSet):
     serializer_class = OrganizationSerializer
+    audit_resource = 'organization'
 
     def get_queryset(self):
         user = self.request.user
@@ -70,15 +123,25 @@ class OrganizationViewSet(viewsets.ModelViewSet):
         return Organization.objects.none()
 
     def get_permissions(self):
-        if self.action in ['list', 'retrieve']:
+        if self.action in ['list', 'retrieve', 'readiness']:
             permission = require_permission('organization.view')
         else:
             permission = require_permission('organization.manage')
         return [IsAuthenticated(), permission()]
 
+    def perform_create(self, serializer):
+        organization = serializer.save()
+        self._audit('organization_created', organization)
 
-class DepartmentViewSet(viewsets.ModelViewSet):
+    @action(detail=True, methods=['get'])
+    def readiness(self, request, pk=None):
+        organization = self.get_object()
+        return Response(OrganizationReadinessService.assess(organization))
+
+
+class DepartmentViewSet(OrganizationConfigurationAuditMixin, viewsets.ModelViewSet):
     serializer_class = DepartmentSerializer
+    audit_resource = 'department'
 
     def get_queryset(self):
         user = self.request.user
@@ -126,12 +189,14 @@ class DepartmentViewSet(viewsets.ModelViewSet):
                 raise ValidationError({"branch": "You do not have permission to create a department in this branch."})
 
         try:
-            serializer.save(branch=branch)
+            department = serializer.save(branch=branch)
+            self._audit('department_created', department)
         except IntegrityError:
             raise ValidationError({"name": "A department with this name already exists in this branch."})
 
-class TeamViewSet(viewsets.ModelViewSet):
+class TeamViewSet(OrganizationConfigurationAuditMixin, viewsets.ModelViewSet):
     serializer_class = TeamSerializer
+    audit_resource = 'team'
 
     def get_queryset(self):
         user = self.request.user
@@ -184,13 +249,15 @@ class TeamViewSet(viewsets.ModelViewSet):
                 raise ValidationError({"department": "You do not have permission to create a team in this department's branch."})
 
         try:
-            serializer.save(department=dept)
+            team = serializer.save(department=dept)
+            self._audit('team_created', team)
         except IntegrityError:
             raise ValidationError({"name": "A team with this name already exists in this department."})
 
 
-class DesignationViewSet(viewsets.ModelViewSet):
+class DesignationViewSet(OrganizationConfigurationAuditMixin, viewsets.ModelViewSet):
     serializer_class = DesignationSerializer
+    audit_resource = 'designation'
 
     def get_queryset(self):
         user = self.request.user
@@ -238,13 +305,15 @@ class DesignationViewSet(viewsets.ModelViewSet):
                     raise ValidationError({"organization": "Invalid organization ID."})
 
         try:
-            serializer.save(organization=org)
+            designation = serializer.save(organization=org)
+            self._audit('designation_created', designation)
         except IntegrityError:
             raise ValidationError({"name": "A designation with this name already exists in this organization."})
 
 
-class OfficeNetworkViewSet(viewsets.ModelViewSet):
+class OfficeNetworkViewSet(OrganizationConfigurationAuditMixin, viewsets.ModelViewSet):
     serializer_class = OfficeNetworkSerializer
+    audit_resource = 'office_network'
 
     def get_queryset(self):
         user = self.request.user
@@ -295,13 +364,15 @@ class OfficeNetworkViewSet(viewsets.ModelViewSet):
                 raise ValidationError({"branch": "Cannot create resources for a branch you do not have permission for."})
 
         try:
-            serializer.save(branch=branch)
+            network = serializer.save(branch=branch)
+            self._audit('office_network_created', network)
         except IntegrityError:
             raise ValidationError({"network": "This network is already configured for this branch."})
 
 
-class BranchViewSet(viewsets.ModelViewSet):
+class BranchViewSet(OrganizationConfigurationAuditMixin, viewsets.ModelViewSet):
     serializer_class = BranchSerializer
+    audit_resource = 'branch'
 
     def get_queryset(self):
         user = self.request.user
@@ -355,7 +426,8 @@ class BranchViewSet(viewsets.ModelViewSet):
                     raise ValidationError({"organization": "Invalid organization ID."})
 
         try:
-            serializer.save(organization=org)
+            branch = serializer.save(organization=org)
+            self._audit('branch_created', branch)
         except IntegrityError:
             raise ValidationError({"name": "A branch with this name already exists in this organization."})
 
@@ -382,4 +454,13 @@ class BranchViewSet(viewsets.ModelViewSet):
         serializer = AttendancePolicySerializer(policy, data=request.data, partial=(request.method == 'PATCH'))
         serializer.is_valid(raise_exception=True)
         serializer.save()
+        AuditService.log(
+            action='attendance_policy_updated',
+            actor=request.user,
+            target_type='attendance_policy',
+            target_id=policy.pk,
+            metadata={'fields': sorted(serializer.validated_data.keys()), 'branch_id': branch.pk},
+            request=request,
+            organization=branch.organization,
+        )
         return Response(serializer.data)

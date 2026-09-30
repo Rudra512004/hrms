@@ -280,6 +280,9 @@ h1, h2, h3, h4, h5, h6 {
   .organization-launchpad-grid {
     grid-template-columns: minmax(0, 1fr) !important;
   }
+  .organization-control-grid {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
 }
 
 /* ═══════════════════════════════════════════

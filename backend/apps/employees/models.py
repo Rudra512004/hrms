@@ -196,3 +196,21 @@ class EmployeeDocument(models.Model):
 
     def __str__(self):
         return f"{self.employee.employee_code} — {self.document_name} ({self.document_type})"
+
+class ReviewCycle(models.Model):
+    organization=models.ForeignKey(Organization,on_delete=models.CASCADE,related_name='review_cycles')
+    name=models.CharField(max_length=150); start_date=models.DateField(); end_date=models.DateField(); is_active=models.BooleanField(default=True)
+    class Meta: unique_together=('organization','name')
+    def clean(self):
+        if self.start_date and self.end_date and self.end_date<self.start_date: raise ValidationError({'end_date':'End date cannot precede start date.'})
+
+class PerformanceReview(models.Model):
+    STATUS=[('draft','Draft'),('submitted','Submitted'),('acknowledged','Acknowledged')]
+    cycle=models.ForeignKey(ReviewCycle,on_delete=models.PROTECT,related_name='reviews')
+    employee=models.ForeignKey(Employee,on_delete=models.CASCADE,related_name='performance_reviews')
+    reviewer=models.ForeignKey(Employee,on_delete=models.SET_NULL,null=True,related_name='reviews_authored')
+    rating=models.PositiveSmallIntegerField(null=True,blank=True); summary=models.TextField(blank=True); status=models.CharField(max_length=16,choices=STATUS,default='draft'); submitted_at=models.DateTimeField(null=True,blank=True)
+    class Meta: unique_together=('cycle','employee')
+    def clean(self):
+        if self.rating is not None and not 1<=self.rating<=5:raise ValidationError({'rating':'Rating must be between 1 and 5.'})
+        if self.reviewer_id and self.reviewer.organization_id!=self.employee.organization_id:raise ValidationError({'reviewer':'Reviewer must be in the same organization.'})

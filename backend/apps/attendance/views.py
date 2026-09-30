@@ -8,8 +8,8 @@ from django.db import transaction, IntegrityError
 from django.db.models import Q
 from datetime import timedelta
 from apps.authorization.permissions import IsNetworkAllowed, require_permission
-from .models import Attendance, AttendanceBreak, Holiday, Shift
-from .serializers import AttendanceSerializer, HolidaySerializer, ShiftSerializer
+from .models import Attendance, AttendanceBreak, Holiday, Shift, BreakType
+from .serializers import AttendanceSerializer, HolidaySerializer, ShiftSerializer, BreakTypeSerializer
 
 from .utils import calculate_haversine_distance
 
@@ -222,8 +222,21 @@ class AttendanceViewSet(viewsets.GenericViewSet):
             if attendance.breaks.filter(ended_at__isnull=True).exists():
                 return Response({'detail': 'Already on a break.'}, status=status.HTTP_400_BAD_REQUEST)
 
+            break_type = None
+            break_type_id = request.data.get('break_type_id')
+            if break_type_id:
+                try:
+                    break_type = BreakType.objects.get(
+                        id=break_type_id,
+                        organization_id=employee.organization_id,
+                        is_active=True,
+                    )
+                except BreakType.DoesNotExist:
+                    return Response({'detail': 'Selected break type is unavailable.'}, status=status.HTTP_400_BAD_REQUEST)
+
             b = AttendanceBreak.objects.create(
                 attendance=attendance,
+                break_type=break_type,
                 started_at=timezone.now()
             )
 
@@ -232,7 +245,8 @@ class AttendanceViewSet(viewsets.GenericViewSet):
                 actor=request.user,
                 target_type='attendance',
                 target_id=attendance.id,
-                request=request
+                request=request,
+                metadata={'break_type_id': break_type.id if break_type else None}
             )
 
         serializer = self.get_serializer(attendance)

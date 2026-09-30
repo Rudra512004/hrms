@@ -1,0 +1,4 @@
+export interface BreakType { id:number; organization:number; name:string; max_duration_minutes:number|null; is_active:boolean; }
+const h=()=>({'Content-Type':'application/json',...(localStorage.getItem('auth_token')?{Authorization:`Token ${localStorage.getItem('auth_token')}`}:{})});
+const handle=async<T>(r:Response):Promise<T>=>{if(!r.ok)throw new Error('Request failed');return r.status===204?null as T:r.json();};
+export const breakTypeService={list:()=>fetch('/api/v1/attendance/break-types/',{headers:h()}).then(handle<BreakType[]>),create:(x:Partial<BreakType>)=>fetch('/api/v1/attendance/break-types/',{method:'POST',headers:h(),body:JSON.stringify(x)}).then(handle<BreakType>),update:(id:number,x:Partial<BreakType>)=>fetch(`/api/v1/attendance/break-types/${id}/`,{method:'PATCH',headers:h(),body:JSON.stringify(x)}).then(handle<BreakType>)};

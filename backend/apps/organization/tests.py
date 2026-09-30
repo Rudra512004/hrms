@@ -2,6 +2,7 @@
 from rest_framework.test import APITestCase
 from django.contrib.auth import get_user_model
 from apps.organization.models import Organization, Branch, OfficeNetwork, AttendancePolicy, WorkingCalendar
+from apps.audit.models import AuditLog
 
 User = get_user_model()
 
@@ -45,6 +46,8 @@ class OrganizationSetupTests(APITestCase):
         self.assertTrue(org.branches.first().attendance_policy.is_office_gps_enabled)
         self.assertTrue(Branch.objects.filter(organization=org, name='HQ').exists())
         self.assertTrue(OfficeNetwork.objects.filter(branch=org.branches.first(), name='HQ WiFi').exists())
+        audit = AuditLog.objects.get(action='organization_launched', organization=org)
+        self.assertEqual(audit.metadata, {'branch_count': 1})
 
     def test_setup_rollback_on_failure(self):
         self.client.force_authenticate(user=self.superadmin)

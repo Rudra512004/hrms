@@ -38,6 +38,7 @@ class Attendance(models.Model):
 
 class AttendanceBreak(models.Model):
     attendance = models.ForeignKey(Attendance, on_delete=models.CASCADE, related_name='breaks')
+    break_type = models.ForeignKey('BreakType', on_delete=models.SET_NULL, null=True, blank=True, related_name='breaks')
     started_at = models.DateTimeField(default=timezone.now)
     ended_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -47,6 +48,47 @@ class AttendanceBreak(models.Model):
 
     def __str__(self):
         return f"Break for {self.attendance} starting {self.started_at}"
+
+
+class BreakType(models.Model):
+    """Organization-scoped labels for attendance breaks; optional on legacy records."""
+    organization = models.ForeignKey('organization.Organization', on_delete=models.CASCADE, related_name='break_types')
+    name = models.CharField(max_length=100)
+    max_duration_minutes = models.PositiveIntegerField(null=True, blank=True)
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = ('organization', 'name')
+        ordering = ['name']
+
+class TimesheetPolicy(models.Model):
+    CADENCE_CHOICES=[('daily','Daily'),('weekly','Weekly')]
+    organization=models.OneToOneField('organization.Organization',on_delete=models.CASCADE,related_name='timesheet_policy')
+    cadence=models.CharField(max_length=10,choices=CADENCE_CHOICES,default='weekly')
+    requires_manager_approval=models.BooleanField(default=True)
+    lock_on_submit=models.BooleanField(default=True)
+    manager_can_reopen=models.BooleanField(default=True)
+    updated_at=models.DateTimeField(auto_now=True)
+
+class Project(models.Model):
+    organization=models.ForeignKey('organization.Organization',on_delete=models.CASCADE,related_name='projects')
+    name=models.CharField(max_length=160); code=models.CharField(max_length=40)
+    is_active=models.BooleanField(default=True)
+    class Meta: unique_together=('organization','code')
+
+class Timesheet(models.Model):
+    STATUS=[('draft','Draft'),('submitted','Submitted'),('approved','Approved'),('rejected','Rejected')]
+    employee=models.ForeignKey('employees.Employee',on_delete=models.CASCADE,related_name='timesheets')
+    period_start=models.DateField(); period_end=models.DateField(); status=models.CharField(max_length=12,choices=STATUS,default='draft')
+    submitted_at=models.DateTimeField(null=True,blank=True); reviewed_by=models.ForeignKey('accounts.User',null=True,blank=True,on_delete=models.SET_NULL,related_name='+'); reviewed_at=models.DateTimeField(null=True,blank=True); reviewer_comment=models.TextField(blank=True)
+    class Meta: unique_together=('employee','period_start','period_end')
+
+class TimeEntry(models.Model):
+    timesheet=models.ForeignKey(Timesheet,on_delete=models.CASCADE,related_name='entries')
+    project=models.ForeignKey(Project,on_delete=models.PROTECT,related_name='time_entries')
+    work_date=models.DateField(); minutes=models.PositiveIntegerField(); note=models.CharField(max_length=500,blank=True)
 
 from apps.organization.models import Organization
 

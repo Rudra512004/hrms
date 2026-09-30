@@ -89,7 +89,7 @@ class ProvisionEmployeeView(APIView):
             first_name=employee.user.first_name,
             employee_code=employee.employee_code,
             uid=uid,
-            token=token
+            token=token, organization=employee.organization
         )
         response_data['onboarding_email_status'] = 'sent' if email_sent else 'failed'
 
@@ -182,7 +182,7 @@ class EmployeeManagementViewSet(viewsets.ModelViewSet):
             first_name=employee.user.first_name,
             employee_code=employee.employee_code,
             uid=uid,
-            token=token
+            token=token, organization=employee.organization
         )
         response_data['onboarding_email_status'] = 'sent' if email_sent else 'failed'
 

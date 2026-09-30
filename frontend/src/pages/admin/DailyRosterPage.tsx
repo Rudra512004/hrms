@@ -1,0 +1,13 @@
+import React,{useEffect,useState}from'react';
+import { CalendarDays, Loader2, RefreshCw } from'lucide-react';
+import { Card } from'../../components/Card';
+import { Table } from'../../components/Table';
+import { StatusBadge } from'../../components/StatusBadge';
+import { attendanceService,type AttendanceRecord } from'../../services/attendance';
+
+export const DailyRosterPage:React.FC=()=>{
+ const [date,setDate]=useState(new Date().toISOString().slice(0,10));const[rows,setRows]=useState<AttendanceRecord[]>([]);const[loading,setLoading]=useState(true);const[error,setError]=useState<string|null>(null);
+ const load=()=>{setLoading(true);setError(null);attendanceService.getManagementHistory({date}).then(x=>setRows(Array.isArray(x)?x:(x as any).results||[])).catch(()=>setError('Unable to load the daily roster.')).finally(()=>setLoading(false));};useEffect(load,[date]);
+ const time=(value:string|null)=>value?new Date(value).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}):'—';
+ return <div><div style={{display:'flex',justifyContent:'space-between',alignItems:'center',flexWrap:'wrap',gap:12,marginBottom:'var(--spacing-lg)'}}><div><h1 style={{margin:0,fontSize:'var(--font-size-2xl)'}}>Daily Roster</h1><p className="text-muted" style={{marginTop:4}}>A live, date-based operational view of attendance, location exceptions, and active breaks.</p></div><div style={{display:'flex',gap:8}}><input className="input-neumorphic" type="date" value={date} onChange={e=>setDate(e.target.value)}/><button className="btn btn-secondary" onClick={load}><RefreshCw size={16}/>Refresh</button></div></div>{error?<Card><div style={{color:'var(--color-status-danger)'}}>{error}</div></Card>:loading?<Card><div style={{padding:32,textAlign:'center'}}><Loader2 className="animate-spin" color="var(--color-primary)"/></div></Card>:<Card>{rows.length?<Table data={rows} keyExtractor={x=>x.id} columns={[{key:'employee_name',title:'Employee',render:(x:AttendanceRecord)=>x.employee_name||x.employee_code},{key:'check_in',title:'In',render:(x:AttendanceRecord)=>time(x.check_in)},{key:'check_out',title:'Out',render:(x:AttendanceRecord)=>time(x.check_out)},{key:'status',title:'Status',render:(x:AttendanceRecord)=><StatusBadge status={x.status}/>},{key:'is_late',title:'Punctuality',render:(x:AttendanceRecord)=>x.is_late?'Late':'On time'},{key:'break',title:'Break',render:(x:AttendanceRecord)=>x.is_on_break?'Active':'—'},{key:'distance',title:'Location',render:(x:AttendanceRecord)=>x.distance_from_branch==null?'Not captured':`${x.distance_from_branch} m`}]}/>:<div className="text-muted" style={{padding:24,textAlign:'center'}}><CalendarDays size={20} style={{verticalAlign:'middle',marginRight:8}}/>No attendance records for this date.</div>}</Card>}</div>;
+};

@@ -48,6 +48,25 @@ class OrganizationAPITests(TestCase):
         response = self.client.post(reverse('organization-list'), {'name': 'New Org'})
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
+    def test_readiness_returns_advisory_configuration_checks(self):
+        from apps.organization.models import Branch
+        permission, _ = Permission.objects.get_or_create(
+            codename='organization.view',
+            defaults={'name': 'organization.view', 'resource': 'organization', 'action': 'view'},
+        )
+        RolePermission.objects.get_or_create(role=self.role, permission=permission)
+        Branch.objects.create(organization=self.org, name='HQ', radius=100)
+        self.client.force_authenticate(user=self.user)
+
+        response = self.client.get(reverse('organization-readiness', kwargs={'pk': self.org.id}))
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['score'], 67)
+        checks = {item['key']: item for item in response.data['checks']}
+        self.assertEqual(checks['branches']['state'], 'ready')
+        self.assertEqual(checks['calendars']['state'], 'ready')
+        self.assertEqual(checks['leave_types']['state'], 'action_required')
+
     def test_department_creation_under_branch(self):
         from apps.organization.models import Branch
         branch = Branch.objects.create(organization=self.org, name='Main Branch', radius=100)

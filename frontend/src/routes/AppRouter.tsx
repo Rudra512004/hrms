@@ -20,6 +20,7 @@ import { LeavePage } from '../pages/LeavePage';
 import { CalendarPage } from '../pages/CalendarPage';
 import { PayrollPage } from '../pages/PayrollPage';
 import { PayrollReportsPage } from '../pages/PayrollReportsPage';
+import { SalaryConfigurationPage } from '../pages/admin/SalaryConfigurationPage';
 import { MyPayslipsPage } from '../pages/MyPayslipsPage';
 
 // Admin Pages
@@ -30,6 +31,16 @@ import { EmployeesPage } from '../pages/admin/EmployeesPage';
 import { EmployeeProfilePage } from '../pages/admin/EmployeeProfilePage';
 import { EmployeeAccessPage } from '../pages/admin/EmployeeAccessPage';
 import { AuditLogsPage } from '../pages/admin/AuditLogsPage';
+import { OrganizationControlCenterPage } from '../pages/admin/OrganizationControlCenterPage';
+import { AnnouncementsPage } from '../pages/admin/AnnouncementsPage';
+import { EmailAutomationPage } from '../pages/admin/EmailAutomationPage';
+import { DailyRosterPage } from '../pages/admin/DailyRosterPage';
+import { BreakTypesPage } from '../pages/admin/BreakTypesPage';
+import { LocationAlertsPage } from '../pages/admin/LocationAlertsPage';
+import { ProjectsPage } from '../pages/admin/ProjectsPage';
+import { TimesheetPolicyPage } from '../pages/admin/TimesheetPolicyPage';
+import { TimesheetsPage } from '../pages/TimesheetsPage';
+import { ReviewsPage } from '../pages/ReviewsPage';
 import { AdminLeaveTypesPage } from '../pages/admin/AdminLeaveTypesPage';
 import { RolesPage } from '../pages/admin/RolesPage';
 import { RolePermissionsPage } from '../pages/admin/RolePermissionsPage';
@@ -82,6 +93,8 @@ export const AppRouter: React.FC = () => {
             <Route path="/leaves" element={<LeavePage />} />
             <Route path="/calendar" element={<CalendarPage />} />
             <Route path="/payslips" element={<MyPayslipsPage />} />
+            <Route path="/timesheets" element={<TimesheetsPage />} />
+            <Route path="/reviews" element={<ReviewsPage />} />
           </Route>
           <Route path="/profile" element={<ProfilePage />} />
 
@@ -92,6 +105,10 @@ export const AppRouter: React.FC = () => {
 
           <Route element={<ProtectedRoute requiredPermission="payroll.view_reports" />}>
             <Route path="/payroll/reports" element={<PayrollReportsPage />} />
+          </Route>
+
+          <Route element={<ProtectedRoute requiredPermission="payroll.manage_compensation" />}>
+            <Route path="/admin/salary-configuration" element={<SalaryConfigurationPage />} />
           </Route>
 
           {/* Admin Routes */}
@@ -109,6 +126,17 @@ export const AppRouter: React.FC = () => {
 
           <Route element={<ProtectedRoute requiredPermission="attendance.view_all" />}>
             <Route path="/admin/attendance" element={<AttendanceManagementPage />} />
+            <Route path="/admin/daily-roster" element={<DailyRosterPage />} />
+            <Route path="/admin/location-alerts" element={<LocationAlertsPage />} />
+            <Route path="/admin/projects" element={<ProjectsPage />} />
+          </Route>
+
+          <Route element={<ProtectedRoute requiredPermission="shift.view" />}>
+            <Route path="/admin/break-types" element={<BreakTypesPage />} />
+          </Route>
+
+          <Route element={<ProtectedRoute requiredPermission="shift.manage" />}>
+            <Route path="/admin/timesheet-policy" element={<TimesheetPolicyPage />} />
           </Route>
 
           <Route element={<ProtectedRoute requiredPermission="office_network.view" />}>
@@ -117,6 +145,12 @@ export const AppRouter: React.FC = () => {
 
           <Route element={<ProtectedRoute requiredPermission="organization.view" />}>
             <Route path="/admin/organizations" element={<OrganizationsPage />} />
+            <Route path="/admin/control-center" element={<OrganizationControlCenterPage />} />
+          </Route>
+          <Route element={<ProtectedRoute requiredPermission="announcement.view" />}><Route path="/admin/announcements" element={<AnnouncementsPage />} /></Route>
+
+          <Route element={<ProtectedRoute requiredPermission="email_automation.manage" />}>
+            <Route path="/admin/email-automation" element={<EmailAutomationPage />} />
           </Route>
 
           <Route element={<ProtectedRoute requiredPermission="organization.manage" />}>

@@ -1,5 +1,13 @@
 from rest_framework import serializers
-from .models import CompensationHistory, PayrollPeriod, PayrollRecord, Payslip
+from .models import (
+    CompensationHistory,
+    PayrollPeriod,
+    PayrollRecord,
+    Payslip,
+    SalaryComponent,
+    SalaryStructure,
+    SalaryStructureComponent,
+)
 
 
 class CompensationHistorySerializer(serializers.ModelSerializer):
@@ -223,3 +231,64 @@ class PayslipDetailSerializer(serializers.ModelSerializer):
             'deductions': '0.00',
             'net_salary': str(r.net_salary),
         }
+
+
+class SalaryComponentSerializer(serializers.ModelSerializer):
+    organization_name = serializers.CharField(source='organization.name', read_only=True)
+
+    class Meta:
+        model = SalaryComponent
+        fields = [
+            'id', 'organization', 'organization_name', 'name', 'code', 'kind',
+            'is_taxable', 'is_active',
+        ]
+        read_only_fields = ['id', 'organization_name']
+        extra_kwargs = {'organization': {'required': False}}
+
+    def validate_code(self, value):
+        return value.strip().upper()
+
+
+class SalaryStructureComponentSerializer(serializers.ModelSerializer):
+    component_name = serializers.CharField(source='component.name', read_only=True)
+    component_code = serializers.CharField(source='component.code', read_only=True)
+    component_kind = serializers.CharField(source='component.kind', read_only=True)
+
+    class Meta:
+        model = SalaryStructureComponent
+        fields = [
+            'id', 'component', 'component_name', 'component_code',
+            'component_kind', 'amount',
+        ]
+        read_only_fields = ['id']
+
+
+class SalaryStructureSerializer(serializers.ModelSerializer):
+    organization_name = serializers.CharField(source='organization.name', read_only=True)
+    components = SalaryStructureComponentSerializer(many=True, read_only=True)
+    monthly_earnings = serializers.SerializerMethodField()
+    monthly_deductions = serializers.SerializerMethodField()
+
+    class Meta:
+        model = SalaryStructure
+        fields = [
+            'id', 'organization', 'organization_name', 'name', 'is_active',
+            'components', 'monthly_earnings', 'monthly_deductions',
+        ]
+        read_only_fields = [
+            'id', 'organization_name', 'components', 'monthly_earnings',
+            'monthly_deductions',
+        ]
+        extra_kwargs = {'organization': {'required': False}}
+
+    def get_monthly_earnings(self, obj):
+        return sum(
+            (item.amount for item in obj.components.all() if item.component.kind == 'earning'),
+            start=0,
+        )
+
+    def get_monthly_deductions(self, obj):
+        return sum(
+            (item.amount for item in obj.components.all() if item.component.kind == 'deduction'),
+            start=0,
+        )

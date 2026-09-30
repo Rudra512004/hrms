@@ -5,9 +5,20 @@ from django.contrib.auth import get_user_model
 from django.utils.crypto import get_random_string
 from django.conf import settings
 from apps.organization.models import Branch, Department, Designation, Team
-from .models import Employee, EmploymentStatus, EmployeeLifecycleEvent, EmployeeDocument, DocumentType, DocumentStatus
+from .models import Employee, EmploymentStatus, EmployeeLifecycleEvent, EmployeeDocument, DocumentType, DocumentStatus, ReviewCycle, PerformanceReview
 
 User = get_user_model()
+
+class ReviewCycleSerializer(serializers.ModelSerializer):
+    class Meta:
+        model=ReviewCycle; fields=['id','organization','name','start_date','end_date','is_active']; read_only_fields=['id','organization']
+
+class PerformanceReviewSerializer(serializers.ModelSerializer):
+    employee_name=serializers.SerializerMethodField(); reviewer_name=serializers.SerializerMethodField()
+    class Meta:
+        model=PerformanceReview; fields=['id','cycle','employee','employee_name','reviewer','reviewer_name','rating','summary','status','submitted_at']; read_only_fields=['id','reviewer','reviewer_name','status','submitted_at']
+    def get_employee_name(self,x): return f'{x.employee.user.first_name} {x.employee.user.last_name}'.strip() or x.employee.user.email
+    def get_reviewer_name(self,x): return (f'{x.reviewer.user.first_name} {x.reviewer.user.last_name}'.strip() or x.reviewer.user.email) if x.reviewer else None
 
 class EmployeeSerializer(serializers.ModelSerializer):
     email = serializers.EmailField(source='user.email', read_only=True)

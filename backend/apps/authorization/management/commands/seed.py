@@ -129,6 +129,11 @@ class Command(BaseCommand):
             # Letters
             {'codename': 'letter.view',  'resource': 'letter', 'action': 'view',  'name': 'View Letter Templates'},
             {'codename': 'letter.issue', 'resource': 'letter', 'action': 'issue', 'name': 'Create/Issue Letter Templates'},
+
+            # Communications
+            {'codename': 'announcement.view', 'resource': 'announcement', 'action': 'view', 'name': 'View Announcements'},
+            {'codename': 'announcement.manage', 'resource': 'announcement', 'action': 'manage', 'name': 'Manage Announcements'},
+            {'codename': 'email_automation.manage', 'resource': 'email_automation', 'action': 'manage', 'name': 'Manage Email Automation'},
         ]
 
         for p_data in permissions_data:

@@ -119,7 +119,8 @@ class PasswordResetRequestView(APIView):
                     email=user.email,
                     first_name=user.first_name,
                     uid=uid,
-                    token=token
+                    token=token,
+                    organization=getattr(getattr(user, 'employee', None), 'organization', None),
                 )
 
                 AuditService.log(

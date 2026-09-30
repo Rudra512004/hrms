@@ -231,3 +231,21 @@ class Payslip(models.Model):
 
     def __str__(self):
         return f"{self.payslip_number} — {self.payroll_record.employee.employee_code}"
+
+class SalaryComponent(models.Model):
+    KIND=[('earning','Earning'),('deduction','Deduction')]
+    organization=models.ForeignKey(Organization,on_delete=models.CASCADE,related_name='salary_components')
+    name=models.CharField(max_length=120); code=models.CharField(max_length=32); kind=models.CharField(max_length=12,choices=KIND)
+    is_taxable=models.BooleanField(default=False); is_active=models.BooleanField(default=True)
+    class Meta: unique_together=('organization','code')
+
+class SalaryStructure(models.Model):
+    organization=models.ForeignKey(Organization,on_delete=models.CASCADE,related_name='salary_structures')
+    name=models.CharField(max_length=120); is_active=models.BooleanField(default=True)
+    class Meta: unique_together=('organization','name')
+
+class SalaryStructureComponent(models.Model):
+    structure=models.ForeignKey(SalaryStructure,on_delete=models.CASCADE,related_name='components')
+    component=models.ForeignKey(SalaryComponent,on_delete=models.PROTECT)
+    amount=models.DecimalField(max_digits=12,decimal_places=2,default=0)
+    class Meta: unique_together=('structure','component')

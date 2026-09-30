@@ -43,6 +43,22 @@ export interface OrganizationSetupPayload {
   };
 }
 
+export interface OrganizationReadinessCheck {
+  key: string;
+  label: string;
+  state: 'ready' | 'action_required' | 'recommended';
+  detail: string;
+  path: string;
+  required: boolean;
+}
+
+export interface OrganizationReadiness {
+  organization_id: number;
+  organization_name: string;
+  score: number;
+  checks: OrganizationReadinessCheck[];
+}
+
 export interface Department {
   id: number;
   branch: number;
@@ -111,6 +127,13 @@ export const organizationService = {
       body: JSON.stringify(data),
     });
     return handleResponse<Organization>(response);
+  },
+
+  getOrganizationReadiness: async (id: number): Promise<OrganizationReadiness> => {
+    const response = await fetch(`/api/v1/organization/organizations/${id}/readiness/`, {
+      headers: getHeaders(false),
+    });
+    return handleResponse<OrganizationReadiness>(response);
   },
 
   // --- ORGANIZATIONS ---

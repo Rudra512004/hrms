@@ -127,3 +127,63 @@ class WorkingCalendarService:
             current += timedelta(days=1)
 
         return working_day_count
+
+
+class OrganizationReadinessService:
+    """Read-only operational readiness assessment for an organization.
+
+    This is intentionally advisory: it never blocks existing workflows or
+    silently creates configuration. It gives administrators a concise view of
+    the prerequisites that make attendance, leave, and access reliable.
+    """
+
+    @staticmethod
+    def assess(organization):
+        LeaveType = apps.get_model('leaves', 'LeaveType')
+        Role = apps.get_model('authorization', 'Role')
+        Shift = apps.get_model('attendance', 'Shift')
+
+        active_branches = Branch.objects.filter(organization=organization, is_active=True)
+        branch_ids = list(active_branches.values_list('id', flat=True))
+        calendar_branch_ids = set(WorkingCalendar.objects.filter(branch_id__in=branch_ids).exclude(work_days='').values_list('branch_id', flat=True))
+        policy_branch_ids = set(
+            apps.get_model('organization', 'AttendancePolicy').objects.filter(branch_id__in=branch_ids).values_list('branch_id', flat=True)
+        )
+        shift_branch_ids = set(Shift.objects.filter(branch_id__in=branch_ids, is_active=True).values_list('branch_id', flat=True))
+
+        def check(key, label, state, detail, path, required=True):
+            return {
+                'key': key,
+                'label': label,
+                'state': state,
+                'detail': detail,
+                'path': path,
+                'required': required,
+            }
+
+        missing_calendars = len(set(branch_ids) - calendar_branch_ids)
+        missing_policies = len(set(branch_ids) - policy_branch_ids)
+        missing_shifts = len(set(branch_ids) - shift_branch_ids)
+        department_count = sum(branch.departments.filter(is_active=True).count() for branch in active_branches)
+        team_count = sum(department.teams.filter(is_active=True).count() for branch in active_branches for department in branch.departments.all())
+        designation_count = organization.designations.filter(is_active=True).count()
+        leave_type_count = LeaveType.objects.filter(organization=organization, is_active=True).count()
+        role_count = Role.objects.filter(organization=organization, is_active=True).count()
+
+        checks = [
+            check('branches', 'Active locations', 'ready' if branch_ids else 'action_required', f'{len(branch_ids)} active location(s) configured.', '/admin/branches'),
+            check('calendars', 'Working calendars', 'ready' if branch_ids and not missing_calendars else 'action_required', 'Every active location has working days.' if not missing_calendars and branch_ids else f'{missing_calendars} active location(s) need working days.', '/admin/working-calendar'),
+            check('attendance_policies', 'Attendance policies', 'ready' if branch_ids and not missing_policies else 'action_required', 'Every active location has an attendance policy.' if not missing_policies and branch_ids else f'{missing_policies} active location(s) need a policy.', '/admin/attendance-policy'),
+            check('structure', 'Organization structure', 'ready' if department_count and designation_count else 'action_required', f'{department_count} department(s), {team_count} team(s), and {designation_count} designation(s).', '/admin/departments'),
+            check('leave_types', 'Leave configuration', 'ready' if leave_type_count else 'action_required', f'{leave_type_count} active leave type(s).', '/admin/leave-types'),
+            check('roles', 'Roles and access', 'ready' if role_count else 'action_required', f'{role_count} active role(s).', '/admin/roles'),
+            check('shifts', 'Shift schedules', 'ready' if branch_ids and not missing_shifts else 'recommended', 'Every active location has an active shift.' if not missing_shifts and branch_ids else f'{missing_shifts} active location(s) do not yet have a shift.', '/admin/shifts', required=False),
+        ]
+        required_checks = [item for item in checks if item['required']]
+        ready_required = sum(item['state'] == 'ready' for item in required_checks)
+        return {
+            'organization_id': organization.id,
+            'organization_name': organization.name,
+            'score': round((ready_required / len(required_checks)) * 100) if required_checks else 0,
+            'checks': checks,
+        }
