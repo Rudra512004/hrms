@@ -6,6 +6,7 @@ import { AlertBanner } from '../../components/AlertBanner';
 import { CalendarDays, Loader2, Save, X, Calendar as CalendarIcon } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useBranchContext } from '../../contexts/BranchContext';
+import { holidayService, type Holiday } from '../../services/holiday';
 
 const DAYS_OF_WEEK = [
   { id: 0, label: 'Mon', fullLabel: 'Monday' },
@@ -31,6 +32,17 @@ const parseWorkDays = (str: string | undefined): number[] => {
     .split(',')
     .map((d) => parseInt(d.trim(), 10))
     .filter((d) => !isNaN(d) && d >= 0 && d <= 6);
+};
+
+const HolidayCalendar: React.FC<{ branchId: number; canManage: boolean }> = ({ branchId, canManage }) => {
+  const [year, setYear] = useState(new Date().getFullYear()); const [holidays, setHolidays] = useState<Holiday[]>([]); const [selectedDate, setSelectedDate] = useState<string | null>(null); const [name, setName] = useState(''); const [saving, setSaving] = useState(false); const [error, setError] = useState<string | null>(null);
+  const load = useCallback(async () => { try { const values = await holidayService.listHolidays({ branch_id: branchId }); setHolidays(values.filter(h => Number(h.date.slice(0, 4)) === year)); } catch { setError('Unable to load holidays for this branch.'); } }, [branchId, year]);
+  useEffect(() => { void load(); }, [load]); const byDate = new Map(holidays.map(h => [h.date, h]));
+  const selectDate = (date: string) => { const holiday = byDate.get(date); setSelectedDate(date); setName(holiday?.name || ''); setError(null); };
+  const save = async () => { if (!selectedDate || !name.trim()) { setError('Enter a holiday name.'); return; } setSaving(true); setError(null); try { const existing = byDate.get(selectedDate); if (existing) await holidayService.update(existing.id, { name: name.trim(), is_active: true }); else await holidayService.create({ branch: branchId, date: selectedDate, name: name.trim(), is_active: true }); setSelectedDate(null); await load(); } catch { setError('Could not save this holiday. A holiday may already exist for this date.'); } finally { setSaving(false); } };
+  const remove = async () => { if (!selectedDate) return; const existing = byDate.get(selectedDate); if (!existing) { setSelectedDate(null); return; } setSaving(true); try { await holidayService.delete(existing.id); setSelectedDate(null); await load(); } catch { setError('Could not remove this holiday.'); } finally { setSaving(false); } };
+  const months = Array.from({ length: 12 }, (_, month) => { const first = new Date(year, month, 1); const offset = (first.getDay() + 6) % 7; const days = new Date(year, month + 1, 0).getDate(); return <div key={month} style={{ border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)', padding: 10 }}><strong style={{ fontSize: 'var(--font-size-sm)' }}>{first.toLocaleString(undefined, { month: 'long' })}</strong><div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 3, marginTop: 8, fontSize: 11, color: 'var(--color-text-muted)' }}>{['M','T','W','T','F','S','S'].map((day, index) => <span key={`${day}-${index}`} style={{ textAlign: 'center' }}>{day}</span>)}{Array.from({ length: offset }, (_, index) => <span key={`empty-${index}`} />)}{Array.from({ length: days }, (_, index) => { const day = index + 1; const date = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`; const holiday = byDate.get(date); return <button key={date} type="button" title={holiday?.name || 'Mark as holiday'} onClick={() => selectDate(date)} disabled={!canManage} className={`btn btn-sm ${holiday ? 'btn-primary' : 'btn-secondary'}`} style={{ minWidth: 0, height: 28, padding: 1, fontSize: 11, backgroundColor: holiday ? 'var(--color-status-danger)' : undefined, borderColor: holiday ? 'var(--color-status-danger)' : undefined }}>{day}</button>; })}</div></div>; });
+  return <Card><div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}><div><h3 style={{ margin: 0 }}>Confirmed Holidays</h3><p className="text-muted" style={{ margin: '4px 0 0' }}>Click a date to flag it as a branch holiday and record its name.</p></div><div style={{ display: 'flex', gap: 8 }}><button className="btn btn-secondary btn-sm" onClick={() => setYear(year - 1)}>‹</button><strong style={{ padding: '6px 8px' }}>{year}</strong><button className="btn btn-secondary btn-sm" onClick={() => setYear(year + 1)}>›</button></div></div>{error && <AlertBanner type="error" message={error} />}<div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12, marginTop: 16 }}>{months}</div>{selectedDate && <div style={{ marginTop: 16, padding: 14, border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)', display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'end' }}><div className="form-group" style={{ flex: '1 1 240px', margin: 0 }}><label className="form-label">Holiday for {selectedDate}</label><input className="form-input" autoFocus value={name} onChange={event => setName(event.target.value)} placeholder="e.g. Independence Day" /></div><button className="btn btn-primary" disabled={saving} onClick={() => void save()}>{saving ? 'Saving…' : 'Save Holiday'}</button>{byDate.has(selectedDate) && <button className="btn btn-secondary" disabled={saving} onClick={() => void remove()}>Remove</button>}<button className="btn btn-secondary" disabled={saving} onClick={() => setSelectedDate(null)}>Cancel</button></div>}</Card>;
 };
 
 export const WorkingCalendarPage: React.FC = () => {
@@ -252,6 +264,10 @@ export const WorkingCalendarPage: React.FC = () => {
           type="warning"
           message={`Working calendar is not configured for branch ${branchId}. Automatic attendance calculations will be halted until configured.`}
         />
+      )}
+
+      {!isAllLocations && (
+        <HolidayCalendar branchId={branchId as number} canManage={hasPermission('holiday.manage')} />
       )}
 
       {!isAllLocations && (
