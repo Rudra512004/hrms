@@ -13,6 +13,36 @@ export interface Organization {
   updated_at?: string;
 }
 
+/**
+ * The initial, atomic organisation provisioning payload.  This deliberately
+ * mirrors the existing /organization/setup/ API instead of changing any of
+ * the established CRUD contracts used by the administration screens.
+ */
+export interface OrganizationSetupPayload {
+  name: string;
+  status: 'active' | 'inactive';
+  branches: Array<{
+    name: string;
+    address?: string;
+    latitude?: number | null;
+    longitude?: number | null;
+    radius?: number;
+    network?: {
+      name: string;
+      network: string;
+      description?: string;
+      is_active?: boolean;
+    };
+  }>;
+  working_calendar?: { work_days: string };
+  attendance_policy?: {
+    is_office_gps_enabled?: boolean;
+    is_office_ip_enabled?: boolean;
+    is_wfh_enabled?: boolean;
+    wfh_bypasses_office_restrictions?: boolean;
+  };
+}
+
 export interface Department {
   id: number;
   branch: number;
@@ -73,6 +103,16 @@ const handleResponse = async <T>(response: Response): Promise<T> => {
 };
 
 export const organizationService = {
+  // --- GUIDED ORGANIZATION PROVISIONING ---
+  createOrganizationSetup: async (data: OrganizationSetupPayload): Promise<Organization> => {
+    const response = await fetch('/api/v1/organization/setup/', {
+      method: 'POST',
+      headers: getHeaders(true),
+      body: JSON.stringify(data),
+    });
+    return handleResponse<Organization>(response);
+  },
+
   // --- ORGANIZATIONS ---
   listOrganizations: async (): Promise<Organization[]> => {
     const response = await fetch('/api/v1/organization/organizations/', {

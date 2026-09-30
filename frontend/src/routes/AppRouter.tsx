@@ -38,6 +38,7 @@ import { DepartmentsPage } from '../pages/admin/organization/DepartmentsPage';
 import { TeamsPage } from '../pages/admin/organization/TeamsPage';
 import { DesignationsPage } from '../pages/admin/organization/DesignationsPage';
 import { BranchesPage } from '../pages/admin/organization/BranchesPage';
+import { OrganizationLaunchpadPage } from '../pages/admin/organization/OrganizationLaunchpadPage';
 import { HolidaysPage } from '../pages/admin/HolidaysPage';
 import { ShiftsPage } from '../pages/admin/ShiftsPage';
 import { AssetsPage } from '../pages/admin/AssetsPage';
@@ -116,6 +117,10 @@ export const AppRouter: React.FC = () => {
 
           <Route element={<ProtectedRoute requiredPermission="organization.view" />}>
             <Route path="/admin/organizations" element={<OrganizationsPage />} />
+          </Route>
+
+          <Route element={<ProtectedRoute requiredPermission="organization.manage" />}>
+            <Route path="/admin/organization-launchpad" element={<OrganizationLaunchpadPage />} />
           </Route>
 
           <Route element={<ProtectedRoute requiredPermission="department.view" />}>

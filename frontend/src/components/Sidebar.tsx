@@ -17,6 +17,7 @@ import {
   BarChart2,
   Package,
   UserPlus,
+  Rocket,
 } from 'lucide-react';
 
 import { useAuth } from '../contexts/AuthContext';
@@ -54,6 +55,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, isMobile, onNavigate }
     {
       title: 'People',
       items: [
+        { path: '/admin/organization-launchpad', label: 'Organization Launchpad', icon: Rocket, permission: 'organization.manage' },
         { path: '/admin/employees',    label: 'Employees',     icon: Users,      permission: 'employee.view' },
         { path: '/admin/candidates',   label: 'Candidates',    icon: UserPlus,   permission: 'candidate.view' },
         { path: '/admin/assets',       label: 'Assets',        icon: Package,    permission: 'asset.view' },

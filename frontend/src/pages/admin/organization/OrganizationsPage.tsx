@@ -3,7 +3,8 @@ import { organizationService, type Organization } from '../../../services/organi
 import { Card } from '../../../components/Card';
 import { Table } from '../../../components/Table';
 import { StatusBadge } from '../../../components/StatusBadge';
-import { Plus, Edit2, Trash2, Power, AlertCircle, Loader2 } from 'lucide-react';
+import { Plus, Edit2, Trash2, Power, AlertCircle, Loader2, Rocket } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../../contexts/AuthContext';
 
 const styles = {
@@ -115,7 +116,8 @@ export const OrganizationsPage: React.FC = () => {
   const [formData, setFormData] = useState<{ name: string; status: string }>({ name: '', status: 'active' });
   const [formError, setFormError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
-  const { hasPermission } = useAuth();
+  const { hasPermission, user } = useAuth();
+  const navigate = useNavigate();
   
   const canManage = hasPermission('organization.manage');
 
@@ -297,9 +299,12 @@ export const OrganizationsPage: React.FC = () => {
       <div style={styles.header}>
         <h1 style={styles.title}>Organizations</h1>
         {canManage && (
-          <button style={styles.button} onClick={openCreateModal} data-testid="add-organization-btn">
-            <Plus size={18} /> Add Organization
-          </button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--spacing-sm)', flexWrap: 'wrap' }}>
+            {user?.isSuperuser && <button style={{ ...styles.button, backgroundColor: 'var(--color-secondary)' }} onClick={() => navigate('/admin/organization-launchpad')} data-testid="organization-launchpad-btn"><Rocket size={18} /> Guided setup</button>}
+            <button style={styles.button} onClick={openCreateModal} data-testid="add-organization-btn">
+              <Plus size={18} /> Add Organization
+            </button>
+          </div>
         )}
       </div>
 

@@ -274,6 +274,14 @@ h1, h2, h3, h4, h5, h6 {
   animation: pulse 2s ease-in-out infinite;
 }
 
+/* Keep the guided organisation setup usable on tablets and phones while
+   inheriting the existing card, spacing, and colour-token system. */
+@media (max-width: 900px) {
+  .organization-launchpad-grid {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+}
+
 /* ═══════════════════════════════════════════
    BUTTONS
 ═══════════════════════════════════════════ */
