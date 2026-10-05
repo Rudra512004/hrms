@@ -6,6 +6,8 @@ import { StatusBadge } from '../../../components/StatusBadge';
 import { Plus, Edit2, Trash2, Power, AlertCircle, Loader2, Rocket } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../../contexts/AuthContext';
+import { AlertBanner } from '../../../components/AlertBanner';
+
 
 const styles = {
   header: {
@@ -160,6 +162,7 @@ export const OrganizationsPage: React.FC = () => {
   };
 
   const handleSave = async (e: React.FormEvent) => {
+    setError(null);
     e.preventDefault();
     if (!formData.name.trim()) {
       setFormError("Organization name is required.");
@@ -201,26 +204,28 @@ export const OrganizationsPage: React.FC = () => {
   };
 
   const toggleActive = async (org: Organization) => {
+    setError(null);
     try {
       const currentStatus = org.status || (org.is_active ? 'active' : 'inactive');
       const newStatus = currentStatus === 'active' ? 'inactive' : 'active';
       await organizationService.updateOrganization(org.id, { status: newStatus });
       loadOrganizations();
     } catch {
-      alert("Failed to toggle status.");
+      setError("Failed to toggle status.");
     }
   };
 
   const handleDelete = async (org: Organization) => {
+    setError(null);
     if (!window.confirm(`Are you sure you want to delete the organization "${org.name}"?`)) return;
     try {
       await organizationService.deleteOrganization(org.id);
       loadOrganizations();
     } catch (err: any) {
       if (err.response?.status === 409 || err.response?.status === 400) {
-        alert(err.errorData?.detail || "Cannot delete organization that is in use.");
+        setError(err.errorData?.detail || "Cannot delete organization that is in use.");
       } else {
-        alert("Failed to delete organization.");
+        setError("Failed to delete organization.");
       }
     }
   };
@@ -296,6 +301,7 @@ export const OrganizationsPage: React.FC = () => {
 
   return (
     <div>
+      {error && <AlertBanner type="error" message={error} style={{ marginBottom: 'var(--spacing-md)' }} />}
       <div style={styles.header}>
         <h1 style={styles.title}>Organizations</h1>
         {canManage && (

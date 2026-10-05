@@ -1,3 +1,4 @@
+import { ApiError } from './employeeManagement';
 export interface Role {
   id: number;
   organization: number;
@@ -78,7 +79,7 @@ export const authorizationManagementService = {
     
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
-      throw { response, errorData };
+      throw new ApiError(response, errorData);
     }
     return await response.json();
   },
@@ -99,7 +100,7 @@ export const authorizationManagementService = {
     
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
-      throw { response, errorData };
+      throw new ApiError(response, errorData);
     }
     return await response.json();
   },
@@ -148,7 +149,7 @@ export const authorizationManagementService = {
     
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
-      throw { response, errorData };
+      throw new ApiError(response, errorData);
     }
     return await response.json();
   },
@@ -167,7 +168,7 @@ export const authorizationManagementService = {
     
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
-      throw { response, errorData };
+      throw new ApiError(response, errorData);
     }
     return await response.json();
   },
@@ -202,7 +203,7 @@ export const authorizationManagementService = {
     
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
-      throw { response, errorData };
+      throw new ApiError(response, errorData);
     }
     return await response.json();
   },
@@ -221,7 +222,7 @@ export const authorizationManagementService = {
     
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
-      throw { response, errorData };
+      throw new ApiError(response, errorData);
     }
     return await response.json();
   },
@@ -271,7 +272,7 @@ export const authorizationManagementService = {
     
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
-      throw { response, errorData };
+      throw new ApiError(response, errorData);
     }
     return await response.json();
   },
@@ -290,7 +291,7 @@ export const authorizationManagementService = {
     
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
-      throw { response, errorData };
+      throw new ApiError(response, errorData);
     }
     return await response.json();
   }

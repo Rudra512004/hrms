@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import { assetService, type Asset } from '../../services/assets';
 import { EmptyState } from '../../components/EmptyState';
+import { AlertBanner } from '../../components/AlertBanner';
 
 // Lifecycle Modals and Components
 import { TransferModal } from '../../components/lifecycle/TransferModal';
@@ -299,36 +300,41 @@ export const EmployeeProfilePage: React.FC = () => {
     }
   };
 
+  const [actionError, setActionError] = useState<string | null>(null);
+
   const handleDelete = async (docId: number, docName: string) => {
+    setActionError(null);
     if (!window.confirm(`Are you sure you want to permanently delete "${docName}"?`)) return;
     setActionInProgress(docId);
     try {
       await employeeDocumentService.deleteDocument(docId);
       setDocuments(prev => prev.filter(d => d.id !== docId));
     } catch {
-      alert("Failed to delete document. Ensure you have the required permissions.");
+      setActionError("Failed to delete document. Ensure you have the required permissions.");
     } finally {
       setActionInProgress(null);
     }
   };
 
   const handleDownload = async (doc: EmployeeDocument) => {
+    setActionError(null);
     setActionInProgress(doc.id);
     try {
       await employeeDocumentService.downloadDocument(doc.id, doc.document_name);
     } catch {
-      alert("Failed to download document.");
+      setActionError("Failed to download document.");
     } finally {
       setActionInProgress(null);
     }
   };
 
   const handlePreview = async (doc: EmployeeDocument) => {
+    setActionError(null);
     setActionInProgress(doc.id);
     try {
       await employeeDocumentService.previewDocument(doc.id);
     } catch {
-      alert("Failed to preview document.");
+      setActionError("Failed to preview document.");
     } finally {
       setActionInProgress(null);
     }
@@ -359,6 +365,7 @@ export const EmployeeProfilePage: React.FC = () => {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--spacing-lg)' }}>
+      {actionError && <AlertBanner type="error" message={actionError} />}
       {/* Top Action Bar */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
         <button className="btn btn-ghost" onClick={() => navigate('/admin/employees')} style={{ padding: '4px 8px', marginLeft: '-8px' }}>

@@ -1,3 +1,4 @@
+import { ApiError } from './employeeManagement';
 import type { PaginatedResponse } from '../types/pagination';
 
 export interface LeaveType {
@@ -109,7 +110,7 @@ const getHeaders = () => {
 const handleResponse = async (response: Response) => {
   if (!response.ok) {
     const errorData = await response.json().catch(() => ({}));
-    throw { response, errorData };
+    throw new ApiError(response, errorData);
   }
   if (response.status === 204) {
     return null;

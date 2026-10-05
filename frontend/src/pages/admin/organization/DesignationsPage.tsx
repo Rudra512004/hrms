@@ -5,6 +5,8 @@ import { Table } from '../../../components/Table';
 import { StatusBadge } from '../../../components/StatusBadge';
 import { Plus, Edit2, Trash2, Power, AlertCircle, Loader2 } from 'lucide-react';
 import { useAuth } from '../../../contexts/AuthContext';
+import { AlertBanner } from '../../../components/AlertBanner';
+
 
 const styles = {
   header: {
@@ -165,6 +167,7 @@ export const DesignationsPage: React.FC = () => {
   };
 
   const handleSave = async (e: React.FormEvent) => {
+    setError(null);
     e.preventDefault();
     if (!formData.organization) {
         setFormError("Organization is required.");
@@ -201,24 +204,26 @@ export const DesignationsPage: React.FC = () => {
   };
 
   const toggleActive = async (desig: Designation) => {
+    setError(null);
     try {
       await organizationService.updateDesignation(desig.id, { is_active: !desig.is_active });
       loadData();
     } catch {
-      alert("Failed to toggle status.");
+      setError("Failed to toggle status.");
     }
   };
 
   const handleDelete = async (desig: Designation) => {
+    setError(null);
     if (!window.confirm(`Are you sure you want to delete the designation "${desig.name}"?`)) return;
     try {
       await organizationService.deleteDesignation(desig.id);
       loadData();
     } catch (err: any) {
       if (err.response?.status === 409) {
-        alert(err.errorData?.detail || "Cannot delete designation that is in use.");
+        setError(err.errorData?.detail || "Cannot delete designation that is in use.");
       } else {
-        alert("Failed to delete designation.");
+        setError("Failed to delete designation.");
       }
     }
   };
@@ -278,6 +283,7 @@ export const DesignationsPage: React.FC = () => {
 
   return (
     <div>
+      {error && <AlertBanner type="error" message={error} style={{ marginBottom: 'var(--spacing-md)' }} />}
       <div style={styles.header}>
         <h1 style={styles.title}>Designations</h1>
         {canManage && (

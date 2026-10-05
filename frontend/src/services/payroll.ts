@@ -3,6 +3,7 @@
 // Base URL: /api/v1/payroll/
 
 const BASE = '/api/v1/payroll';
+import { ApiError } from './employeeManagement';
 
 const getHeaders = (): Record<string, string> => {
   const token = localStorage.getItem('auth_token');
@@ -16,7 +17,7 @@ const getHeaders = (): Record<string, string> => {
 const handleResponse = async <T>(response: Response): Promise<T> => {
   if (!response.ok) {
     const errorData = await response.json().catch(() => ({}));
-    throw { response, errorData };
+    throw new ApiError(response, errorData);
   }
   if (response.status === 204) return null as unknown as T;
   return response.json() as Promise<T>;

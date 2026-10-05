@@ -1,3 +1,4 @@
+import { ApiError } from './employeeManagement';
 export interface EmployeeProfile {
   id: number;
   user_id?: number;
@@ -64,7 +65,7 @@ export const employeeService = {
     
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
-      throw { response, errorData };
+      throw new ApiError(response, errorData);
     }
     
     return await response.json();

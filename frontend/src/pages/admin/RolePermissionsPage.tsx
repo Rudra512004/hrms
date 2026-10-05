@@ -4,6 +4,8 @@ import { Loader2, AlertCircle, ArrowLeft } from 'lucide-react';
 import { authorizationManagementService } from '../../services/authorizationManagement';
 import type { Role, Permission, RolePermission } from '../../services/authorizationManagement';
 import { useParams, useNavigate } from 'react-router-dom';
+import { AlertBanner } from '../../components/AlertBanner';
+
 
 const styles = {
   header: {
@@ -132,6 +134,7 @@ export const RolePermissionsPage: React.FC = () => {
   };
 
   const handleToggle = async (permission: Permission) => {
+    setError(null);
     if (!roleId) return;
     
     const existing = rolePermissions.find(rp => rp.permission === permission.id);
@@ -146,7 +149,7 @@ export const RolePermissionsPage: React.FC = () => {
       const rPerms = await authorizationManagementService.listRolePermissions(parseInt(roleId));
       setRolePermissions(rPerms);
     } catch (err: any) {
-      alert(err.errorData?.detail || "Failed to update permission.");
+      setError(err.errorData?.detail || "Failed to update permission.");
     }
   };
 
@@ -174,6 +177,7 @@ export const RolePermissionsPage: React.FC = () => {
 
   return (
     <div>
+      {error && <AlertBanner type="error" message={error} style={{ marginBottom: 'var(--spacing-md)' }} />}
       <div style={styles.header}>
         <button style={styles.backBtn} onClick={() => navigate('/admin/roles')} title="Back to Roles">
           <ArrowLeft size={20} />

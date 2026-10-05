@@ -71,12 +71,13 @@ export const OnboardingDocumentsPage: React.FC = () => {
   };
 
   const handleDelete = async (id: number) => {
+    setUploadError('');
     if (!window.confirm('Delete this document?')) return;
     try {
       await candidatePortalService.deleteDocument(id);
       setDocs(prev => prev.filter(d => d.id !== id));
     } catch (err: any) {
-      alert(err.message || 'Delete failed.');
+      setUploadError(err.message || 'Delete failed.');
     }
   };
 

@@ -9,7 +9,7 @@ import {
   type Department,
   type Branch,
 } from '../../../../services/organization';
-import { employeeManagementService } from '../../../../services/employeeManagement';
+import { employeeManagementService, ApiError } from '../../../../services/employeeManagement';
 import { type EmployeeProfile } from '../../../../services/employee';
 import * as AuthContextModule from '../../../../contexts/AuthContext';
 import * as BranchContextModule from '../../../../contexts/BranchContext';
@@ -25,11 +25,15 @@ vi.mock('../../../../services/organization', () => ({
   },
 }));
 
-vi.mock('../../../../services/employeeManagement', () => ({
-  employeeManagementService: {
-    listEmployees: vi.fn(),
-  },
-}));
+vi.mock('../../../../services/employeeManagement', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../../../services/employeeManagement')>();
+  return {
+    ...actual,
+    employeeManagementService: {
+      listEmployees: vi.fn(),
+    },
+  };
+});
 
 const mockBranches: Branch[] = [
   { id: 1, organization: 1, name: 'Mumbai HQ', address: 'Mumbai', is_active: true },
@@ -216,14 +220,11 @@ describe('TeamsPage — Team Administration & Hierarchy Integration', () => {
   });
 
   it('5. Delete team shows clear error when backend rejects deletion of team with active employees', async () => {
-    const alertMock = vi.fn();
     window.confirm = vi.fn().mockReturnValue(true);
-    window.alert = alertMock;
 
-    vi.mocked(organizationService.deleteTeam).mockRejectedValue({
-      response: { status: 400 },
-      errorData: { detail: 'Cannot delete team while active employees are assigned to it.' },
-    });
+    vi.mocked(organizationService.deleteTeam).mockRejectedValue(
+      new ApiError(new Response(null, { status: 400 }), { detail: 'Cannot delete team while active employees are assigned to it.' })
+    );
 
     renderComponent();
 
@@ -231,7 +232,7 @@ describe('TeamsPage — Team Administration & Hierarchy Integration', () => {
     fireEvent.click(deleteBtn);
 
     await waitFor(() => {
-      expect(alertMock).toHaveBeenCalledWith('Cannot delete team while active employees are assigned to it.');
+      expect(screen.getByText('Cannot delete team while active employees are assigned to it.')).toBeInTheDocument();
     });
   });
 

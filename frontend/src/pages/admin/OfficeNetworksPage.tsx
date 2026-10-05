@@ -6,6 +6,8 @@ import { StatusBadge } from '../../components/StatusBadge';
 import { Plus, Edit2, Trash2, Power, AlertCircle, Loader2 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { branchService, type Branch } from '../../services/branch';
+import { AlertBanner } from '../../components/AlertBanner';
+
 
 
 const styles = {
@@ -157,6 +159,7 @@ export const OfficeNetworksPage: React.FC = () => {
   };
 
   const handleSave = async (e: React.FormEvent) => {
+    setError(null);
     e.preventDefault();
     setSaving(true);
     setFormError(null);
@@ -188,21 +191,23 @@ export const OfficeNetworksPage: React.FC = () => {
   };
 
   const toggleActive = async (network: OfficeNetwork) => {
+    setError(null);
     try {
       await officeNetworkService.update(network.id, { is_active: !network.is_active });
       loadNetworks();
     } catch {
-      alert("Failed to toggle status.");
+      setError("Failed to toggle status.");
     }
   };
 
   const handleDelete = async (network: OfficeNetwork) => {
+    setError(null);
     if (!window.confirm(`Are you sure you want to delete the network "${network.name}"?`)) return;
     try {
       await officeNetworkService.delete(network.id);
       loadNetworks();
     } catch {
-      alert("Failed to delete network.");
+      setError("Failed to delete network.");
     }
   };
 
@@ -263,6 +268,7 @@ export const OfficeNetworksPage: React.FC = () => {
 
   return (
     <div>
+      {error && <AlertBanner type="error" message={error} style={{ marginBottom: 'var(--spacing-md)' }} />}
       <div style={styles.header}>
         <h1 style={styles.title}>Office Networks</h1>
         {hasPermission('office_network.create') && (

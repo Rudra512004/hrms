@@ -142,6 +142,7 @@ export const WfhRequestsPage: React.FC = () => {
   }, []);
 
   const handleCreateSubmit = async (e: React.FormEvent) => {
+    setError(null);
     e.preventDefault();
     if (!newStartAt || !newEndAt || !newReason.trim()) {
       setNewError('All fields are required.');
@@ -195,6 +196,7 @@ export const WfhRequestsPage: React.FC = () => {
   };
 
   const handleAction = async () => {
+    setError(null);
     if (!modalState.request) return;
     setActionLoading(true);
     try {
@@ -207,19 +209,20 @@ export const WfhRequestsPage: React.FC = () => {
       setComment('');
       loadRequests();
     } catch (err: any) {
-      alert(err.errorData?.detail || "An error occurred.");
+      setError(err.errorData?.detail || "An error occurred.");
     } finally {
       setActionLoading(false);
     }
   };
 
   const handleCancel = async (req: WfhRequest) => {
+    setError(null);
     if (!window.confirm("Are you sure you want to cancel this request?")) return;
     try {
       await wfhService.cancel(req.id);
       loadRequests();
     } catch (err: any) {
-      alert(err.errorData?.detail || "An error occurred.");
+      setError(err.errorData?.detail || "An error occurred.");
     }
   };
 
@@ -311,6 +314,7 @@ export const WfhRequestsPage: React.FC = () => {
 
   return (
     <div>
+      {error && <AlertBanner type="error" message={error} style={{ marginBottom: 'var(--spacing-md)' }} />}
       <div style={styles.header}>
         <h1 style={styles.title}>WFH Requests</h1>
         {hasPermission('wfh.request') && (

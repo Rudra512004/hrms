@@ -40,8 +40,8 @@ class DashboardTrendsView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request, *args, **kwargs):
-        window = request.query_params.get('window')
-        if not window or window not in ('7d', '6m'):
+        window = request.query_params.get('window', '7d')
+        if window not in ('7d', '6m'):
             return Response(
                 {'detail': "Invalid window. Supported values are '7d' and '6m'."},
                 status=status.HTTP_400_BAD_REQUEST

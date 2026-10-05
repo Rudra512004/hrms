@@ -1,3 +1,4 @@
+import { ApiError } from './employeeManagement';
 export interface PersonalAttendanceToday {
   id: number;
   date: string;
@@ -170,7 +171,7 @@ export const dashboardService = {
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
-      throw { response, errorData };
+      throw new ApiError(response, errorData);
     }
 
     return await response.json();
@@ -193,7 +194,7 @@ export const dashboardService = {
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
-      throw { response, errorData };
+      throw new ApiError(response, errorData);
     }
 
     return await response.json();

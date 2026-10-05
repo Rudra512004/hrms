@@ -6,6 +6,8 @@ import { StatusBadge } from '../../../components/StatusBadge';
 import { Plus, Edit2, Trash2, Power, AlertCircle, Loader2 } from 'lucide-react';
 import { useAuth } from '../../../contexts/AuthContext';
 import { useBranchContext } from '../../../contexts/BranchContext';
+import { AlertBanner } from '../../../components/AlertBanner';
+
 
 const styles = {
   header: {
@@ -182,6 +184,7 @@ export const DepartmentsPage: React.FC = () => {
   };
 
   const handleSave = async (e: React.FormEvent) => {
+    setError(null);
     e.preventDefault();
     if (!formData.name.trim()) {
       setFormError("Department name is required.");
@@ -236,24 +239,26 @@ export const DepartmentsPage: React.FC = () => {
   };
 
   const toggleActive = async (dept: Department) => {
+    setError(null);
     try {
       await organizationService.updateDepartment(dept.id, { is_active: !dept.is_active });
       loadData();
     } catch {
-      alert("Failed to toggle status.");
+      setError("Failed to toggle status.");
     }
   };
 
   const handleDelete = async (dept: Department) => {
+    setError(null);
     if (!window.confirm(`Are you sure you want to delete the department "${dept.name}"?`)) return;
     try {
       await organizationService.deleteDepartment(dept.id);
       loadData();
     } catch (err: any) {
       if (err.response?.status === 409 || err.response?.status === 400) {
-        alert(err.errorData?.detail || "Cannot delete department that is in use.");
+        setError(err.errorData?.detail || "Cannot delete department that is in use.");
       } else {
-        alert("Failed to delete department.");
+        setError("Failed to delete department.");
       }
     }
   };
@@ -332,6 +337,7 @@ export const DepartmentsPage: React.FC = () => {
 
   return (
     <div>
+      {error && <AlertBanner type="error" message={error} style={{ marginBottom: 'var(--spacing-md)' }} />}
       <div style={styles.header}>
         <h1 style={styles.title}>Departments</h1>
         {canManage && (

@@ -1,3 +1,4 @@
+import { ApiError } from './employeeManagement';
 export interface WfhRequest {
   id: number;
   employee: number;
@@ -35,7 +36,7 @@ export const wfhService = {
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
-      throw { response, errorData };
+      throw new ApiError(response, errorData);
     }
 
     return await response.json();
@@ -58,7 +59,7 @@ export const wfhService = {
     
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
-      throw { response, errorData };
+      throw new ApiError(response, errorData);
     }
     
     return await response.json();
@@ -79,7 +80,7 @@ export const wfhService = {
     
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
-      throw { response, errorData };
+      throw new ApiError(response, errorData);
     }
     
     return await response.json();
@@ -100,7 +101,7 @@ export const wfhService = {
     
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
-      throw { response, errorData };
+      throw new ApiError(response, errorData);
     }
     
     return await response.json();
@@ -119,7 +120,7 @@ export const wfhService = {
     
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
-      throw { response, errorData };
+      throw new ApiError(response, errorData);
     }
     
     return await response.json();

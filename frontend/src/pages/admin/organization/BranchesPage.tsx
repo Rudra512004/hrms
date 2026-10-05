@@ -6,6 +6,8 @@ import { Table } from '../../../components/Table';
 import { StatusBadge } from '../../../components/StatusBadge';
 import { Plus, Edit2, Trash2, Power, AlertCircle, Loader2 } from 'lucide-react';
 import { useAuth } from '../../../contexts/AuthContext';
+import { AlertBanner } from '../../../components/AlertBanner';
+
 
 const parseDMS = (input: string) => {
   const regex = /(?:lat-?\s*)?(\d+)°(\d+)'([\d.]+)"([NS])(?:.*long-?\s*)?(\d+)°(\d+)'([\d.]+)"([EW])/i;
@@ -195,6 +197,7 @@ export const BranchesPage: React.FC = () => {
   };
 
   const handleSave = async (e: React.FormEvent) => {
+    setError(null);
     e.preventDefault();
     if (!formData.organization) {
         setFormError("Organization is required.");
@@ -239,24 +242,26 @@ export const BranchesPage: React.FC = () => {
   };
 
   const toggleActive = async (branch: Branch) => {
+    setError(null);
     try {
       await branchService.update(branch.id, { is_active: !branch.is_active });
       loadData();
     } catch {
-      alert("Failed to toggle status.");
+      setError("Failed to toggle status.");
     }
   };
 
   const handleDelete = async (branch: Branch) => {
+    setError(null);
     if (!window.confirm(`Are you sure you want to delete the branch "${branch.name}"?`)) return;
     try {
       await branchService.delete(branch.id);
       loadData();
     } catch (err: any) {
       if (err.response?.status === 409) {
-        alert(err.errorData?.detail || "Cannot delete branch that is in use.");
+        setError(err.errorData?.detail || "Cannot delete branch that is in use.");
       } else {
-        alert("Failed to delete branch.");
+        setError("Failed to delete branch.");
       }
     }
   };
@@ -317,6 +322,7 @@ export const BranchesPage: React.FC = () => {
 
   return (
     <div>
+      {error && <AlertBanner type="error" message={error} style={{ marginBottom: 'var(--spacing-md)' }} />}
       <div style={styles.header}>
         <h1 style={styles.title}>Branches</h1>
         {canManage && (

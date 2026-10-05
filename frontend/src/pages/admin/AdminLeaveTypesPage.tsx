@@ -4,6 +4,8 @@ import { Card } from '../../components/Card';
 import { Table } from '../../components/Table';
 import { StatusBadge } from '../../components/StatusBadge';
 import { Plus, Edit2, Trash2, Power, AlertCircle, Loader2 } from 'lucide-react';
+import { AlertBanner } from '../../components/AlertBanner';
+
 
 
 const styles = {
@@ -157,6 +159,7 @@ export const AdminLeaveTypesPage: React.FC = () => {
   };
 
   const handleSave = async (e: React.FormEvent) => {
+    setError(null);
     e.preventDefault();
     setSaving(true);
     setFormError(null);
@@ -187,24 +190,26 @@ export const AdminLeaveTypesPage: React.FC = () => {
   };
 
   const toggleActive = async (leaveType: LeaveType) => {
+    setError(null);
     try {
       await leaveService.updateLeaveType(leaveType.id, { is_active: !leaveType.is_active });
       loadLeaveTypes();
     } catch {
-      alert("Failed to toggle status.");
+      setError("Failed to toggle status.");
     }
   };
 
   const handleDelete = async (leaveType: LeaveType) => {
+    setError(null);
     if (!window.confirm(`Are you sure you want to delete the leave type "${leaveType.name}"?`)) return;
     try {
       await leaveService.deleteLeaveType(leaveType.id);
       loadLeaveTypes();
     } catch (err: any) {
       if (err.response?.status === 409) {
-        alert(err.errorData?.detail || "Cannot delete leave type that is in use by balances or requests.");
+        setError(err.errorData?.detail || "Cannot delete leave type that is in use by balances or requests.");
       } else {
-        alert("Failed to delete leave type.");
+        setError("Failed to delete leave type.");
       }
     }
   };
@@ -260,6 +265,7 @@ export const AdminLeaveTypesPage: React.FC = () => {
 
   return (
     <div>
+      {error && <AlertBanner type="error" message={error} style={{ marginBottom: 'var(--spacing-md)' }} />}
       <div style={styles.header}>
         <h1 style={styles.title}>Leave Types Configuration</h1>
         <button style={styles.button} onClick={openCreateModal}>

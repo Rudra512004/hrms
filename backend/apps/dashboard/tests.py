@@ -612,12 +612,17 @@ class DashboardTrendsTests(TestCase):
             joining_date=self.today - timedelta(days=120)
         )
 
-    def test_invalid_window_returns_400(self):
-        """Endpoint rejects unsupported or missing window parameter with HTTP 400."""
+    def test_default_window_is_7d(self):
+        """Endpoint defaults to 7d window if omitted."""
         self.client.force_authenticate(user=self.hr_user)
-        # Missing window
-        r1 = self.client.get(self.trends_url)
-        self.assertEqual(r1.status_code, status.HTTP_400_BAD_REQUEST)
+        r = self.client.get(self.trends_url)
+        self.assertEqual(r.status_code, status.HTTP_200_OK)
+        self.assertIsNotNone(r.data.get('attendance_trend'))
+        self.assertEqual(len(r.data['attendance_trend']), 7)
+
+    def test_invalid_window_returns_400(self):
+        """Endpoint rejects unsupported window parameter with HTTP 400."""
+        self.client.force_authenticate(user=self.hr_user)
 
         # Invalid window
         r2 = self.client.get(f"{self.trends_url}?window=invalid")

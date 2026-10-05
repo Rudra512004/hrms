@@ -1,3 +1,4 @@
+import { ApiError } from './employeeManagement';
 // Assets API service — mirrors backend apps/assets/ API contract
 // Base URL: /api/v1/assets/
 
@@ -109,7 +110,7 @@ const getAuthHeaders = (): Record<string, string> => {
 const handleResponse = async <T>(res: Response): Promise<T> => {
   if (!res.ok) {
     const errorData = await res.json().catch(() => ({}));
-    throw { status: res.status, data: errorData };
+    throw new ApiError(res, errorData);
   }
   if (res.status === 204) return null as unknown as T;
   return (await res.json()) as T;

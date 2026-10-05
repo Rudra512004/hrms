@@ -14,6 +14,8 @@ import { Table } from '../../components/Table';
 import { StatusBadge } from '../../components/StatusBadge';
 import { Shield, Plus, Trash2, ArrowLeft, AlertCircle, Loader2 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
+import { AlertBanner } from '../../components/AlertBanner';
+
 
 
 const styles = {
@@ -215,6 +217,7 @@ export const EmployeeAccessPage: React.FC = () => {
   }, [employeeId, loadData]);
 
   const handleAssignRole = async (e: React.FormEvent) => {
+    setError(null);
     e.preventDefault();
     if (!selectedRoleId || !employee?.user_id) return;
     setSaving(true);
@@ -233,6 +236,7 @@ export const EmployeeAccessPage: React.FC = () => {
   };
 
   const handleGrantPermission = async (e: React.FormEvent) => {
+    setError(null);
     e.preventDefault();
     if (!selectedPermId || !employee?.user_id) return;
     setSaving(true);
@@ -251,26 +255,28 @@ export const EmployeeAccessPage: React.FC = () => {
   };
 
   const handleRevokeRole = async (userRoleId: number) => {
+    setError(null);
     if (!window.confirm("Revoke this role?")) return;
     try {
       await authorizationManagementService.revokeRole(userRoleId);
       loadData();
     } catch (err: any) {
-      if (err.errorData?.detail) alert(err.errorData.detail);
-      else if (err.response?.status === 403) alert("Permission denied to revoke role.");
-      else alert("Failed to revoke role.");
+      if (err.errorData?.detail) setError(err.errorData.detail);
+      else if (err.response?.status === 403) setError("Permission denied to revoke role.");
+      else setError("Failed to revoke role.");
     }
   };
 
   const handleRevokePermission = async (userPermId: number) => {
+    setError(null);
     if (!window.confirm("Revoke this direct permission?")) return;
     try {
       await authorizationManagementService.revokePermission(userPermId);
       loadData();
     } catch (err: any) {
-      if (err.errorData?.detail) alert(err.errorData.detail);
-      else if (err.response?.status === 403) alert("Permission denied to revoke permission.");
-      else alert("Failed to revoke permission.");
+      if (err.errorData?.detail) setError(err.errorData.detail);
+      else if (err.response?.status === 403) setError("Permission denied to revoke permission.");
+      else setError("Failed to revoke permission.");
     }
   };
 
@@ -295,6 +301,7 @@ export const EmployeeAccessPage: React.FC = () => {
 
   return (
     <div>
+      {error && <AlertBanner type="error" message={error} style={{ marginBottom: 'var(--spacing-md)' }} />}
       <div style={styles.header}>
         <button style={styles.backBtn} onClick={() => navigate('/admin/employees')}>
           <ArrowLeft size={24} />

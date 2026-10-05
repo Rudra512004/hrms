@@ -1,3 +1,4 @@
+import { ApiError } from './employeeManagement';
 export interface OfficeNetwork {
   id: number;
   branch: number;
@@ -22,7 +23,7 @@ export const officeNetworkService = {
     
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
-      throw { response, errorData };
+      throw new ApiError(response, errorData);
     }
     
     return await response.json();
@@ -43,7 +44,7 @@ export const officeNetworkService = {
     
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
-      throw { response, errorData };
+      throw new ApiError(response, errorData);
     }
     
     return await response.json();
@@ -64,7 +65,7 @@ export const officeNetworkService = {
     
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
-      throw { response, errorData };
+      throw new ApiError(response, errorData);
     }
     
     return await response.json();
@@ -83,7 +84,7 @@ export const officeNetworkService = {
     
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
-      throw { response, errorData };
+      throw new ApiError(response, errorData);
     }
   }
 };

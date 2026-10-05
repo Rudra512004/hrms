@@ -83,11 +83,12 @@ export const RolesPage: React.FC = () => {
   };
 
   const toggleActive = async (role: Role) => {
+    setError(null);
     try {
       await authorizationManagementService.updateRole(role.id, { is_active: !role.is_active });
       loadRoles();
     } catch {
-      alert('Failed to toggle status.');
+      setError('Failed to toggle status.');
     }
   };
 

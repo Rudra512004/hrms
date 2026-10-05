@@ -97,12 +97,13 @@ export function LeavePage() {
   };
 
   const handleCancel = async (id: number) => {
+    setError(null);
     if (!confirm('Are you sure you want to cancel this request?')) return;
     try {
       await leaveService.cancelRequest(id);
       await loadData();
     } catch {
-      alert('Failed to cancel request.');
+      setError('Failed to cancel request.');
     }
   };
 

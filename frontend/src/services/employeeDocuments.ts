@@ -1,5 +1,6 @@
 // Employee Documents API service — mirrors apps/employees/views.py EmployeeDocumentViewSet
 // Base URL: /api/v1/employees/documents/
+import { ApiError } from './employeeManagement';
 
 export interface EmployeeDocument {
   id: number;
@@ -41,7 +42,7 @@ export const employeeDocumentService = {
 
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
-      throw { status: res.status, data: err };
+      throw new ApiError(res, err);
     }
 
     const data = await res.json();
@@ -65,7 +66,7 @@ export const employeeDocumentService = {
 
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
-      throw { status: res.status, data: err };
+      throw new ApiError(res, err);
     }
 
     return await res.json();
@@ -83,7 +84,7 @@ export const employeeDocumentService = {
 
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
-      throw { status: res.status, data: err };
+      throw new ApiError(res, err);
     }
 
     return await res.json();
@@ -97,7 +98,7 @@ export const employeeDocumentService = {
 
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
-      throw { status: res.status, data: err };
+      throw new ApiError(res, err);
     }
   },
 
@@ -108,7 +109,7 @@ export const employeeDocumentService = {
 
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
-      throw { status: res.status, data: err };
+      throw new ApiError(res, err);
     }
 
     const blob = await res.blob();
@@ -129,7 +130,7 @@ export const employeeDocumentService = {
 
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
-      throw { status: res.status, data: err };
+      throw new ApiError(res, err);
     }
 
     const blob = await res.blob();

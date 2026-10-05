@@ -15,6 +15,8 @@ import { StatusBadge } from '../../../components/StatusBadge';
 import { Plus, Edit2, Trash2, Power, AlertCircle, Loader2 } from 'lucide-react';
 import { useAuth } from '../../../contexts/AuthContext';
 import { useBranchContext } from '../../../contexts/BranchContext';
+import { AlertBanner } from '../../../components/AlertBanner';
+
 
 const styles = {
   header: {
@@ -282,6 +284,7 @@ export const TeamsPage: React.FC = () => {
   };
 
   const handleSave = async (e: React.FormEvent) => {
+    setError(null);
     e.preventDefault();
     if (!formData.name.trim()) {
       setFormError("Team name is required.");
@@ -340,24 +343,26 @@ export const TeamsPage: React.FC = () => {
   };
 
   const toggleActive = async (team: Team) => {
+    setError(null);
     try {
       await organizationService.updateTeam(team.id, { is_active: !team.is_active });
       loadData();
     } catch {
-      alert("Failed to toggle status.");
+      setError("Failed to toggle status.");
     }
   };
 
   const handleDelete = async (team: Team) => {
+    setError(null);
     if (!window.confirm(`Are you sure you want to delete the team "${team.name}"?`)) return;
     try {
       await organizationService.deleteTeam(team.id);
       loadData();
     } catch (err: any) {
       if (err.response?.status === 400 || err.response?.status === 409) {
-        alert(err.errorData?.detail || "Cannot delete team while active employees are assigned to it.");
+        setError(err.errorData?.detail || "Cannot delete team while active employees are assigned to it.");
       } else {
-        alert("Failed to delete team.");
+        setError("Failed to delete team.");
       }
     }
   };
@@ -481,6 +486,7 @@ export const TeamsPage: React.FC = () => {
 
   return (
     <div>
+      {error && <AlertBanner type="error" message={error} style={{ marginBottom: 'var(--spacing-md)' }} />}
       <div style={styles.header}>
         <h1 style={styles.title}>Teams</h1>
         {canManage && (

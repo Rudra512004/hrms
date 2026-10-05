@@ -9,6 +9,7 @@ import { branchService, type Branch } from '../../services/branch';
 import { employeeManagementService } from '../../services/employeeManagement';
 import { type EmployeeProfile } from '../../services/employee';
 import { Card } from '../../components/Card';
+import { AlertBanner } from '../../components/AlertBanner';
 import { StatusBadge } from '../../components/StatusBadge';
 import { useAuth } from '../../contexts/AuthContext';
 import {
@@ -307,10 +308,13 @@ export const AssetsPage: React.FC = () => {
     }
   };
 
+  const [actionError, setActionError] = useState<string | null>(null);
+
   // Delete Asset
   const handleDeleteAsset = async (asset: Asset) => {
+    setActionError(null);
     if (asset.status === 'assigned') {
-      alert('Cannot delete an asset that is currently assigned to an employee.');
+      setActionError('Cannot delete an asset that is currently assigned to an employee.');
       return;
     }
     if (!window.confirm(`Are you sure you want to permanently delete asset "${asset.asset_tag}" (${asset.name})?`)) {
@@ -320,12 +324,13 @@ export const AssetsPage: React.FC = () => {
       await assetService.deleteAsset(asset.id);
       fetchData();
     } catch (err: any) {
-      alert(err.data?.detail || 'Failed to delete asset.');
+      setActionError(err.data?.detail || err.errorData?.detail || 'Failed to delete asset.');
     }
   };
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--spacing-lg)' }}>
+      {actionError && <AlertBanner type="error" message={actionError} />}
       {/* Top Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '16px' }}>
         <div>

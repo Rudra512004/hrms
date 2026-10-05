@@ -37,6 +37,15 @@ class Command(BaseCommand):
         )
         self.stdout.write(self.style.SUCCESS(f'Branch: {branch.name}'))
 
+        from apps.organization.models import AttendancePolicy
+        AttendancePolicy.objects.update_or_create(
+            branch=branch,
+            defaults={
+                'is_office_gps_enabled': False
+            }
+        )
+        self.stdout.write(self.style.SUCCESS(f'Disabled GPS enforcement for local dev branch: {branch.name}'))
+
         from apps.organization.models import OfficeNetwork
         OfficeNetwork.objects.update_or_create(
             branch=branch,
@@ -89,6 +98,13 @@ class Command(BaseCommand):
             # Organization
             {'codename': 'organization.view', 'resource': 'organization', 'action': 'view', 'name': 'View Organizations'},
             {'codename': 'organization.manage', 'resource': 'organization', 'action': 'manage', 'name': 'Manage Organizations'},
+            {'codename': 'branch.view', 'resource': 'branch', 'action': 'view', 'name': 'View Branches'},
+            {'codename': 'branch.manage', 'resource': 'branch', 'action': 'manage', 'name': 'Manage Branches'},
+            {'codename': 'office_network.view', 'resource': 'office_network', 'action': 'view', 'name': 'View Office Networks'},
+            {'codename': 'office_network.manage', 'resource': 'office_network', 'action': 'manage', 'name': 'Manage Office Networks'},
+            {'codename': 'office_network.create', 'resource': 'office_network', 'action': 'create', 'name': 'Create Office Networks'},
+            {'codename': 'office_network.update', 'resource': 'office_network', 'action': 'update', 'name': 'Update Office Networks'},
+            {'codename': 'office_network.delete', 'resource': 'office_network', 'action': 'delete', 'name': 'Delete Office Networks'},
             {'codename': 'department.view', 'resource': 'department', 'action': 'view', 'name': 'View Departments'},
             {'codename': 'department.manage', 'resource': 'department', 'action': 'manage', 'name': 'Manage Departments'},
             {'codename': 'team.view', 'resource': 'team', 'action': 'view', 'name': 'View Teams'},
@@ -96,6 +112,9 @@ class Command(BaseCommand):
             {'codename': 'designation.view', 'resource': 'designation', 'action': 'view', 'name': 'View Designations'},
             {'codename': 'designation.manage', 'resource': 'designation', 'action': 'manage', 'name': 'Manage Designations'},
             {'codename': 'hierarchy.manage', 'resource': 'hierarchy', 'action': 'manage', 'name': 'Manage Reporting Hierarchy'},
+
+            # Audit
+            {'codename': 'audit.view', 'resource': 'audit', 'action': 'view', 'name': 'View Audit Logs'},
 
             # Payroll
             {'codename': 'payroll.view', 'resource': 'payroll', 'action': 'view', 'name': 'View Payroll'},
@@ -165,7 +184,7 @@ class Command(BaseCommand):
         # Assign permissions to Roles
         emp_perms = [
             'leave.view', 'leave.request', 'leave.cancel', 'wfh.view', 'wfh.request', 'wfh.cancel',
-            'organization.view', 'department.view', 'designation.view'
+            'organization.view', 'department.view', 'designation.view', 'branch.view'
         ]
         for codename in emp_perms:
             p = Permission.objects.get(codename=codename)

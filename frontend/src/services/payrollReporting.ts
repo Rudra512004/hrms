@@ -1,3 +1,4 @@
+import { ApiError } from './employeeManagement';
 // Payroll Reporting API service — mirrors backend contract from:
 // apps/payroll/views_reporting.py & serializers_reporting.py
 // Base URL: /api/v1/payroll/reports/
@@ -16,7 +17,7 @@ const getHeaders = (): Record<string, string> => {
 const handleResponse = async <T>(response: Response): Promise<T> => {
   if (!response.ok) {
     const errorData = await response.json().catch(() => ({}));
-    throw { response, errorData };
+    throw new ApiError(response, errorData);
   }
   return response.json() as Promise<T>;
 };
