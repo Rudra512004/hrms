@@ -30,6 +30,7 @@ import {
   UpcomingHolidaysWidget,
   PendingApprovalsWidget,
   DashboardTrendsSection,
+  CelebrationsWidget,
 } from '../components/dashboard';
 
 export const DashboardPage: React.FC = () => {
@@ -519,6 +520,9 @@ export const DashboardPage: React.FC = () => {
             {personal?.upcoming_holidays && personal.upcoming_holidays.length > 0 && (
               <UpcomingHolidaysWidget holidays={personal.upcoming_holidays} />
             )}
+
+            {/* Company Celebrations (Birthdays, Anniversaries, New Joinees) */}
+            <CelebrationsWidget />
           </div>
         </div>
       )}

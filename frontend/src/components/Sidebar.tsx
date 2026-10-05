@@ -25,6 +25,8 @@ import {
   MapPin,
   FolderKanban,
   Star,
+  UserCheck,
+  FileCheck,
 } from 'lucide-react';
 
 import { useAuth } from '../contexts/AuthContext';
@@ -63,8 +65,10 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, isMobile, onNavigate }
       title: 'People',
       items: [
         { path: '/admin/organization-launchpad', label: 'Organization Launchpad', icon: Rocket, permission: 'organization.manage' },
+        { path: '/admin/org-chart',    label: 'Org Chart',     icon: Network,    permission: 'organization.view' },
         { path: '/admin/employees',    label: 'Employees',     icon: Users,      permission: 'employee.view' },
         { path: '/admin/candidates',   label: 'Candidates',    icon: UserPlus,   permission: 'candidate.view' },
+        { path: '/admin/letter-requests', label: 'Letter Requests', icon: FileCheck, permission: 'employee.manage' },
         { path: '/admin/assets',       label: 'Assets',        icon: Package,    permission: 'asset.view' },
         { path: '/admin/organizations',label: 'Organizations', icon: Building2,  permission: 'organization.view' },
         { path: '/admin/departments',  label: 'Departments',   icon: GitBranch,  permission: 'department.view' },
@@ -77,6 +81,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, isMobile, onNavigate }
       title: 'Time',
       items: [
         { path: '/attendance',         label: 'My Attendance',         icon: Clock,        requiresEmployee: true },
+        { path: '/approval-delegations', label: 'Approval Delegation', icon: UserCheck,    requiresEmployee: true },
         { path: '/admin/attendance',   label: 'Attendance Management', icon: CalendarDays, permission: 'attendance.view_all' },
         { path: '/admin/daily-roster', label: 'Daily Roster',          icon: ListChecks,   permission: 'attendance.view_all' },
         { path: '/admin/break-types',  label: 'Break Types',           icon: Coffee,       permission: 'shift.view' },

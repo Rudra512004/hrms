@@ -60,6 +60,9 @@ import { AttendancePolicyPage } from '../pages/admin/AttendancePolicyPage';
 import { CandidatesPage } from '../pages/admin/CandidatesPage';
 import { CandidateDetailPage } from '../pages/admin/CandidateDetailPage';
 import { LetterTemplatesPage } from '../pages/admin/LetterTemplatesPage';
+import { OrgChartPage } from '../pages/OrgChartPage';
+import { ApprovalDelegationPage } from '../pages/ApprovalDelegationPage';
+import { AdminLetterRequestsPage } from '../pages/admin/AdminLetterRequestsPage';
 import { ProtectedRoute } from '../components/ProtectedRoute';
 import { OnboardingRoute } from '../components/OnboardingRoute';
 import { OnboardingLayout } from '../layouts/OnboardingLayout';
@@ -93,6 +96,7 @@ export const AppRouter: React.FC = () => {
           {/* Employee Self-Service Routes — require an employee profile */}
           <Route element={<ProtectedRoute requiresEmployee />}>
             <Route path="/attendance" element={<AttendancePage />} />
+            <Route path="/approval-delegations" element={<ApprovalDelegationPage />} />
             <Route path="/leaves" element={<LeavePage />} />
             <Route path="/calendar" element={<CalendarPage />} />
             <Route path="/payslips" element={<MyPayslipsPage />} />
@@ -127,6 +131,10 @@ export const AppRouter: React.FC = () => {
             <Route path="/admin/employees/:employeeId/access" element={<EmployeeAccessPage />} />
           </Route>
 
+          <Route element={<ProtectedRoute requiredPermission="employee.manage" />}>
+            <Route path="/admin/letter-requests" element={<AdminLetterRequestsPage />} />
+          </Route>
+
           <Route element={<ProtectedRoute requiredPermission="asset.view" />}>
             <Route path="/admin/assets" element={<AssetsPage />} />
           </Route>
@@ -153,6 +161,7 @@ export const AppRouter: React.FC = () => {
           <Route element={<ProtectedRoute requiredPermission="organization.view" />}>
             <Route path="/admin/organizations" element={<OrganizationsPage />} />
             <Route path="/admin/control-center" element={<OrganizationControlCenterPage />} />
+            <Route path="/admin/org-chart" element={<OrgChartPage />} />
           </Route>
           <Route element={<ProtectedRoute requiredPermission="announcement.view" />}><Route path="/admin/announcements" element={<AnnouncementsPage />} /></Route>
 

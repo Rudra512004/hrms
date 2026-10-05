@@ -1,5 +1,5 @@
 import React from 'react';
-import { Menu, User, LogOut, ChevronRight, MapPin, ChevronDown, Sun, Moon } from 'lucide-react';
+import { Menu, User, LogOut, ChevronRight, MapPin, ChevronDown, Sun, Moon, Search } from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useBranchContext } from '../contexts/BranchContext';
@@ -9,6 +9,7 @@ import { NotificationBell } from './NotificationBell';
 interface HeaderProps {
   toggleSidebar: () => void;
   isSidebarOpen: boolean;
+  onOpenCommandPalette?: () => void;
 }
 
 // Maps route prefixes to human-readable breadcrumb labels
@@ -29,6 +30,8 @@ const routeLabels: Record<string, string> = {
   '/admin/audit-logs': 'Audit Logs',
   '/admin/office-networks': 'Office Networks',
   '/admin/organizations': 'Organizations',
+  '/admin/org-chart': 'Organization Chart',
+  '/approval-delegations': 'Approval Delegations',
   '/admin/departments': 'Departments',
   '/admin/designations': 'Designations',
   '/admin/branches': 'Branches',
@@ -48,7 +51,7 @@ function getBreadcrumb(pathname: string): string {
   return match ? routeLabels[match] : 'BEYONDSURE HRMS';
 }
 
-export const Header: React.FC<HeaderProps> = ({ toggleSidebar }) => {
+export const Header: React.FC<HeaderProps> = ({ toggleSidebar, onOpenCommandPalette }) => {
   const navigate = useNavigate();
   const location = useLocation();
   const { user, logout } = useAuth();
@@ -93,6 +96,44 @@ export const Header: React.FC<HeaderProps> = ({ toggleSidebar }) => {
 
       {/* Right: actions + user info */}
       <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+        {onOpenCommandPalette && (
+          <button
+            onClick={onOpenCommandPalette}
+            type="button"
+            className="hide-on-mobile"
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              padding: '5px 10px',
+              height: '32px',
+              fontSize: 'var(--font-size-xs)',
+              fontWeight: 500,
+              color: 'rgba(255,255,255,0.85)',
+              backgroundColor: 'rgba(255,255,255,0.08)',
+              border: '1px solid rgba(255,255,255,0.15)',
+              borderRadius: 'var(--radius-md, 6px)',
+              cursor: 'pointer',
+              outline: 'none',
+            }}
+            title="Search commands and employees (Ctrl+K / Cmd+K)"
+          >
+            <Search size={14} color="rgba(255,255,255,0.85)" />
+            <span>Search...</span>
+            <kbd
+              style={{
+                fontSize: '10px',
+                padding: '1px 5px',
+                borderRadius: '4px',
+                background: 'rgba(255,255,255,0.15)',
+                color: '#ffffff',
+                border: 'none',
+              }}
+            >
+              ⌘K
+            </kbd>
+          </button>
+        )}
         {/* Branch Context Selector */}
         <div
           className="branch-selector-container hide-on-mobile"

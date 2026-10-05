@@ -198,5 +198,31 @@ export const dashboardService = {
 
     return await response.json();
   },
+
+  getCelebrations: async (): Promise<CelebrationItem[]> => {
+    const token = localStorage.getItem('auth_token');
+    if (!token) throw new Error('No authentication token');
+
+    const response = await fetch('/api/v1/dashboard/celebrations/', {
+      headers: {
+        'Authorization': `Token ${token}`,
+      },
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw { response, errorData };
+    }
+
+    return await response.json();
+  },
 };
+
+export interface CelebrationItem {
+  id: number;
+  name: string;
+  date: string;
+  type: 'birthday' | 'anniversary' | 'new_joinee';
+  years?: number;
+}
 

@@ -52,6 +52,18 @@ export interface OrganizationReadinessCheck {
   required: boolean;
 }
 
+export interface OrgChartNode {
+  id: number;
+  name: string;
+  email: string;
+  designation: string | null;
+  department: string | null;
+  headcount: number;
+  total_headcount?: number;
+  reporting_manager_id: number | null;
+  children: OrgChartNode[];
+}
+
 export interface OrganizationReadiness {
   organization_id: number;
   organization_name: string;
@@ -141,6 +153,30 @@ export const organizationService = {
       headers: getHeaders(false),
     });
     return handleResponse<OrganizationReadiness>(response);
+  },
+
+  getOrgChart: async (id: number): Promise<OrgChartNode[]> => {
+    const response = await fetch(`/api/v1/organization/organizations/${id}/org-chart/`, {
+      headers: getHeaders(false),
+    });
+    return handleResponse<OrgChartNode[]>(response);
+  },
+
+  // --- BRANDING ---
+  getBranding: async (id: number): Promise<any> => {
+    const response = await fetch(`/api/v1/organization/organizations/${id}/branding/`, {
+      headers: getHeaders(false),
+    });
+    return handleResponse<any>(response);
+  },
+  
+  updateBranding: async (id: number, data: any): Promise<any> => {
+    const response = await fetch(`/api/v1/organization/organizations/${id}/branding/`, {
+      method: 'PATCH',
+      headers: getHeaders(true),
+      body: JSON.stringify(data),
+    });
+    return handleResponse<any>(response);
   },
 
   // --- ORGANIZATIONS ---

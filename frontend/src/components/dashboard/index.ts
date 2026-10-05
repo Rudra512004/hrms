@@ -9,3 +9,4 @@ export { PendingApprovalsWidget } from './PendingApprovalsWidget';
 export { AttendanceTrendChart } from './AttendanceTrendChart';
 export { WorkforceTrendChart } from './WorkforceTrendChart';
 export { DashboardTrendsSection } from './DashboardTrendsSection';
+export { CelebrationsWidget } from './CelebrationsWidget';

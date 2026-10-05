@@ -9,8 +9,9 @@ import { StatusBadge } from '../../components/StatusBadge';
 import {
   Loader2, ArrowLeft, Mail, Phone, MapPin, Building, Briefcase, Calendar,
   User as UserIcon, FileText, Upload, Download, Eye, Trash2, X, AlertCircle, Package,
-  Layers, ArrowUpRight, Power, UserX, RefreshCw, Edit2, CheckCircle, History
+  Layers, ArrowUpRight, Power, UserX, RefreshCw, Edit2, CheckCircle, History, FileCheck
 } from 'lucide-react';
+import { letterRequestService, type LetterRequest } from '../../services/letterRequests';
 import { assetService, type Asset } from '../../services/assets';
 import { EmptyState } from '../../components/EmptyState';
 
@@ -67,7 +68,7 @@ export const EmployeeProfilePage: React.FC = () => {
   const [employee, setEmployee] = useState<EmployeeProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<'overview' | 'contact' | 'employment' | 'documents' | 'assets' | 'lifecycle'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'contact' | 'employment' | 'documents' | 'letters' | 'assets' | 'lifecycle'>('overview');
 
   // Documents state
   const [documents, setDocuments] = useState<EmployeeDocument[]>([]);
@@ -78,6 +79,12 @@ export const EmployeeProfilePage: React.FC = () => {
   const [assignedAssets, setAssignedAssets] = useState<Asset[]>([]);
   const [assetsLoading, setAssetsLoading] = useState(false);
   const [assetsError, setAssetsError] = useState<string | null>(null);
+
+  // Letter Requests state
+  const [letterRequests, setLetterRequests] = useState<LetterRequest[]>([]);
+  const [lettersLoading, setLettersLoading] = useState(false);
+  const [lettersError, setLettersError] = useState<string | null>(null);
+  const [updatingLetterId, setUpdatingLetterId] = useState<number | null>(null);
 
   // Lifecycle Modals state
   const [showTransferModal, setShowTransferModal] = useState(false);
@@ -206,6 +213,40 @@ export const EmployeeProfilePage: React.FC = () => {
       fetchLifecycleHistory();
     }
   }, [activeTab, fetchLifecycleHistory]);
+
+  const fetchLetterRequests = useCallback(async () => {
+    if (!id) return;
+    setLettersLoading(true);
+    setLettersError(null);
+    try {
+      const data = await letterRequestService.list(parseInt(id, 10));
+      setLetterRequests(Array.isArray(data) ? data : []);
+    } catch {
+      setLettersError('Failed to load employee letter requests.');
+    } finally {
+      setLettersLoading(false);
+    }
+  }, [id]);
+
+  useEffect(() => {
+    if (activeTab === 'letters') {
+      fetchLetterRequests();
+    }
+  }, [activeTab, fetchLetterRequests]);
+
+  const handleUpdateLetterStatus = async (reqId: number, status: 'APPROVED' | 'REJECTED') => {
+    setUpdatingLetterId(reqId);
+    try {
+      const updated = await letterRequestService.updateStatus(reqId, status);
+      setLetterRequests((prev) => prev.map((r) => (r.id === reqId ? updated : r)));
+      setSuccessToast(`Letter request marked as ${status}.`);
+      setTimeout(() => setSuccessToast(null), 4000);
+    } catch (err: any) {
+      alert(err?.message || 'Failed to update letter status');
+    } finally {
+      setUpdatingLetterId(null);
+    }
+  };
 
   // Handle successful lifecycle mutation without full page reload
   const handleLifecycleSuccess = (updated: EmployeeProfile, message: string) => {
@@ -509,7 +550,7 @@ export const EmployeeProfilePage: React.FC = () => {
         
         {/* Tabs */}
         <div style={{ display: 'flex', borderTop: '1px solid var(--color-border)', padding: '0 var(--spacing-xl)', gap: '8px', overflowX: 'auto' }}>
-          {(['overview', 'contact', 'employment', 'documents', 'assets', ...(canViewLifecycle ? ['lifecycle'] : [])] as const).map(tab => (
+          {(['overview', 'contact', 'employment', 'documents', 'letters', 'assets', ...(canViewLifecycle ? ['lifecycle'] : [])] as const).map(tab => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab as any)}
@@ -531,9 +572,21 @@ export const EmployeeProfilePage: React.FC = () => {
               }}
             >
               {tab === 'documents' && <FileText size={16} />}
+              {tab === 'letters' && <FileCheck size={16} />}
               {tab === 'assets' && <Package size={16} />}
               {tab === 'lifecycle' && <History size={16} />}
               {tab === 'lifecycle' ? 'Lifecycle History' : tab}
+              {tab === 'letters' && letterRequests.length > 0 && (
+                <span style={{
+                  fontSize: '0.75rem',
+                  padding: '2px 6px',
+                  borderRadius: '10px',
+                  backgroundColor: activeTab === 'letters' ? 'var(--color-primary-light)' : 'var(--color-bg-subtle, #f1f5f9)',
+                  color: activeTab === 'letters' ? 'var(--color-primary)' : 'var(--color-text-muted)',
+                }}>
+                  {letterRequests.length}
+                </span>
+              )}
               {tab === 'documents' && documents.length > 0 && (
                 <span style={{
                   fontSize: '0.75rem',
@@ -877,6 +930,120 @@ export const EmployeeProfilePage: React.FC = () => {
                               >
                                 <Trash2 size={16} />
                               </button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </Card>
+        )}
+
+        {activeTab === 'letters' && (
+          <Card
+            title="Employee Letter Requests"
+            style={{ gridColumn: '1 / -1' }}
+            actions={
+              <button className="btn btn-secondary" onClick={fetchLetterRequests} type="button">
+                <RefreshCw size={14} /> Refresh
+              </button>
+            }
+          >
+            {lettersLoading ? (
+              <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '200px' }}>
+                <Loader2 className="animate-spin text-muted" size={32} />
+              </div>
+            ) : lettersError ? (
+              <div style={{ padding: 'var(--spacing-lg)', textAlign: 'center' }}>
+                <p style={{ color: 'var(--color-danger, #ef4444)', marginBottom: '12px' }}>{lettersError}</p>
+                <button className="btn btn-secondary" onClick={fetchLetterRequests}>Retry</button>
+              </div>
+            ) : letterRequests.length === 0 ? (
+              <EmptyState
+                title="No Letter Requests"
+                description="This employee has not requested any letters or certificates yet."
+                icon={FileCheck}
+              />
+            ) : (
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.9rem' }}>
+                  <thead>
+                    <tr style={{ borderBottom: '1px solid var(--color-border)', color: 'var(--color-text-muted)' }}>
+                      <th style={{ padding: '12px 16px', fontWeight: 600 }}>Letter Type</th>
+                      <th style={{ padding: '12px 16px', fontWeight: 600 }}>Purpose / Reason</th>
+                      <th style={{ padding: '12px 16px', fontWeight: 600 }}>Requested Date</th>
+                      <th style={{ padding: '12px 16px', fontWeight: 600 }}>Status</th>
+                      <th style={{ padding: '12px 16px', fontWeight: 600 }}>Reviewed By</th>
+                      <th style={{ padding: '12px 16px', fontWeight: 600, textAlign: 'right' }}>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {letterRequests.map((req) => (
+                      <tr key={req.id} style={{ borderBottom: '1px solid var(--color-border)' }}>
+                        <td style={{ padding: '12px 16px', fontWeight: 500 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <FileText size={16} color="var(--color-primary)" />
+                            <span>{req.letter_type}</span>
+                          </div>
+                        </td>
+                        <td style={{ padding: '12px 16px', color: 'var(--color-text-sub)' }}>
+                          {req.reason}
+                        </td>
+                        <td style={{ padding: '12px 16px', color: 'var(--color-text-muted)' }}>
+                          {new Date(req.created_at).toLocaleDateString()}
+                        </td>
+                        <td style={{ padding: '12px 16px' }}>
+                          <StatusBadge
+                            status={
+                              req.status === 'APPROVED' || req.status === 'ISSUED'
+                                ? 'approved'
+                                : req.status === 'REJECTED'
+                                ? 'rejected'
+                                : 'pending'
+                            }
+                            label={req.status}
+                          />
+                        </td>
+                        <td style={{ padding: '12px 16px', color: 'var(--color-text-muted)' }}>
+                          {req.approved_by_name || '—'}
+                        </td>
+                        <td style={{ padding: '12px 16px', textAlign: 'right' }}>
+                          <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end', alignItems: 'center' }}>
+                            {req.issued_document && (
+                              <a
+                                href={req.issued_document}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="btn btn-secondary"
+                                style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '4px 8px', fontSize: '0.78rem' }}
+                              >
+                                <Download size={13} /> View
+                              </a>
+                            )}
+                            {hasPermission('employee.manage') && req.status === 'PENDING' && (
+                              <>
+                                <button
+                                  type="button"
+                                  className="btn btn-primary"
+                                  disabled={updatingLetterId === req.id}
+                                  onClick={() => handleUpdateLetterStatus(req.id, 'APPROVED')}
+                                  style={{ padding: '4px 10px', fontSize: '0.78rem', backgroundColor: '#059669', borderColor: '#059669' }}
+                                >
+                                  {updatingLetterId === req.id ? <Loader2 size={12} className="animate-spin" /> : 'Approve'}
+                                </button>
+                                <button
+                                  type="button"
+                                  className="btn btn-secondary"
+                                  disabled={updatingLetterId === req.id}
+                                  onClick={() => handleUpdateLetterStatus(req.id, 'REJECTED')}
+                                  style={{ padding: '4px 10px', fontSize: '0.78rem', color: '#ef4444' }}
+                                >
+                                  {updatingLetterId === req.id ? <Loader2 size={12} className="animate-spin" /> : 'Reject'}
+                                </button>
+                              </>
                             )}
                           </div>
                         </td>

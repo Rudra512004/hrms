@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Outlet } from 'react-router-dom';
 import { Sidebar } from '../components/Sidebar';
 import { Header } from '../components/Header';
+import { CommandPalette } from '../components/CommandPalette';
 
 export const AppLayout: React.FC = () => {
   const [isSidebarOpen, setIsSidebarOpen] = useState(() => {
@@ -9,6 +10,18 @@ export const AppLayout: React.FC = () => {
     return saved !== null ? saved === 'true' : true;
   });
   const [isMobile, setIsMobile] = useState(false);
+  const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        setIsCommandPaletteOpen((prev) => !prev);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
 
   useEffect(() => {
     const handleResize = () => {
@@ -59,11 +72,20 @@ export const AppLayout: React.FC = () => {
       <Sidebar isOpen={isSidebarOpen} isMobile={isMobile} onNavigate={closeSidebarOnMobile} />
 
       <div className={`app-main ${!isMobile ? (isSidebarOpen ? 'sidebar-open' : 'sidebar-closed') : 'sidebar-mobile'}`}>
-        <Header toggleSidebar={toggleSidebar} isSidebarOpen={isSidebarOpen} />
+        <Header
+          toggleSidebar={toggleSidebar}
+          isSidebarOpen={isSidebarOpen}
+          onOpenCommandPalette={() => setIsCommandPaletteOpen(true)}
+        />
         <main className="app-content animate-fade-in">
           <Outlet />
         </main>
       </div>
+
+      <CommandPalette
+        isOpen={isCommandPaletteOpen}
+        onClose={() => setIsCommandPaletteOpen(false)}
+      />
     </div>
   );
 };
