@@ -71,6 +71,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, isMobile, onNavigate }
         { path: '/admin/teams',        label: 'Teams',         icon: Users,      permission: 'team.view' },
         { path: '/admin/branches',     label: 'Branches',      icon: Building2,  permission: 'branch.view' },
         { path: '/admin/designations', label: 'Designations',  icon: Briefcase,  permission: 'designation.view' },
+        { path: '/admin/reviews',      label: 'Manager Reviews',icon: Star,       permission: 'employee.update' },
       ],
     },
     {

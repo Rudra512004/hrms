@@ -41,6 +41,7 @@ import { ProjectsPage } from '../pages/admin/ProjectsPage';
 import { TimesheetPolicyPage } from '../pages/admin/TimesheetPolicyPage';
 import { TimesheetsPage } from '../pages/TimesheetsPage';
 import { ReviewsPage } from '../pages/ReviewsPage';
+import { ManagerReviewsPage } from '../pages/admin/ManagerReviewsPage';
 import { MyAssetsPage } from '../pages/MyAssetsPage';
 import { EmployeeInformationPage } from '../pages/EmployeeInformationPage';
 import { AdminLeaveTypesPage } from '../pages/admin/AdminLeaveTypesPage';
@@ -125,6 +126,10 @@ export const AppRouter: React.FC = () => {
             <Route path="/admin/employees" element={<EmployeesPage />} />
             <Route path="/admin/employees/:id" element={<EmployeeProfilePage />} />
             <Route path="/admin/employees/:employeeId/access" element={<EmployeeAccessPage />} />
+          </Route>
+          
+          <Route element={<ProtectedRoute requiredPermission="employee.update" />}>
+            <Route path="/admin/reviews" element={<ManagerReviewsPage />} />
           </Route>
 
           <Route element={<ProtectedRoute requiredPermission="asset.view" />}>
