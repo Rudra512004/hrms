@@ -37,6 +37,17 @@ class Command(BaseCommand):
         )
         self.stdout.write(self.style.SUCCESS(f'Branch: {branch.name}'))
 
+        from apps.organization.models import OfficeNetwork
+        OfficeNetwork.objects.update_or_create(
+            branch=branch,
+            network='127.0.0.1/32',
+            defaults={
+                'name': 'Local Dev',
+                'is_active': True
+            }
+        )
+        self.stdout.write(self.style.SUCCESS('Seeded OfficeNetwork: 127.0.0.1/32'))
+
 
         # 2. Permissions
         permissions_data = [
