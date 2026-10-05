@@ -13,12 +13,32 @@ class ReviewCycleSerializer(serializers.ModelSerializer):
     class Meta:
         model=ReviewCycle; fields=['id','organization','name','start_date','end_date','is_active']; read_only_fields=['id','organization']
 
+    def validate(self, attrs):
+        start = attrs.get('start_date', getattr(self.instance, 'start_date', None))
+        end = attrs.get('end_date', getattr(self.instance, 'end_date', None))
+        if start and end and end < start:
+            raise serializers.ValidationError({'end_date': 'End date cannot precede start date.'})
+        return attrs
+
 class PerformanceReviewSerializer(serializers.ModelSerializer):
     employee_name=serializers.SerializerMethodField(); reviewer_name=serializers.SerializerMethodField()
     class Meta:
         model=PerformanceReview; fields=['id','cycle','employee','employee_name','reviewer','reviewer_name','rating','summary','status','submitted_at']; read_only_fields=['id','reviewer','reviewer_name','status','submitted_at']
     def get_employee_name(self,x): return f'{x.employee.user.first_name} {x.employee.user.last_name}'.strip() or x.employee.user.email
     def get_reviewer_name(self,x): return (f'{x.reviewer.user.first_name} {x.reviewer.user.last_name}'.strip() or x.reviewer.user.email) if x.reviewer else None
+
+    def validate(self, attrs):
+        rating = attrs.get('rating', getattr(self.instance, 'rating', None))
+        if rating is not None and not (1 <= rating <= 5):
+            raise serializers.ValidationError({'rating': 'Rating must be between 1 and 5.'})
+        
+        cycle = attrs.get('cycle', getattr(self.instance, 'cycle', None))
+        employee = attrs.get('employee', getattr(self.instance, 'employee', None))
+        
+        if cycle and employee and cycle.organization_id != employee.organization_id:
+            raise serializers.ValidationError({'cycle': 'Cycle and employee must belong to the same organization.'})
+            
+        return attrs
 
 class EmployeeSerializer(serializers.ModelSerializer):
     user_id = serializers.IntegerField(source='user.id', read_only=True)
