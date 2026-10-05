@@ -195,7 +195,7 @@ export const ManagerReviewsPage: React.FC = () => {
                 className="form-control" 
                 required 
                 value={formCycle} 
-                onChange={e => setFormCycle(e.target.value)}
+                onChange={e => setFormCycle(e.target.value ? Number(e.target.value) : "")}
               >
                 <option value="">Select a cycle...</option>
                 {cycles.map(c => (
@@ -211,7 +211,7 @@ export const ManagerReviewsPage: React.FC = () => {
                 className="form-control" 
                 required 
                 value={formEmployee} 
-                onChange={e => setFormEmployee(e.target.value)}
+                onChange={e => setFormEmployee(e.target.value ? Number(e.target.value) : "")}
               >
                 <option value="">Select an employee...</option>
                 {employees.map(e => (
@@ -228,7 +228,7 @@ export const ManagerReviewsPage: React.FC = () => {
                 className="form-control" 
                 min="1" max="5" 
                 value={formRating} 
-                onChange={e => setFormRating(e.target.value)}
+                onChange={e => setFormRating(e.target.value ? Number(e.target.value) : "")}
               />
             </div>
             

@@ -177,7 +177,6 @@ class EmployeeManagementViewSet(viewsets.ModelViewSet):
             if org_id:
                 qs = qs.filter(organization_id=org_id)
         elif hasattr(user, 'employee'):
-            from django.db.models import Q
             authorized_branches = AuthorizationService.get_authorized_branches(user, 'employee.view')
             authorized_teams = AuthorizationService.get_authorized_teams(user, 'employee.view')
             if AuthorizationService.has_permission(user, 'employee.view', branch_id=None, global_only=True):
@@ -189,7 +188,6 @@ class EmployeeManagementViewSet(viewsets.ModelViewSet):
             else:
                 qs = qs.filter(Q(branch__in=authorized_branches) | Q(team__in=authorized_teams))
         else:
-            from apps.authorization.services import AuthorizationService
             organization = AuthorizationService.get_primary_organization(user)
             if not organization:
                 return Employee.objects.none()

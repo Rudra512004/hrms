@@ -25,8 +25,9 @@ class OrganizationAPITests(TestCase):
     def test_create_organization(self):
         self.client.force_authenticate(user=self.user)
         response = self.client.post(reverse('organization-list'), {'name': 'New Org', 'status': 'active'})
-        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
-        self.assertEqual(Organization.objects.count(), 2)
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('verified organization launch flow', str(response.data.get('detail', '')))
+        self.assertEqual(Organization.objects.count(), 1)
 
     def test_create_department(self):
         from apps.organization.models import Branch
