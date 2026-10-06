@@ -29,8 +29,10 @@ from .models import (
     Payslip,
     SalaryStructure,
     SalaryStructureComponent,
+    SalaryStructureComponent,
     SalaryComponent,
 )
+from .statutory_services import StatutoryService
 
 
 # ---------------------------------------------------------------------------
@@ -541,6 +543,15 @@ def generate_payroll_for_period(run: PayrollRun, requesting_user=None) -> list:
                 status=PayrollAdjustment.STATUS_APPROVED,
             ).select_related('component').order_by('id')
         )
+        
+        # Calculate full gross (before LOP) for ESI eligibility
+        unprorated_gross = Decimal('0.00')
+        if salary_structure:
+            for ssc in salary_structure.components.select_related('component'):
+                if ssc.component.kind == 'earning':
+                    unprorated_gross += _calculate_component_amount(ssc, basic_salary)
+        else:
+            unprorated_gross = basic_salary
 
         records_to_create.append({
             'employee': emp,
@@ -554,6 +565,7 @@ def generate_payroll_for_period(run: PayrollRun, requesting_user=None) -> list:
             'lop_ratio': lop_ratio,
             'legacy_gross': legacy_gross,
             'salary_structure': salary_structure,
+            'unprorated_gross': unprorated_gross,
             'approved_adjustments': approved_adjustments,
             'lop_dates': lop_dates,
         })
@@ -621,6 +633,72 @@ def generate_payroll_for_period(run: PayrollRun, requesting_user=None) -> list:
         # Approved adjustments
         adj_items = _build_adjustment_line_items(record, ctx['approved_adjustments'])
         line_items.extend(adj_items)
+
+        # ---------------------------------------------------------------
+        # 9.5 Statutory Deductions & Contributions
+        # ---------------------------------------------------------------
+        earned_gross = sum(li.amount for li in line_items if li.category == 'EARNING')
+        earned_basic = Decimal('0.00')
+        if ctx['salary_structure']:
+            for li in line_items:
+                if li.component and li.component.code.lower() == 'basic':
+                    earned_basic = li.amount
+                    break
+        else:
+            earned_basic = ctx['legacy_gross']
+            
+        try:
+            stat_info = ctx['employee'].statutory_info
+        except Exception:
+            from apps.employees.models import EmployeeStatutoryInfo
+            stat_info = EmployeeStatutoryInfo.objects.create(employee=ctx['employee'])
+            
+        target_date = run.end_date
+        
+        # 1. PF
+        pf_res = StatutoryService.calculate_pf(stat_info, target_date, earned_basic)
+        if pf_res['is_applicable']:
+            if pf_res['employee_pf'] > Decimal('0'):
+                line_items.append(PayrollLineItem(
+                    payroll_record=record, category='DEDUCTION', amount=pf_res['employee_pf'],
+                    calculation_type='STATUTORY_PF_EMPLOYEE', calculation_base=Decimal(pf_res['metadata']['employee_base']),
+                    rate=Decimal(pf_res['metadata']['employee_rate']) + Decimal(pf_res['metadata']['vpf_rate']),
+                    calculation_metadata=pf_res['metadata']
+                ))
+            if pf_res['employer_pf'] > Decimal('0'):
+                line_items.append(PayrollLineItem(
+                    payroll_record=record, category='EMPLOYER_CONTRIBUTION', amount=pf_res['employer_pf'],
+                    calculation_type='STATUTORY_PF_EMPLOYER', calculation_base=Decimal(pf_res['metadata']['employer_base']),
+                    rate=Decimal(pf_res['metadata']['employer_rate']),
+                    calculation_metadata=pf_res['metadata']
+                ))
+                
+        # 2. ESI
+        esi_res = StatutoryService.calculate_esi(stat_info, target_date, ctx['unprorated_gross'], earned_gross)
+        if esi_res['is_applicable']:
+            if esi_res['employee_esi'] > Decimal('0'):
+                line_items.append(PayrollLineItem(
+                    payroll_record=record, category='DEDUCTION', amount=esi_res['employee_esi'],
+                    calculation_type='STATUTORY_ESI_EMPLOYEE', calculation_base=Decimal(esi_res['metadata']['base']),
+                    rate=Decimal(esi_res['metadata']['employee_rate']),
+                    calculation_metadata=esi_res['metadata']
+                ))
+            if esi_res['employer_esi'] > Decimal('0'):
+                line_items.append(PayrollLineItem(
+                    payroll_record=record, category='EMPLOYER_CONTRIBUTION', amount=esi_res['employer_esi'],
+                    calculation_type='STATUTORY_ESI_EMPLOYER', calculation_base=Decimal(esi_res['metadata']['base']),
+                    rate=Decimal(esi_res['metadata']['employer_rate']),
+                    calculation_metadata=esi_res['metadata']
+                ))
+                
+        # 3. PT
+        pt_res = StatutoryService.calculate_pt(stat_info, target_date, earned_gross)
+        if pt_res['is_applicable'] and pt_res['employee_pt'] > Decimal('0'):
+            line_items.append(PayrollLineItem(
+                payroll_record=record, category='TAX', amount=pt_res['employee_pt'],
+                calculation_type='STATUTORY_PT', calculation_base=Decimal(pt_res['metadata']['base']),
+                rate=None, calculation_metadata=pt_res['metadata']
+            ))
 
         all_line_items.extend(line_items)
 

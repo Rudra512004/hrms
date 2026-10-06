@@ -177,6 +177,18 @@ class EmployeeStatutoryInfo(models.Model):
     pf_number = models.CharField(max_length=50, blank=True)
     esi_number = models.CharField(max_length=50, blank=True)
     uan = models.CharField(max_length=50, blank=True)
+    
+    # Coverage flags
+    is_pf_applicable = models.BooleanField(default=True)
+    is_esi_applicable = models.BooleanField(default=True)
+    is_pt_applicable = models.BooleanField(default=True)
+    tax_regime = models.CharField(max_length=20, choices=[('OLD', 'Old Regime'), ('NEW', 'New Regime')], default='NEW')
+    
+    # Overrides
+    pf_wage_cap = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True, help_text="Override statutory 15000 cap. Null means use statutory rule.")
+    employer_pf_capped = models.BooleanField(default=True, help_text="Does employer cap their contribution at the wage limit?")
+    vpf_percentage = models.DecimalField(max_digits=5, decimal_places=2, default=0.00)
+
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

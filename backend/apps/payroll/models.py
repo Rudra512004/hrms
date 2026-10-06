@@ -43,6 +43,41 @@ class CompensationHistory(models.Model):
             f"₹{self.basic_salary} from {self.effective_from}"
         )
 
+class StatutoryRule(models.Model):
+    """
+    Versioned, effective-dated statutory rules.
+    Global rules have organization=None. Tenant overrides have organization set.
+    """
+    RULE_TYPE_CHOICES = [
+        ('PF', 'Provident Fund'),
+        ('ESI', 'Employee State Insurance'),
+        ('PT', 'Professional Tax'),
+        ('TDS', 'Tax Deducted at Source'),
+    ]
+
+    organization = models.ForeignKey(Organization, on_delete=models.CASCADE, null=True, blank=True)
+    rule_type = models.CharField(max_length=10, choices=RULE_TYPE_CHOICES)
+    state = models.CharField(max_length=50, null=True, blank=True, help_text="Required for PT")
+    
+    effective_from = models.DateField()
+    effective_to = models.DateField(null=True, blank=True)
+
+    employee_rate = models.DecimalField(max_digits=5, decimal_places=2, default=0, help_text="e.g. 12.00 for PF")
+    employer_rate = models.DecimalField(max_digits=5, decimal_places=2, default=0, help_text="e.g. 13.00 for PF (12 + 1 EDLI/Admin)")
+    
+    applicable_limit = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True, help_text="e.g. 15000 for PF, 21000 for ESI")
+    
+    rule_metadata = models.JSONField(default=dict, blank=True, help_text="For complex structures like PT slabs")
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-effective_from']
+
+    def __str__(self):
+        org = self.organization.name if self.organization else 'Global'
+        return f"{self.rule_type} ({org}) - {self.effective_from}"
 
 class PayrollRun(models.Model):
     """
