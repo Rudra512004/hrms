@@ -48,7 +48,8 @@ class LeaveNotificationIntegrationTests(TransactionTestCase):
     @patch('apps.authorization.services.AuthorizationService.get_authorized_branches')
     def test_leave_approved_notification(self, mock_auth_branches, mock_perm):
         mock_auth_branches.return_value = [self.branch]
-        base_date = date(2026, 10, 5)
+        today = timezone.now().date()
+        base_date = today + timedelta(days=(7 - today.weekday())) # Next Monday
         leave = LeaveRequest.objects.create(
             employee=self.employee, leave_type=self.leave_type,
             start_date=base_date, end_date=base_date + timedelta(days=1),
@@ -73,7 +74,8 @@ class LeaveNotificationIntegrationTests(TransactionTestCase):
     @patch('apps.authorization.services.AuthorizationService.get_authorized_branches')
     def test_leave_rejected_notification(self, mock_auth_branches, mock_perm):
         mock_auth_branches.return_value = [self.branch]
-        base_date = date(2026, 10, 5)
+        today = timezone.now().date()
+        base_date = today + timedelta(days=(7 - today.weekday())) # Next Monday
         leave = LeaveRequest.objects.create(
             employee=self.employee, leave_type=self.leave_type,
             start_date=base_date, end_date=base_date + timedelta(days=1),
@@ -93,7 +95,8 @@ class LeaveNotificationIntegrationTests(TransactionTestCase):
     @patch('apps.authorization.services.AuthorizationService.get_authorized_branches')
     def test_leave_cancelled_by_admin_notification(self, mock_auth_branches, mock_perm):
         mock_auth_branches.return_value = [self.branch]
-        base_date = date(2026, 10, 5)
+        today = timezone.now().date()
+        base_date = today + timedelta(days=(7 - today.weekday())) # Next Monday
         leave = LeaveRequest.objects.create(
             employee=self.employee, leave_type=self.leave_type,
             start_date=base_date, end_date=base_date + timedelta(days=1),
@@ -113,7 +116,8 @@ class LeaveNotificationIntegrationTests(TransactionTestCase):
     @patch('apps.authorization.services.AuthorizationService.get_authorized_branches')
     def test_leave_cancelled_by_self_no_notification(self, mock_auth_branches, mock_perm):
         mock_auth_branches.return_value = [self.branch]
-        base_date = date(2026, 10, 5)
+        today = timezone.now().date()
+        base_date = today + timedelta(days=(7 - today.weekday())) # Next Monday
         leave = LeaveRequest.objects.create(
             employee=self.employee, leave_type=self.leave_type,
             start_date=base_date, end_date=base_date + timedelta(days=1),

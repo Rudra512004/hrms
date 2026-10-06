@@ -239,12 +239,14 @@ class EmployeeSelfServiceAPITests(TestCase):
     def test_can_modify_self_service_fields(self):
         response = self.client.patch(self.me_url, {
             'phone_number': '98765',
-            'address': '123 Main St'
+            'address_line1': '123 Main St',
+            'city': 'Metropolis'
         })
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.employee.refresh_from_db()
         self.assertEqual(self.employee.phone_number, '98765')
-        self.assertEqual(self.employee.address, '123 Main St')
+        self.assertEqual(self.employee.address_line1, '123 Main St')
+        self.assertEqual(self.employee.city, 'Metropolis')
 
     def test_cannot_modify_hr_controlled_fields(self):
         response = self.client.patch(self.me_url, {
