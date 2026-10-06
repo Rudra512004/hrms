@@ -55,7 +55,17 @@ class User(AbstractBaseUser, PermissionsMixin):
     def is_active(self):
         return self.status == UserStatus.ACTIVE
 
-
+    @property
+    def employee(self):
+        # Compatibility layer: returns the first employee profile.
+        # This prevents 500+ references to `user.employee` from crashing immediately
+        # after changing the Employee.user relationship to a ForeignKey.
+        if not hasattr(self, '_employee_cache'):
+            self._employee_cache = self.employee_profiles.first() if hasattr(self, 'employee_profiles') else None
+            
+        if self._employee_cache is None:
+            raise AttributeError("User has no employee profile")
+        return self._employee_cache
 
     def get_full_name(self):
         full_name = f"{self.first_name} {self.last_name}".strip()

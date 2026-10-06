@@ -412,6 +412,7 @@ class CandidateViewSet(viewsets.ModelViewSet):
                 personal_email=candidate.email,
                 phone_number=candidate.phone_number,
                 address=candidate.address,
+                address_line1=candidate.address,
                 employment_status=EmploymentStatus.ONBOARDING,
                 joining_date=candidate.proposed_joining_date,
             )

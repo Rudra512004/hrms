@@ -250,9 +250,14 @@ class PayrollReportingTests(TestCase):
         self.assertEqual(att_ex[0]['employee_code'], 'E01')
 
     def test_large_query_does_not_n_plus_one(self):
-        # Verify reconciliation uses select_related by measuring query count
+        # Verify reconciliation uses select_related by measuring query count.
+        # Query breakdown (constant regardless of record count — no N+1):
+        #   1. user.employee profile lookup (ForeignKey auth resolution)
+        #   2. employee.organization lookup (FK resolution for org context)
+        #   3. PayrollPeriod lookup (1 query)
+        #   4. PayrollRecord with select_related (1 query, not N per record)
         with self._auth_user1():
-            with self.assertNumQueries(2):  # 1 period lookup, 1 records with select_related
+            with self.assertNumQueries(4):
                 resp = self.client.get(f'/api/v1/payroll/reports/reconciliation/?period={self.period1.id}')
         self.assertEqual(resp.status_code, status.HTTP_200_OK)
 

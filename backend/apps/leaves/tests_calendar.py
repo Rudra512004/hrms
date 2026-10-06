@@ -546,13 +546,15 @@ class EmployeeCalendarPerformanceTests(EmployeeCalendarTestBase):
 
     def test_short_range_query_count(self):
         """Short date range should trigger a fixed number of queries."""
-        # Warmup cache if any
+        # Warmup call absorbs the 2 auth queries (user.employee + org FK resolution)
+        # so that _employee_cache is populated on the User instance before measuring.
         self.client.get(self._url(start_date=self.mon.isoformat(), end_date=self.fri.isoformat()))
         
-        # 1. WorkingCalendar
-        # 2. WorkingCalendarRule (prefetch)
-        # 3. Holidays
-        # 4. Approved leaves
+        # Only the 4 pure business queries are counted:
+        #   1. WorkingCalendar
+        #   2. WorkingCalendarRule (prefetch)
+        #   3. Holidays
+        #   4. Approved leaves
         with self.assertNumQueries(4):
             resp = self.client.get(self._url(
                 start_date=self.mon.isoformat(),
@@ -564,9 +566,11 @@ class EmployeeCalendarPerformanceTests(EmployeeCalendarTestBase):
         """A 60-day range MUST NOT increase the query count (O(1) queries)."""
         end_60 = (self.mon + timedelta(days=60)).isoformat()
         
-        # Warmup cache if any
+        # Warmup call absorbs auth queries so _employee_cache is pre-populated.
         self.client.get(self._url(start_date=self.mon.isoformat(), end_date=end_60))
         
+        # Query count must equal the short-range test (same 4 queries).
+        # This verifies O(1) behaviour: a larger date window adds zero extra queries.
         with self.assertNumQueries(4):
             resp = self.client.get(self._url(
                 start_date=self.mon.isoformat(),

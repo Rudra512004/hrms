@@ -41,12 +41,12 @@ class EmployeeSelfServiceSecurityTests(APITestCase):
         self.client.force_authenticate(user=self.user1)
         response = self.patch_json('/api/v1/employees/me/', {
             'phone_number': '1234567890',
-            'address': 'New Address'
+            'address_line1': 'New Address'
         })
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.employee.refresh_from_db()
         self.assertEqual(self.employee.phone_number, '1234567890')
-        self.assertEqual(self.employee.address, 'New Address')
+        self.assertEqual(self.employee.address_line1, 'New Address')
 
     def test_employee_cannot_change_organization(self):
         self.client.force_authenticate(user=self.user1)

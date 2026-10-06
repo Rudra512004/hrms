@@ -14,8 +14,12 @@ class AuthorizationService:
         """
         if not user or not user.is_authenticated or user.is_superuser:
             return None
-        if hasattr(user, 'employee') and user.employee and user.employee.organization_id:
-            return user.employee.organization
+        if hasattr(user, 'employee'):
+            try:
+                if user.employee.organization_id:
+                    return user.employee.organization
+            except AttributeError:
+                pass
         user_role = user.user_roles.filter(
             is_revoked=False,
             role__is_active=True,

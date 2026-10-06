@@ -5,9 +5,17 @@ from django.contrib.auth import get_user_model
 from django.utils.crypto import get_random_string
 from django.conf import settings
 from apps.organization.models import Branch, Department, Designation, Team
-from .models import Employee, EmploymentStatus, EmployeeLifecycleEvent, EmployeeDocument, DocumentType, DocumentStatus, ReviewCycle, PerformanceReview
+from .models import Employee, EmploymentStatus, EmployeeLifecycleEvent, EmployeeDocument, DocumentType, DocumentStatus, ReviewCycle, PerformanceReview, EmployeeStatutoryInfo
 
 User = get_user_model()
+
+class EmployeeStatutoryInfoSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = EmployeeStatutoryInfo
+        fields = (
+            'bank_name', 'account_name', 'account_number', 'ifsc', 'bank_branch',
+            'pan', 'national_id', 'pf_number', 'esi_number', 'uan'
+        )
 
 class ReviewCycleSerializer(serializers.ModelSerializer):
     class Meta:
@@ -50,17 +58,21 @@ class EmployeeSerializer(serializers.ModelSerializer):
     department_name = serializers.CharField(source='department.name', read_only=True)
     team_name = serializers.CharField(source='team.name', read_only=True)
     designation_name = serializers.CharField(source='designation.name', read_only=True)
+    statutory_info = EmployeeStatutoryInfoSerializer(required=False, allow_null=True)
 
     class Meta:
         model = Employee
         fields = (
             'id', 'user_id', 'email', 'first_name', 'last_name', 'status', 'employee_code', 'personal_email',
-            'phone_number', 'address', 'emergency_contact_name', 'emergency_contact_phone',
+            'phone_number', 'alternate_phone', 'address_line1', 'address_line2', 'city', 'state', 'country', 'postal_code',
+            'emergency_contact_name', 'emergency_contact_phone', 'emergency_contact_relation',
             'organization', 'branch', 'branch_name', 'department', 'department_name',
             'team', 'team_name',
             'designation', 'designation_name', 'reporting_manager',
-            'employment_status', 'joining_date', 'exit_date', 'resignation_date',
-            'exit_reason', 'notice_period_start', 'notice_period_end'
+            'employment_status', 'employment_type', 'joining_date', 'exit_date', 'resignation_date',
+            'exit_reason', 'notice_period_start', 'notice_period_end',
+            'gender', 'date_of_birth', 'marital_status', 'blood_group', 'nationality',
+            'statutory_info'
         )
         read_only_fields = (
             'id', 'email', 'first_name', 'last_name', 'status', 'employee_code',
@@ -119,16 +131,26 @@ class EmployeeSerializer(serializers.ModelSerializer):
 
         return attrs
 
+    def update(self, instance, validated_data):
+        statutory_data = validated_data.pop('statutory_info', None)
+        instance = super().update(instance, validated_data)
+
+        if statutory_data is not None:
+            statutory_info, _ = EmployeeStatutoryInfo.objects.get_or_create(employee=instance)
+            for attr, value in statutory_data.items():
+                setattr(statutory_info, attr, value)
+            statutory_info.save()
+
+        return instance
+
     def to_representation(self, instance):
         ret = super().to_representation(instance)
         request = self.context.get('request')
         from apps.authorization.services import AuthorizationService
         if request and request.user.is_authenticated:
             if request.user != instance.user and not AuthorizationService.has_permission(request.user, 'employee.view_sensitive'):
-                ret.pop('personal_email', None)
-                ret.pop('address', None)
-                ret.pop('emergency_contact_name', None)
-                ret.pop('emergency_contact_phone', None)
+                for f in ['personal_email', 'phone_number', 'alternate_phone', 'address_line1', 'address_line2', 'city', 'state', 'country', 'postal_code', 'emergency_contact_name', 'emergency_contact_phone', 'emergency_contact_relation', 'gender', 'date_of_birth', 'marital_status', 'blood_group', 'nationality', 'statutory_info']:
+                    ret.pop(f, None)
         return ret
 
 class ProvisionEmployeeSerializer(serializers.Serializer):
@@ -144,6 +166,41 @@ class ProvisionEmployeeSerializer(serializers.Serializer):
     designation = serializers.PrimaryKeyRelatedField(queryset=Designation.objects.all(), required=False, allow_null=True)
     reporting_manager = serializers.PrimaryKeyRelatedField(queryset=Employee.objects.all(), required=False, allow_null=True)
     role = serializers.IntegerField(required=False, allow_null=True)
+
+    # Demographics & Expanded Info
+    phone_number = serializers.CharField(max_length=20, required=False, allow_blank=True)
+    alternate_phone = serializers.CharField(max_length=20, required=False, allow_blank=True)
+    gender = serializers.CharField(max_length=20, required=False, allow_blank=True)
+    date_of_birth = serializers.DateField(required=False, allow_null=True)
+    marital_status = serializers.CharField(max_length=20, required=False, allow_blank=True)
+    blood_group = serializers.CharField(max_length=10, required=False, allow_blank=True)
+    nationality = serializers.CharField(max_length=100, required=False, allow_blank=True)
+
+    # Address Breakdown
+    address_line1 = serializers.CharField(max_length=255, required=False, allow_blank=True)
+    address_line2 = serializers.CharField(max_length=255, required=False, allow_blank=True)
+    city = serializers.CharField(max_length=100, required=False, allow_blank=True)
+    state = serializers.CharField(max_length=100, required=False, allow_blank=True)
+    country = serializers.CharField(max_length=100, required=False, allow_blank=True)
+    postal_code = serializers.CharField(max_length=20, required=False, allow_blank=True)
+    emergency_contact_name = serializers.CharField(max_length=150, required=False, allow_blank=True)
+    emergency_contact_phone = serializers.CharField(max_length=20, required=False, allow_blank=True)
+    emergency_contact_relation = serializers.CharField(max_length=50, required=False, allow_blank=True)
+
+    employment_type = serializers.CharField(max_length=50, required=False, allow_blank=True)
+    joining_date = serializers.DateField(required=False, allow_null=True)
+
+    # Statutory Info
+    bank_name = serializers.CharField(max_length=150, required=False, allow_blank=True)
+    account_name = serializers.CharField(max_length=150, required=False, allow_blank=True)
+    account_number = serializers.CharField(max_length=50, required=False, allow_blank=True)
+    ifsc = serializers.CharField(max_length=50, required=False, allow_blank=True)
+    bank_branch = serializers.CharField(max_length=150, required=False, allow_blank=True)
+    pan = serializers.CharField(max_length=50, required=False, allow_blank=True)
+    national_id = serializers.CharField(max_length=50, required=False, allow_blank=True)
+    pf_number = serializers.CharField(max_length=50, required=False, allow_blank=True)
+    esi_number = serializers.CharField(max_length=50, required=False, allow_blank=True)
+    uan = serializers.CharField(max_length=50, required=False, allow_blank=True)
 
     def validate_email(self, value):
         value = User.objects.normalize_email(value)
@@ -169,8 +226,12 @@ class ProvisionEmployeeSerializer(serializers.Serializer):
         request = self.context.get('request')
         org = None
         if request and request.user.is_authenticated:
-            if hasattr(request.user, 'employee') and request.user.employee and request.user.employee.organization_id:
-                org = request.user.employee.organization
+            if hasattr(request.user, 'employee'):
+                try:
+                    if request.user.employee.organization_id:
+                        org = request.user.employee.organization
+                except AttributeError:
+                    pass
             elif not request.user.is_superuser:
                 from apps.authorization.services import AuthorizationService
                 org = AuthorizationService.get_primary_organization(request.user)
@@ -178,8 +239,6 @@ class ProvisionEmployeeSerializer(serializers.Serializer):
                 org_id = self.initial_data.get('organization') if hasattr(self, 'initial_data') else None
                 if org_id:
                     org = Organization.objects.filter(id=org_id).first()
-                if not org and hasattr(request.user, 'employee') and request.user.employee and request.user.employee.organization_id:
-                    org = request.user.employee.organization
 
         if not org:
             raise serializers.ValidationError({'organization': 'Cannot provision employee without a valid organization.'})
@@ -258,7 +317,40 @@ class ProvisionEmployeeSerializer(serializers.Serializer):
                     designation=designation,
                     reporting_manager=reporting_manager,
                     employee_code=employee_code,
-                    personal_email=validated_data.get('personal_email')
+                    personal_email=validated_data.get('personal_email'),
+                    phone_number=validated_data.get('phone_number', ''),
+                    alternate_phone=validated_data.get('alternate_phone', ''),
+                    gender=validated_data.get('gender', ''),
+                    date_of_birth=validated_data.get('date_of_birth'),
+                    marital_status=validated_data.get('marital_status', ''),
+                    blood_group=validated_data.get('blood_group', ''),
+                    nationality=validated_data.get('nationality', ''),
+                    address_line1=validated_data.get('address_line1', ''),
+                    address_line2=validated_data.get('address_line2', ''),
+                    city=validated_data.get('city', ''),
+                    state=validated_data.get('state', ''),
+                    country=validated_data.get('country', ''),
+                    postal_code=validated_data.get('postal_code', ''),
+                    emergency_contact_name=validated_data.get('emergency_contact_name', ''),
+                    emergency_contact_phone=validated_data.get('emergency_contact_phone', ''),
+                    emergency_contact_relation=validated_data.get('emergency_contact_relation', ''),
+                    employment_type=validated_data.get('employment_type', 'Full Time'),
+                    joining_date=validated_data.get('joining_date')
+                )
+
+                from apps.employees.models import EmployeeStatutoryInfo
+                EmployeeStatutoryInfo.objects.create(
+                    employee=employee,
+                    bank_name=validated_data.get('bank_name', ''),
+                    account_name=validated_data.get('account_name', ''),
+                    account_number=validated_data.get('account_number', ''),
+                    ifsc=validated_data.get('ifsc', ''),
+                    bank_branch=validated_data.get('bank_branch', ''),
+                    pan=validated_data.get('pan', ''),
+                    national_id=validated_data.get('national_id', ''),
+                    pf_number=validated_data.get('pf_number', ''),
+                    esi_number=validated_data.get('esi_number', ''),
+                    uan=validated_data.get('uan', '')
                 )
 
                 # Handle Role assignment
@@ -518,14 +610,16 @@ class EmployeeSelfServiceSerializer(serializers.ModelSerializer):
         model = Employee
         fields = (
             'id', 'email', 'first_name', 'last_name', 'status', 'employee_code', 'personal_email',
-            'phone_number', 'address', 'emergency_contact_name', 'emergency_contact_phone',
+            'phone_number', 'alternate_phone', 'address_line1', 'address_line2', 'city', 'state', 'country', 'postal_code',
+            'emergency_contact_name', 'emergency_contact_phone', 'emergency_contact_relation',
             'organization', 'branch', 'branch_name', 'department', 'department_name',
             'designation', 'designation_name', 'reporting_manager',
             'employment_status', 'joining_date', 'exit_date', 'resignation_date',
-            'exit_reason', 'notice_period_start', 'notice_period_end'
+            'exit_reason', 'notice_period_start', 'notice_period_end',
+            'gender', 'date_of_birth', 'marital_status', 'blood_group', 'nationality'
         )
         # All organizational/HR fields are read-only.
-        # Only genuinely employee-editable fields (phone, address, emergency contacts) are writable.
+        # Only genuinely employee-editable fields (phone, address, emergency contacts, demographics) are writable.
         read_only_fields = (
             'id', 'email', 'first_name', 'last_name', 'status', 'employee_code', 'personal_email',
             'organization', 'branch', 'department', 'designation', 'reporting_manager',

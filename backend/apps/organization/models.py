@@ -14,6 +14,26 @@ class Organization(models.Model):
     def __str__(self):
         return self.name
 
+class OrganizationMembership(models.Model):
+    STATUS_CHOICES = [
+        ('invited', 'Invited'),
+        ('active', 'Active'),
+        ('suspended', 'Suspended'),
+        ('deactivated', 'Deactivated'),
+    ]
+    user = models.ForeignKey('accounts.User', on_delete=models.CASCADE, related_name='organization_memberships')
+    organization = models.ForeignKey(Organization, on_delete=models.CASCADE, related_name='memberships')
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='active')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = ('user', 'organization')
+
+    def __str__(self):
+        return f"{self.user.email} - {self.organization.name} ({self.status})"
+
+
 class WorkingCalendar(models.Model):
     branch = models.OneToOneField('organization.Branch', on_delete=models.CASCADE, related_name='working_calendar')
     work_days = models.CharField(

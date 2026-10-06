@@ -21,6 +21,12 @@ def _get_user_organization(user):
     """Resolve a tenant-admin's role-scoped organization without granting global access."""
     return AuthorizationService.get_primary_organization(user)
 
+
+def _user_org_id(user):
+    """Safely return the organization_id of a user's primary employee profile, or None."""
+    emp = user.employee_profiles.select_related('organization').first()
+    return emp.organization_id if (emp and emp.organization_id) else None
+
 class CurrentUserPermissionsView(APIView):
     permission_classes = [IsAuthenticated]
 
@@ -38,11 +44,15 @@ class CurrentUserPermissionsView(APIView):
             is_active=True
         ).values_list('name', flat=True)
 
-        # Determine whether this user has a linked employee profile.
-        # Super Admin accounts do NOT have employee profiles and must NOT
-        # access employee self-service endpoints (attendance, leaves, payslips).
-        has_employee = (not user.is_superuser) and hasattr(user, 'employee') and user.employee is not None
-        employee_code = user.employee.employee_code if (has_employee and hasattr(user, 'employee') and user.employee) else None
+        _emp = None
+        if not user.is_superuser and hasattr(user, 'employee'):
+            try:
+                _emp = user.employee
+            except AttributeError:
+                pass
+        
+        has_employee = _emp is not None
+        employee_code = _emp.employee_code if _emp else None
         registration = getattr(user, 'tenant_owner_registration', None)
 
         return Response({
@@ -161,7 +171,7 @@ class UserRoleViewSet(viewsets.ModelViewSet):
             if role.organization_id != user_org.id:
                 raise ValidationError({'role': 'Role does not belong to your organization.'})
 
-            if not hasattr(target_user, 'employee') or target_user.employee.organization_id != user_org.id:
+            if _user_org_id(target_user) != user_org.id:
                 raise ValidationError({'user': 'Target user does not belong to your organization.'})
                 
             # Prevent Privilege Escalation
@@ -179,8 +189,9 @@ class UserRoleViewSet(viewsets.ModelViewSet):
                 if not AuthorizationService.has_permission(user, 'role.assign', branch_id=None, team_id=team.id if team else None):
                     raise ValidationError({'scope': 'You do not have permission to grant roles for this team.'})
         else:
-            if hasattr(target_user, 'employee') and target_user.employee.organization_id:
-                if role.organization_id != target_user.employee.organization_id:
+            target_org_id = _user_org_id(target_user)
+            if target_org_id:
+                if role.organization_id != target_org_id:
                     raise ValidationError({'detail': 'Role organization must match target user organization.'})
 
         user_role = serializer.save(assigned_by=self.request.user)
@@ -202,7 +213,7 @@ class UserRoleViewSet(viewsets.ModelViewSet):
             user_org = _get_user_organization(user)
             if not user_org:
                 raise ValidationError({'detail': 'User does not belong to an organization.'})
-            if not hasattr(target_user, 'employee') or target_user.employee.organization_id != user_org.id:
+            if _user_org_id(target_user) != user_org.id:
                 raise ValidationError({'user': 'Target user does not belong to your organization.'})
                 
             # Prevent Privilege Escalation
@@ -269,14 +280,14 @@ class UserPermissionGrantViewSet(viewsets.ModelViewSet):
             qs = UserPermissionGrant.objects.filter(is_revoked=False)
             org_id = self.request.query_params.get('organization')
             if org_id:
-                qs = qs.filter(user__employee__organization_id=org_id)
+                qs = qs.filter(user__employee_profiles__organization_id=org_id).distinct()
             return qs
         org = _get_user_organization(user)
         if org:
             return UserPermissionGrant.objects.filter(
                 is_revoked=False,
-                user__employee__organization=org
-            )
+                user__employee_profiles__organization=org
+            ).distinct()
         return UserPermissionGrant.objects.none()
 
     def perform_create(self, serializer):
@@ -287,7 +298,7 @@ class UserPermissionGrantViewSet(viewsets.ModelViewSet):
             user_org = _get_user_organization(user)
             if not user_org:
                 raise ValidationError({'detail': 'User does not belong to an organization.'})
-            if not hasattr(target_user, 'employee') or target_user.employee.organization_id != user_org.id:
+            if _user_org_id(target_user) != user_org.id:
                 raise ValidationError({'user': 'Target user does not belong to your organization.'})
                 
             # Prevent Privilege Escalation
@@ -323,7 +334,7 @@ class UserPermissionGrantViewSet(viewsets.ModelViewSet):
             user_org = _get_user_organization(user)
             if not user_org:
                 raise ValidationError({'detail': 'User does not belong to an organization.'})
-            if not hasattr(target_user, 'employee') or target_user.employee.organization_id != user_org.id:
+            if _user_org_id(target_user) != user_org.id:
                 raise ValidationError({'user': 'Target user does not belong to your organization.'})
 
             # Prevent Privilege Escalation

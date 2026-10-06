@@ -36,7 +36,7 @@ class EmployeeSelfServiceView(APIView):
     def get(self, request, *args, **kwargs):
         try:
             employee = request.user.employee
-        except Employee.DoesNotExist:
+        except AttributeError:
             return Response({'detail': 'Employee profile not found.'}, status=status.HTTP_404_NOT_FOUND)
 
         serializer = EmployeeSerializer(employee)
@@ -45,7 +45,7 @@ class EmployeeSelfServiceView(APIView):
     def patch(self, request, *args, **kwargs):
         try:
             employee = request.user.employee
-        except Employee.DoesNotExist:
+        except AttributeError:
             return Response({'detail': 'Employee profile not found.'}, status=status.HTTP_404_NOT_FOUND)
 
         serializer = EmployeeSelfServiceSerializer(employee, data=request.data, partial=True)

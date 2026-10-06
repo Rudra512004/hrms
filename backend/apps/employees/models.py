@@ -43,20 +43,40 @@ class EmploymentStatus(models.TextChoices):
     EXITED = 'exited', 'Exited'
 
 class Employee(models.Model):
-    user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='employee')
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, related_name='employee_profiles', null=True, blank=True)
     organization = models.ForeignKey(Organization, on_delete=models.CASCADE, related_name='employees', null=True, blank=True)
     branch = models.ForeignKey('organization.Branch', on_delete=models.SET_NULL, related_name='employees', null=True, blank=True)
     department = models.ForeignKey(Department, on_delete=models.SET_NULL, related_name='employees', null=True, blank=True)
     team = models.ForeignKey('organization.Team', on_delete=models.SET_NULL, related_name='employees', null=True, blank=True)
     designation = models.ForeignKey(Designation, on_delete=models.SET_NULL, related_name='employees', null=True, blank=True)
     reporting_manager = models.ForeignKey('self', on_delete=models.SET_NULL, related_name='direct_reports', null=True, blank=True)
-    employee_code = models.CharField(max_length=50, unique=True, help_text="Assigned HRMS/Employee ID")
-    personal_email = models.EmailField(unique=True, null=True, blank=True, help_text="Employee's personal email for onboarding")
+    employee_code = models.CharField(max_length=50, help_text="Assigned HRMS/Employee ID")
+    personal_email = models.EmailField(null=True, blank=True, help_text="Employee's personal email for onboarding")
     phone_number = models.CharField(max_length=20, blank=True)
     address = models.TextField(blank=True)
     emergency_contact_name = models.CharField(max_length=150, blank=True)
     emergency_contact_phone = models.CharField(max_length=20, blank=True)
+    emergency_contact_relation = models.CharField(max_length=50, blank=True)
 
+    # Demographics
+    GENDER_CHOICES = [('Male', 'Male'), ('Female', 'Female'), ('Other', 'Other')]
+    MARITAL_STATUS_CHOICES = [('Single', 'Single'), ('Married', 'Married')]
+    gender = models.CharField(max_length=20, choices=GENDER_CHOICES, blank=True)
+    date_of_birth = models.DateField(null=True, blank=True)
+    marital_status = models.CharField(max_length=20, choices=MARITAL_STATUS_CHOICES, blank=True)
+    blood_group = models.CharField(max_length=10, blank=True)
+    nationality = models.CharField(max_length=100, blank=True)
+
+    # Expanded Contact / Address
+    alternate_phone = models.CharField(max_length=20, blank=True)
+    address_line1 = models.CharField(max_length=255, blank=True)
+    address_line2 = models.CharField(max_length=255, blank=True)
+    city = models.CharField(max_length=100, blank=True)
+    state = models.CharField(max_length=100, blank=True)
+    country = models.CharField(max_length=100, blank=True)
+    postal_code = models.CharField(max_length=20, blank=True)
+
+    employment_type = models.CharField(max_length=50, default='Full Time')
     employment_status = models.CharField(max_length=20, choices=EmploymentStatus.choices, default=EmploymentStatus.ONBOARDING)
     joining_date = models.DateField(null=True, blank=True)
     exit_date = models.DateField(null=True, blank=True)
@@ -68,8 +88,15 @@ class Employee(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
+    class Meta:
+        unique_together = (
+            ('organization', 'user'),
+            ('organization', 'employee_code'),
+        )
+
     def __str__(self):
-        return f"{self.employee_code} - {self.user.email}"
+        user_email = self.user.email if self.user else "No User"
+        return f"{self.employee_code} - {user_email}"
 
     def clean(self):
         super().clean()
@@ -136,6 +163,26 @@ class WFHRequest(models.Model):
 
 class EmployeeIDSequence(models.Model):
     last_generated = models.IntegerField(default=0)
+
+
+class EmployeeStatutoryInfo(models.Model):
+    employee = models.OneToOneField(Employee, on_delete=models.CASCADE, related_name='statutory_info')
+    bank_name = models.CharField(max_length=150, blank=True)
+    account_name = models.CharField(max_length=150, blank=True)
+    account_number = models.CharField(max_length=50, blank=True)
+    ifsc = models.CharField(max_length=50, blank=True)
+    bank_branch = models.CharField(max_length=150, blank=True)
+    pan = models.CharField(max_length=50, blank=True)
+    national_id = models.CharField(max_length=50, blank=True)
+    pf_number = models.CharField(max_length=50, blank=True)
+    esi_number = models.CharField(max_length=50, blank=True)
+    uan = models.CharField(max_length=50, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"Statutory Info for {self.employee.employee_code}"
+
 
 class EmployeeLifecycleEvent(models.Model):
     EVENT_TYPES = [
