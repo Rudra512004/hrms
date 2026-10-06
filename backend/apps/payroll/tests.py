@@ -12,7 +12,7 @@ from apps.organization.models import Organization
 from apps.attendance.models import Attendance, Holiday
 from apps.leaves.models import LeaveType, LeaveBalance, LeaveRequest
 
-from .models import CompensationHistory, PayrollPeriod, PayrollRecord, Payslip
+from .models import CompensationHistory, PayrollRun, PayrollRecord, Payslip
 
 from .services import (
     generate_payroll_for_period,
@@ -152,7 +152,7 @@ class PayrollGenerationTest(TestCase):
             effective_from=date(2024, 9, 1),
             basic_salary=Decimal('30000.00'),
         )
-        self.period = PayrollPeriod.objects.create(
+        self.period = PayrollRun.objects.create(
             organization=self.org,
             year=2024, month=9,
             start_date=date(2024, 9, 1),
@@ -180,9 +180,10 @@ class PayrollGenerationTest(TestCase):
 
     def test_approved_period_cannot_be_regenerated(self):
         generate_payroll_for_period(self.period)
-        self.period.status = PayrollPeriod.STATUS_APPROVED
+        self.period.status = PayrollRun.STATUS_APPROVED
         self.period.save()
-        with self.assertRaises(ValueError):
+        from .services import PayrollImmutableError
+        with self.assertRaises(PayrollImmutableError):
             generate_payroll_for_period(self.period)
 
     def test_inactive_employee_excluded(self):
@@ -291,7 +292,7 @@ class PayrollAPIPermissionTest(TestCase):
 
     def test_cross_org_period_not_visible(self):
         org2 = Organization.objects.create(name='Other Org')
-        period = PayrollPeriod.objects.create(
+        period = PayrollRun.objects.create(
             organization=org2, year=2024, month=9,
             start_date=date(2024, 9, 1), end_date=date(2024, 9, 30),
         )
@@ -302,7 +303,7 @@ class PayrollAPIPermissionTest(TestCase):
         self.assertNotIn(period.id, ids)
 
     def test_duplicate_period_rejected(self):
-        PayrollPeriod.objects.create(
+        PayrollRun.objects.create(
             organization=self.org, year=2024, month=9,
             start_date=date(2024, 9, 1), end_date=date(2024, 9, 30),
         )
@@ -315,7 +316,7 @@ class PayrollAPIPermissionTest(TestCase):
         self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
 
     def test_sensitive_fields_hidden_without_permission(self):
-        period = PayrollPeriod.objects.create(
+        period = PayrollRun.objects.create(
             organization=self.org, year=2024, month=8,
             start_date=date(2024, 8, 1), end_date=date(2024, 8, 31),
         )
@@ -377,7 +378,7 @@ class PayslipSecurityAndSelfServiceTest(TestCase):
         )
 
         # Period in Org 1
-        self.period1 = PayrollPeriod.objects.create(
+        self.period1 = PayrollRun.objects.create(
             organization=self.org1,
             year=2024,
             month=7,
@@ -505,7 +506,7 @@ class PayslipSecurityAndSelfServiceTest(TestCase):
         self._approve_period(self.period1, self.user1)
 
         # Create and approve period in Org 2
-        period2 = PayrollPeriod.objects.create(
+        period2 = PayrollRun.objects.create(
             organization=self.org2,
             year=2024,
             month=7,
@@ -785,7 +786,7 @@ class FuturePeriodWarningTest(TestCase):
         self.client.force_authenticate(user=self.user)
 
     def _make_period(self, year, month, start, end):
-        return PayrollPeriod.objects.create(
+        return PayrollRun.objects.create(
             organization=self.org,
             year=year,
             month=month,
@@ -896,7 +897,7 @@ class PayrollCalculationSemanticsRegressionTests(TestCase):
             date=date(2025, 1, 1),
             is_active=True,
         )
-        self.period = PayrollPeriod.objects.create(
+        self.period = PayrollRun.objects.create(
             organization=self.org,
             year=2025,
             month=1,
@@ -1129,11 +1130,12 @@ class PayrollCalculationSemanticsRegressionTests(TestCase):
         Verify the correction does not bypass payroll locking or mutate approved records unexpectedly.
         """
         generate_payroll_for_period(self.period)
-        self.period.status = PayrollPeriod.STATUS_APPROVED
+        self.period.status = PayrollRun.STATUS_APPROVED
         self.period.save(update_fields=['status'])
 
         # Attempting re-generation on approved period must fail
-        with self.assertRaises(ValueError):
+        from .services import PayrollImmutableError
+        with self.assertRaises(PayrollImmutableError):
             generate_payroll_for_period(self.period)
 
         # Approved records remain immutable

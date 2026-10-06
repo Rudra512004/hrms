@@ -12,7 +12,7 @@ from apps.organization.models import Organization, Department, Designation, Bran
 from apps.employees.models import Employee, EmploymentStatus, EmployeeLifecycleEvent
 from apps.attendance.models import Attendance
 from apps.leaves.models import LeaveType, LeaveRequest
-from apps.payroll.models import CompensationHistory, PayrollPeriod, PayrollRecord, Payslip
+from apps.payroll.models import CompensationHistory, PayrollRun, PayrollRecord, Payslip
 from apps.payroll.services import generate_payroll_for_period, issue_payslips_for_period
 from apps.audit.models import AuditLog
 
@@ -211,10 +211,10 @@ class EmployeeLifecycleComprehensiveTests(TestCase):
 
     # 9. Transfer preserves payroll
     def test_transfer_preserves_payroll(self, mock_net):
-        period = PayrollPeriod.objects.create(
+        period = PayrollRun.objects.create(
             organization=self.org, year=2026, month=5,
             start_date=date(2026, 5, 1), end_date=date(2026, 5, 31),
-            status=PayrollPeriod.STATUS_APPROVED
+            status=PayrollRun.STATUS_APPROVED
         )
         prec = PayrollRecord.objects.create(
             period=period, employee=self.employee, working_days=20,
@@ -283,10 +283,10 @@ class EmployeeLifecycleComprehensiveTests(TestCase):
         self.employee.exit_date = date(2026, 7, 31)
         self.employee.save()
 
-        period = PayrollPeriod.objects.create(
+        period = PayrollRun.objects.create(
             organization=self.org, year=2026, month=8,
             start_date=date(2026, 8, 1), end_date=date(2026, 8, 31),
-            status=PayrollPeriod.STATUS_DRAFT
+            status=PayrollRun.STATUS_DRAFT
         )
 
         records = generate_payroll_for_period(period)
@@ -296,10 +296,10 @@ class EmployeeLifecycleComprehensiveTests(TestCase):
 
     # 13. Existing historical payroll remains accessible for exited employee
     def test_existing_historical_payroll_remains_accessible(self, mock_net):
-        period = PayrollPeriod.objects.create(
+        period = PayrollRun.objects.create(
             organization=self.org, year=2026, month=6,
             start_date=date(2026, 6, 1), end_date=date(2026, 6, 30),
-            status=PayrollPeriod.STATUS_APPROVED
+            status=PayrollRun.STATUS_APPROVED
         )
         PayrollRecord.objects.create(
             period=period, employee=self.employee, working_days=22,
@@ -323,10 +323,10 @@ class EmployeeLifecycleComprehensiveTests(TestCase):
 
     # 14. Existing payslips remain accessible for exited employee
     def test_existing_payslips_remain_accessible(self, mock_net):
-        period = PayrollPeriod.objects.create(
+        period = PayrollRun.objects.create(
             organization=self.org, year=2026, month=6,
             start_date=date(2026, 6, 1), end_date=date(2026, 6, 30),
-            status=PayrollPeriod.STATUS_APPROVED
+            status=PayrollRun.STATUS_APPROVED
         )
         prec = PayrollRecord.objects.create(
             period=period, employee=self.employee, working_days=22,
