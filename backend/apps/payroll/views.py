@@ -8,15 +8,15 @@ from django.utils import timezone
 from apps.authorization.services import AuthorizationService
 from apps.audit.services import AuditService
 
-from .models import CompensationHistory, PayrollPeriod, PayrollRecord, Payslip
+from .models import CompensationHistory, PayrollRun, PayrollRecord, Payslip
 from .serializers import (
     CompensationHistorySerializer,
-    PayrollPeriodSerializer,
+    PayrollRunSerializer,
     PayrollRecordSerializer,
     PayslipSummarySerializer,
     PayslipDetailSerializer,
 )
-from .services import generate_payroll_for_period, issue_payslips_for_period
+from .services import generate_payroll_for_period, issue_payslips_for_period, finalize_payroll_run, PayrollImmutableError
 
 
 def _require(user, codename):
@@ -136,16 +136,16 @@ class CompensationHistoryViewSet(viewsets.ReadOnlyModelViewSet):
         return Response(CompensationHistorySerializer(record).data, status=status.HTTP_201_CREATED)
 
 
-class PayrollPeriodViewSet(viewsets.ModelViewSet):
-    serializer_class = PayrollPeriodSerializer
+class PayrollRunViewSet(viewsets.ModelViewSet):
+    serializer_class = PayrollRunSerializer
     permission_classes = [IsAuthenticated]
     http_method_names = ['get', 'post', 'head', 'options']  # No PATCH/DELETE
 
     def get_queryset(self):
         org = _employee_org(self.request)
         if org is None:
-            return PayrollPeriod.objects.none()
-        return PayrollPeriod.objects.filter(organization=org).select_related(
+            return PayrollRun.objects.none()
+        return PayrollRun.objects.filter(organization=org).select_related(
             'organization', 'approved_by'
         )
 
@@ -174,7 +174,7 @@ class PayrollPeriodViewSet(viewsets.ModelViewSet):
         serializer.is_valid(raise_exception=True)
 
         # Pre-flight uniqueness check to avoid an unhandled IntegrityError
-        if PayrollPeriod.objects.filter(
+        if PayrollRun.objects.filter(
             organization=org,
             year=serializer.validated_data['year'],
             month=serializer.validated_data['month'],
@@ -204,15 +204,17 @@ class PayrollPeriodViewSet(viewsets.ModelViewSet):
 
         period = self.get_object()
 
-        if period.status == PayrollPeriod.STATUS_APPROVED:
+        if period.status in (PayrollRun.STATUS_APPROVED, PayrollRun.STATUS_FINALIZED):
             return Response(
-                {'detail': 'Cannot re-generate an approved payroll period.'},
+                {'detail': 'Cannot re-generate an approved or finalized payroll run.'},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
         try:
             with transaction.atomic():
                 records = generate_payroll_for_period(period, requesting_user=request.user)
+        except PayrollImmutableError as exc:
+            return Response({'detail': str(exc)}, status=status.HTTP_409_CONFLICT)
         except ValueError as exc:
             return Response({'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
 
@@ -246,7 +248,9 @@ class PayrollPeriodViewSet(viewsets.ModelViewSet):
 
         period = self.get_object()
 
-        if period.status == PayrollPeriod.STATUS_APPROVED:
+        if period.status == PayrollRun.STATUS_FINALIZED:
+            return Response({'detail': 'Period is already finalized.'}, status=status.HTTP_400_BAD_REQUEST)
+        if period.status == PayrollRun.STATUS_APPROVED:
             return Response({'detail': 'Period is already approved.'}, status=status.HTTP_400_BAD_REQUEST)
 
         if period.end_date >= timezone.now().date():
@@ -259,11 +263,11 @@ class PayrollPeriodViewSet(viewsets.ModelViewSet):
             return Response({'detail': 'Generate payroll before approving.'}, status=status.HTTP_400_BAD_REQUEST)
 
         with transaction.atomic():
-            period = PayrollPeriod.objects.select_for_update().get(id=period.id)
-            if period.status == PayrollPeriod.STATUS_APPROVED:
+            period = PayrollRun.objects.select_for_update().get(id=period.id)
+            if period.status == PayrollRun.STATUS_APPROVED:
                 return Response({'detail': 'Period is already approved.'}, status=status.HTTP_400_BAD_REQUEST)
 
-            period.status = PayrollPeriod.STATUS_APPROVED
+            period.status = PayrollRun.STATUS_APPROVED
             period.approved_by = request.user
             period.approved_at = timezone.now()
             period.save(update_fields=['status', 'approved_by', 'approved_at', 'updated_at'])
@@ -353,7 +357,7 @@ class PayslipViewSet(viewsets.ReadOnlyModelViewSet):
         base_qs = Payslip.objects.filter(
             payroll_record__period__organization=org,
             payroll_record__status=PayrollRecord.STATUS_APPROVED,
-            payroll_record__period__status=PayrollPeriod.STATUS_APPROVED,
+            payroll_record__period__status=PayrollRun.STATUS_APPROVED,
         ).select_related(
             'payroll_record',
             'payroll_record__period',

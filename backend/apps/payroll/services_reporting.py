@@ -10,10 +10,10 @@ from django.db.models import Sum, Avg, Count, Q
 from apps.employees.models import Employee, EmploymentStatus
 from apps.leaves.models import LeaveRequest
 from apps.attendance.models import Attendance
-from .models import PayrollPeriod, PayrollRecord, CompensationHistory
+from .models import PayrollRun, PayrollRecord, CompensationHistory
 
 
-def get_period_summary(period: PayrollPeriod, has_sensitive_perm: bool = False) -> dict:
+def get_period_summary(period: PayrollRun, has_sensitive_perm: bool = False) -> dict:
     """
     High-level financial and attendance rollup for a payroll period.
     Uses database-level aggregation to compute totals.
@@ -68,7 +68,7 @@ def get_period_summary(period: PayrollPeriod, has_sensitive_perm: bool = False) 
 
 
 def get_reconciliation_records(
-    period: PayrollPeriod,
+    period: PayrollRun,
     branch_id: int = None,
     department_id: int = None,
     search: str = None,
@@ -126,7 +126,7 @@ def get_reconciliation_records(
     return results
 
 
-def get_organization_breakdown(period: PayrollPeriod, has_sensitive_perm: bool = False) -> dict:
+def get_organization_breakdown(period: PayrollRun, has_sensitive_perm: bool = False) -> dict:
     """
     Branch and department rollups aggregated at the database level.
     """
@@ -186,7 +186,7 @@ def get_organization_breakdown(period: PayrollPeriod, has_sensitive_perm: bool =
     }
 
 
-def get_payroll_exceptions(period: PayrollPeriod) -> list:
+def get_payroll_exceptions(period: PayrollRun) -> list:
     """
     Automated pre/post-approval exception and discrepancy detection:
     1. MISSING_RECORD: Active employee expected in this period has no PayrollRecord.

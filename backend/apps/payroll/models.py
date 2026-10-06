@@ -19,6 +19,7 @@ class CompensationHistory(models.Model):
     )
     effective_from = models.DateField()
     effective_to = models.DateField(null=True, blank=True)
+    salary_structure = models.ForeignKey('SalaryStructure', on_delete=models.SET_NULL, null=True, blank=True, related_name='compensation_history')
     basic_salary = models.DecimalField(
         max_digits=12,
         decimal_places=2,
@@ -43,16 +44,18 @@ class CompensationHistory(models.Model):
         )
 
 
-class PayrollPeriod(models.Model):
+class PayrollRun(models.Model):
     """
     One payroll run per organization per calendar month.
     Transitions: draft → approved (locked; no re-generation).
     """
     STATUS_DRAFT = 'draft'
     STATUS_APPROVED = 'approved'
+    STATUS_FINALIZED = 'finalized'
     STATUS_CHOICES = [
         (STATUS_DRAFT, 'Draft'),
         (STATUS_APPROVED, 'Approved'),
+        (STATUS_FINALIZED, 'Finalized'),
     ]
 
     organization = models.ForeignKey(
@@ -60,6 +63,7 @@ class PayrollPeriod(models.Model):
         on_delete=models.CASCADE,
         related_name='payroll_periods',
     )
+    run_type = models.CharField(max_length=50, default='REGULAR')
     year = models.PositiveSmallIntegerField()
     month = models.PositiveSmallIntegerField()   # 1–12
     start_date = models.DateField()
@@ -80,9 +84,10 @@ class PayrollPeriod(models.Model):
     approved_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+    calculation_version = models.CharField(max_length=20, default='v1')
 
     class Meta:
-        unique_together = ('organization', 'year', 'month')
+        unique_together = ('organization', 'year', 'month', 'run_type')
         ordering = ['-year', '-month']
 
     def __str__(self):
@@ -97,13 +102,15 @@ class PayrollRecord(models.Model):
     """
     STATUS_DRAFT = 'draft'
     STATUS_APPROVED = 'approved'
+    STATUS_FINALIZED = 'finalized'
     STATUS_CHOICES = [
         (STATUS_DRAFT, 'Draft'),
         (STATUS_APPROVED, 'Approved'),
+        (STATUS_FINALIZED, 'Finalized'),
     ]
 
     period = models.ForeignKey(
-        PayrollPeriod,
+        PayrollRun,
         on_delete=models.CASCADE,
         related_name='records',
     )
@@ -135,6 +142,11 @@ class PayrollRecord(models.Model):
         decimal_places=1,
         help_text="present + (half_days * 0.5) + leave_days — paid days"
     )
+    lop_dates = models.JSONField(
+        default=list, 
+        blank=True, 
+        help_text="List of YYYY-MM-DD strings where employee was marked absent/LOP"
+    )
 
     # --- Salary snapshot (from CompensationHistory at generation time) ---
     basic_salary = models.DecimalField(
@@ -144,6 +156,11 @@ class PayrollRecord(models.Model):
     )
 
     # --- Computed amounts ---
+    total_earnings = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal('0.00'))
+    total_deductions = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal('0.00'))
+    employer_contributions = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal('0.00'))
+    total_tax = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal('0.00'))
+
     gross_salary = models.DecimalField(
         max_digits=12,
         decimal_places=2,
@@ -233,9 +250,14 @@ class Payslip(models.Model):
         return f"{self.payslip_number} — {self.payroll_record.employee.employee_code}"
 
 class SalaryComponent(models.Model):
-    KIND=[('earning','Earning'),('deduction','Deduction')]
+    KIND=[
+        ('earning', 'Earning'),
+        ('deduction', 'Deduction'),
+        ('employer_contribution', 'Employer Contribution'),
+        ('tax', 'Tax')
+    ]
     organization=models.ForeignKey(Organization,on_delete=models.CASCADE,related_name='salary_components')
-    name=models.CharField(max_length=120); code=models.CharField(max_length=32); kind=models.CharField(max_length=12,choices=KIND)
+    name=models.CharField(max_length=120); code=models.CharField(max_length=32); kind=models.CharField(max_length=30,choices=KIND)
     is_taxable=models.BooleanField(default=False); is_active=models.BooleanField(default=True)
     class Meta: unique_together=('organization','code')
 
@@ -247,5 +269,51 @@ class SalaryStructure(models.Model):
 class SalaryStructureComponent(models.Model):
     structure=models.ForeignKey(SalaryStructure,on_delete=models.CASCADE,related_name='components')
     component=models.ForeignKey(SalaryComponent,on_delete=models.PROTECT)
+    CALC_CHOICES = [('FIXED_AMOUNT', 'Fixed Amount'), ('PERCENTAGE_OF_BASIC', 'Percentage of Basic')]
+    calculation_type = models.CharField(max_length=50, choices=CALC_CHOICES, default='FIXED_AMOUNT')
     amount=models.DecimalField(max_digits=12,decimal_places=2,default=0)
     class Meta: unique_together=('structure','component')
+
+
+class PayrollAdjustment(models.Model):
+    STATUS_PENDING = 'pending'
+    STATUS_APPROVED = 'approved'
+    STATUS_PROCESSED = 'processed'
+    STATUS_CHOICES = [
+        (STATUS_PENDING, 'Pending'),
+        (STATUS_APPROVED, 'Approved'),
+        (STATUS_PROCESSED, 'Processed')
+    ]
+
+    employee = models.ForeignKey(Employee, on_delete=models.CASCADE, related_name='payroll_adjustments')
+    component = models.ForeignKey(SalaryComponent, on_delete=models.PROTECT)
+    amount = models.DecimalField(max_digits=12, decimal_places=2)
+    period_year = models.PositiveSmallIntegerField()
+    period_month = models.PositiveSmallIntegerField()
+    reason = models.TextField(blank=True)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=STATUS_PENDING)
+    created_by = models.ForeignKey('accounts.User', on_delete=models.SET_NULL, null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+class PayrollLineItem(models.Model):
+    CATEGORY_CHOICES = [
+        ('EARNING', 'Earning'),
+        ('DEDUCTION', 'Deduction'),
+        ('EMPLOYER_CONTRIBUTION', 'Employer Contribution'),
+        ('TAX', 'Tax'),
+    ]
+    payroll_record = models.ForeignKey(PayrollRecord, on_delete=models.CASCADE, related_name='line_items')
+    component = models.ForeignKey(SalaryComponent, null=True, blank=True, on_delete=models.PROTECT)
+    category = models.CharField(max_length=50, choices=CATEGORY_CHOICES)
+    amount = models.DecimalField(max_digits=12, decimal_places=2)
+    is_backfilled = models.BooleanField(default=False)
+    
+    # --- Lineage & Evidence ---
+    calculation_type = models.CharField(max_length=50, null=True, blank=True)
+    calculation_base = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
+    rate = models.DecimalField(max_digits=12, decimal_places=4, null=True, blank=True)
+    calculation_metadata = models.JSONField(default=dict, blank=True)
+    
+    source_adjustment = models.ForeignKey(PayrollAdjustment, null=True, blank=True, on_delete=models.PROTECT)
+    source_structure_component = models.ForeignKey(SalaryStructureComponent, null=True, blank=True, on_delete=models.PROTECT)

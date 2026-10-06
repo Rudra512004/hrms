@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import CompensationHistory, PayrollPeriod, PayrollRecord
+from .models import CompensationHistory, PayrollRun, PayrollRecord
 
 
 @admin.register(CompensationHistory)
@@ -11,8 +11,8 @@ class CompensationHistoryAdmin(admin.ModelAdmin):
     ordering = ('-effective_from',)
 
 
-@admin.register(PayrollPeriod)
-class PayrollPeriodAdmin(admin.ModelAdmin):
+@admin.register(PayrollRun)
+class PayrollRunAdmin(admin.ModelAdmin):
     list_display = ('organization', 'year', 'month', 'status', 'generated_at', 'approved_by', 'approved_at')
     list_filter = ('organization', 'status', 'year')
     search_fields = ('organization__name',)

@@ -7,7 +7,7 @@ from decimal import Decimal
 from apps.organization.models import Organization, Department, Designation, OfficeNetwork
 from apps.employees.models import Employee, EmploymentStatus
 from apps.authorization.models import Role, Permission, RolePermission, UserRole
-from apps.payroll.models import PayrollPeriod, PayrollRecord, Payslip
+from apps.payroll.models import PayrollRun, PayrollRecord, Payslip
 from apps.payroll.services import issue_payslips_for_period
 
 User = get_user_model()
@@ -63,13 +63,13 @@ class PayrollSecurityAndCorrectnessTests(TestCase):
         """Verify that a payroll period ending in the future cannot be approved."""
         future_start = date.today() + timedelta(days=1)
         future_end = date.today() + timedelta(days=20)
-        period = PayrollPeriod.objects.create(
+        period = PayrollRun.objects.create(
             organization=self.org,
             year=future_start.year,
             month=future_start.month,
             start_date=future_start,
             end_date=future_end,
-            status=PayrollPeriod.STATUS_DRAFT
+            status=PayrollRun.STATUS_DRAFT
         )
         PayrollRecord.objects.create(
             period=period,
@@ -95,13 +95,13 @@ class PayrollSecurityAndCorrectnessTests(TestCase):
         """Verify that an ongoing period ending today cannot be approved."""
         ongoing_start = date.today() - timedelta(days=14)
         ongoing_end = date.today()
-        period = PayrollPeriod.objects.create(
+        period = PayrollRun.objects.create(
             organization=self.org,
             year=ongoing_start.year,
             month=ongoing_start.month,
             start_date=ongoing_start,
             end_date=ongoing_end,
-            status=PayrollPeriod.STATUS_DRAFT
+            status=PayrollRun.STATUS_DRAFT
         )
         PayrollRecord.objects.create(
             period=period,
@@ -127,13 +127,13 @@ class PayrollSecurityAndCorrectnessTests(TestCase):
         """Verify that a completed period can be approved, and repeating approval is rejected."""
         completed_start = date.today() - timedelta(days=40)
         completed_end = date.today() - timedelta(days=10)
-        period = PayrollPeriod.objects.create(
+        period = PayrollRun.objects.create(
             organization=self.org,
             year=completed_start.year,
             month=completed_start.month,
             start_date=completed_start,
             end_date=completed_end,
-            status=PayrollPeriod.STATUS_DRAFT
+            status=PayrollRun.STATUS_DRAFT
         )
         PayrollRecord.objects.create(
             period=period,
@@ -156,7 +156,7 @@ class PayrollSecurityAndCorrectnessTests(TestCase):
         self.assertEqual(resp.status_code, status.HTTP_200_OK)
         self.assertEqual(resp.data['status'], 'approved')
         period.refresh_from_db()
-        self.assertEqual(period.status, PayrollPeriod.STATUS_APPROVED)
+        self.assertEqual(period.status, PayrollRun.STATUS_APPROVED)
 
         # 2. Repeated approval is rejected
         repeat_resp = self.client.post(f'/api/v1/payroll/periods/{period.id}/approve/')
@@ -167,13 +167,13 @@ class PayrollSecurityAndCorrectnessTests(TestCase):
         """Verify that retrieving PayslipDetail for an employee with a designation returns designation.name cleanly."""
         past_start = date(2024, 1, 1)
         past_end = date(2024, 1, 31)
-        period = PayrollPeriod.objects.create(
+        period = PayrollRun.objects.create(
             organization=self.org,
             year=2024,
             month=1,
             start_date=past_start,
             end_date=past_end,
-            status=PayrollPeriod.STATUS_APPROVED
+            status=PayrollRun.STATUS_APPROVED
         )
         record = PayrollRecord.objects.create(
             period=period,

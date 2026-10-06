@@ -14,7 +14,7 @@ from rest_framework.response import Response
 
 from apps.authorization.services import AuthorizationService
 from apps.organization.models import Branch, Department
-from .models import PayrollPeriod
+from .models import PayrollRun
 from .services_reporting import (
     get_period_summary,
     get_reconciliation_records,
@@ -50,7 +50,7 @@ class PayrollReportingViewSet(viewsets.ViewSet):
 
     def _resolve_period_and_org(self, request):
         """
-        Validates the organization and resolves the requested PayrollPeriod.
+        Validates the organization and resolves the requested PayrollRun.
         Returns (period, org, error_response).
         """
         org = _employee_org(request)
@@ -62,11 +62,11 @@ class PayrollReportingViewSet(viewsets.ViewSet):
 
         period_id = request.query_params.get('period')
         if period_id:
-            period = PayrollPeriod.objects.filter(id=period_id, organization=org).first()
+            period = PayrollRun.objects.filter(id=period_id, organization=org).first()
             if period is None:
                 return None, None, Response({'detail': 'Payroll period not found.'}, status=status.HTTP_404_NOT_FOUND)
         else:
-            period = PayrollPeriod.objects.filter(organization=org).order_by('-year', '-month').first()
+            period = PayrollRun.objects.filter(organization=org).order_by('-year', '-month').first()
             if period is None:
                 return None, None, Response({'detail': 'No payroll periods found.'}, status=status.HTTP_404_NOT_FOUND)
 

@@ -1,7 +1,7 @@
 from rest_framework import serializers
 from .models import (
     CompensationHistory,
-    PayrollPeriod,
+    PayrollRun,
     PayrollRecord,
     Payslip,
     SalaryComponent,
@@ -34,13 +34,13 @@ class CompensationHistorySerializer(serializers.ModelSerializer):
         return data
 
 
-class PayrollPeriodSerializer(serializers.ModelSerializer):
+class PayrollRunSerializer(serializers.ModelSerializer):
     organization_name = serializers.CharField(source='organization.name', read_only=True)
     approved_by_email = serializers.CharField(source='approved_by.email', read_only=True)
     record_count = serializers.SerializerMethodField()
 
     class Meta:
-        model = PayrollPeriod
+        model = PayrollRun
         fields = [
             'id', 'organization', 'organization_name',
             'year', 'month', 'start_date', 'end_date',

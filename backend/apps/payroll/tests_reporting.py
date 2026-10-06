@@ -11,7 +11,7 @@ from apps.employees.models import Employee, EmploymentStatus
 from apps.organization.models import Organization, Branch, Department
 from apps.attendance.models import Attendance
 from apps.leaves.models import LeaveType, LeaveRequest
-from apps.payroll.models import PayrollPeriod, PayrollRecord, CompensationHistory
+from apps.payroll.models import PayrollRun, PayrollRecord, CompensationHistory
 from apps.payroll.services import generate_payroll_for_period
 
 User = get_user_model()
@@ -59,14 +59,14 @@ class PayrollReportingTests(TestCase):
         CompensationHistory.objects.create(employee=self.emp_org2, effective_from=date(2025, 1, 1), basic_salary=Decimal('45000.00'))
 
         # Period in Org 1
-        self.period1 = PayrollPeriod.objects.create(
+        self.period1 = PayrollRun.objects.create(
             organization=self.org1, year=2025, month=1,
             start_date=date(2025, 1, 1), end_date=date(2025, 1, 31),
         )
         generate_payroll_for_period(self.period1)
 
         # Period in Org 2
-        self.period_org2 = PayrollPeriod.objects.create(
+        self.period_org2 = PayrollRun.objects.create(
             organization=self.org2, year=2025, month=1,
             start_date=date(2025, 1, 1), end_date=date(2025, 1, 31),
         )
@@ -254,7 +254,7 @@ class PayrollReportingTests(TestCase):
         # Query breakdown (constant regardless of record count — no N+1):
         #   1. user.employee profile lookup (ForeignKey auth resolution)
         #   2. employee.organization lookup (FK resolution for org context)
-        #   3. PayrollPeriod lookup (1 query)
+        #   3. PayrollRun lookup (1 query)
         #   4. PayrollRecord with select_related (1 query, not N per record)
         with self._auth_user1():
             with self.assertNumQueries(4):

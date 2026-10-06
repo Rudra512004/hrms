@@ -1,5 +1,5 @@
 from django.test import TransactionTestCase
-from apps.payroll.models import PayrollPeriod, PayrollRecord, Payslip
+from apps.payroll.models import PayrollRun, PayrollRecord, Payslip
 from apps.organization.models import Organization
 from apps.employees.models import Employee
 from django.contrib.auth import get_user_model
@@ -15,7 +15,7 @@ class PayrollNotificationIntegrationTests(TransactionTestCase):
         self.org = Organization.objects.create(name='Payroll Org')
         self.user = User.objects.create_user(email='emp_pay@example.com', password='Password123!', status='active')
         self.employee = Employee.objects.create(user=self.user, employee_code='PAY01', organization=self.org)
-        self.period = PayrollPeriod.objects.create(organization=self.org, year=2026, month=9, start_date=date(2026,9,1), end_date=date(2026,9,30), status=PayrollPeriod.STATUS_APPROVED)
+        self.period = PayrollRun.objects.create(organization=self.org, year=2026, month=9, start_date=date(2026,9,1), end_date=date(2026,9,30), status=PayrollRun.STATUS_APPROVED)
         self.record = PayrollRecord.objects.create(
             period=self.period, employee=self.employee, status=PayrollRecord.STATUS_APPROVED,
             basic_salary=1000, gross_salary=1000, net_salary=1000, working_days=20, leave_days=0, present_days=20, absent_days=0, effective_days=20

@@ -142,9 +142,9 @@ def _attendance_summary(employee, start: date, end: date) -> dict:
     return {'present': present, 'half': half}
 
 
-def _approved_leave_days(employee, start: date, end: date, exclude_dates: set = None) -> int:
+def _approved_leave_dates(employee, start: date, end: date, exclude_dates: set = None) -> set:
     """
-    Count distinct working days of approved LeaveRequests overlapping the pay period.
+    Return a set of distinct working dates of approved LeaveRequests overlapping the pay period.
     Excludes weekends, holidays, and dates already counted in attendance.
     """
     if exclude_dates is None:
@@ -157,7 +157,7 @@ def _approved_leave_days(employee, start: date, end: date, exclude_dates: set = 
         end_date__gte=start,
     )
     if not requests.exists():
-        return 0
+        return set()
 
     from apps.organization.services import WorkingCalendarService
     branch = getattr(employee, 'branch', None)
@@ -177,7 +177,11 @@ def _approved_leave_days(employee, start: date, end: date, exclude_dates: set = 
                 if WorkingCalendarService.is_working_day(branch, current):
                     leave_dates.add(current)
             current += timedelta(days=1)
-    return len(leave_dates)
+    return leave_dates
+
+def _approved_leave_days(employee, start: date, end: date, exclude_dates: set = None) -> int:
+    """Wrapper that returns the count of approved leave dates."""
+    return len(_approved_leave_dates(employee, start, end, exclude_dates))
 
 
 # ---------------------------------------------------------------------------
@@ -275,11 +279,12 @@ def _build_structure_line_items(
             category=category,
             amount=amount,
             is_backfilled=False,
+            calculation_type=ssc.calculation_type,
+            calculation_base=basic_salary if ssc.calculation_type == 'PERCENTAGE_OF_BASIC' else ssc.amount,
+            rate=ssc.amount if ssc.calculation_type == 'PERCENTAGE_OF_BASIC' else None,
             calculation_metadata={
-                'calculation_type': ssc.calculation_type,
                 'raw_amount': str(raw_amount),
                 'lop_ratio': str(lop_ratio) if sc.kind == 'earning' else '1.0',
-                'basic_salary': str(basic_salary),
             },
             source_structure_component=ssc,
         ))
@@ -301,6 +306,9 @@ def _build_legacy_line_item(
         category='EARNING',
         amount=gross_salary,
         is_backfilled=True,
+        calculation_type='LEGACY_RECONSTRUCTED',
+        calculation_base=gross_salary,
+        rate=None,
         calculation_metadata={
             'source': 'legacy_basic_salary',
             'note': 'Calculated from CompensationHistory.basic_salary (no SalaryStructure assigned)',
@@ -326,6 +334,9 @@ def _build_adjustment_line_items(
             category=category,
             amount=adj.amount,
             is_backfilled=False,
+            calculation_type='ADJUSTMENT',
+            calculation_base=adj.amount,
+            rate=None,
             calculation_metadata={
                 'source': 'payroll_adjustment',
                 'adjustment_id': adj.id,
@@ -439,9 +450,17 @@ def generate_payroll_for_period(run: PayrollRun, requesting_user=None) -> list:
                 status='present',
             ).values_list('date', flat=True)
         )
-        leave_days = _approved_leave_days(
+        half_dates = set(
+            Attendance.objects.filter(
+                employee=emp,
+                date__range=[run.start_date, run.end_date],
+                status='half_day',
+            ).values_list('date', flat=True)
+        )
+        leave_dates = _approved_leave_dates(
             emp, run.start_date, run.end_date, exclude_dates=present_dates
         )
+        leave_days = len(leave_dates)
 
         present = att['present']
         half = att['half']
@@ -456,6 +475,20 @@ def generate_payroll_for_period(run: PayrollRun, requesting_user=None) -> list:
             else Decimal('0.00')
         )
         absent_days = max(0, working_days - int(effective_days))
+
+        # Calculate exact LOP dates
+        from apps.organization.services import WorkingCalendarService
+        all_working_dates = set()
+        if emp.branch:
+            current_date = run.start_date
+            while current_date <= run.end_date:
+                if WorkingCalendarService.is_working_day(emp.branch, current_date):
+                    all_working_dates.add(current_date)
+                current_date += timedelta(days=1)
+        
+        # LOP dates are working dates that are NOT fully present, half present, or on approved leave
+        lop_dates_set = all_working_dates - present_dates - half_dates - leave_dates
+        lop_dates = sorted([d.isoformat() for d in lop_dates_set])
 
         # ---------------------------------------------------------------
         # 4. Compensation / salary
@@ -509,6 +542,7 @@ def generate_payroll_for_period(run: PayrollRun, requesting_user=None) -> list:
             'legacy_gross': legacy_gross,
             'salary_structure': salary_structure,
             'approved_adjustments': approved_adjustments,
+            'lop_dates': lop_dates,
         })
 
     # -------------------------------------------------------------------
@@ -533,6 +567,7 @@ def generate_payroll_for_period(run: PayrollRun, requesting_user=None) -> list:
             gross_salary=Decimal('0.00'),
             net_salary=Decimal('0.00'),
             status=PayrollRecord.STATUS_DRAFT,
+            lop_dates=ctx['lop_dates'],
         )
         records.append(record)
 

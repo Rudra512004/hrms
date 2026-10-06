@@ -20,12 +20,12 @@ from apps.organization.models import Organization, Department, Branch
 from apps.attendance.models import Shift, Holiday, Attendance
 from apps.employees.models import Employee, EmploymentStatus
 from apps.leaves.models import LeaveType, LeaveBalance, LeaveRequest
-from apps.payroll.models import CompensationHistory, PayrollPeriod, PayrollRecord, Payslip
+from apps.payroll.models import CompensationHistory, PayrollRun, PayrollRecord, Payslip
 from apps.payroll.services import (
     generate_payroll_for_period,
     issue_payslips_for_period,
     _working_days_in_period,
-    _approved_leave_days,
+    _approved_leave_dates,
 )
 
 User = get_user_model()
@@ -217,7 +217,7 @@ class EndToEndHRMSWorkflowTests(TestCase):
             self.assertEqual(resp.status_code, status.HTTP_201_CREATED)
             period_id = resp.data['id']
 
-        period = PayrollPeriod.objects.get(id=period_id)
+        period = PayrollRun.objects.get(id=period_id)
 
         # Step E: HR Generates Draft Payroll
         with self._auth_as(self.hr_user, permissions=['payroll.view', 'payroll.generate']):
@@ -249,7 +249,7 @@ class EndToEndHRMSWorkflowTests(TestCase):
 
         period.refresh_from_db()
         record.refresh_from_db()
-        self.assertEqual(period.status, PayrollPeriod.STATUS_APPROVED)
+        self.assertEqual(period.status, PayrollRun.STATUS_APPROVED)
         self.assertEqual(record.status, PayrollRecord.STATUS_APPROVED)
 
         # Step G: Exactly one Payslip auto-issued
@@ -282,7 +282,7 @@ class EndToEndHRMSWorkflowTests(TestCase):
 
     def test_edge_case_employee_with_no_compensation(self):
         """Active employee without compensation gets 0 basic salary and is flagged in exceptions."""
-        period = PayrollPeriod.objects.create(
+        period = PayrollRun.objects.create(
             organization=self.org, year=2025, month=2,
             start_date=date(2025, 2, 1), end_date=date(2025, 2, 28)
         )
@@ -303,7 +303,7 @@ class EndToEndHRMSWorkflowTests(TestCase):
         CompensationHistory.objects.create(
             employee=self.emp1, effective_from=date(2025, 3, 1), basic_salary=Decimal('50000.00')
         )
-        period = PayrollPeriod.objects.create(
+        period = PayrollRun.objects.create(
             organization=self.org, year=2025, month=3,
             start_date=date(2025, 3, 1), end_date=date(2025, 3, 31)
         )
@@ -327,7 +327,7 @@ class EndToEndHRMSWorkflowTests(TestCase):
             end_date=date(2025, 4, 11),
             status='pending',
         )
-        period = PayrollPeriod.objects.create(
+        period = PayrollRun.objects.create(
             organization=self.org, year=2025, month=4,
             start_date=date(2025, 4, 1), end_date=date(2025, 4, 30)
         )
@@ -350,7 +350,7 @@ class EndToEndHRMSWorkflowTests(TestCase):
             check_out=None,
             status='present',
         )
-        period = PayrollPeriod.objects.create(
+        period = PayrollRun.objects.create(
             organization=self.org, year=2025, month=5,
             start_date=date(2025, 5, 1), end_date=date(2025, 5, 31)
         )
@@ -364,7 +364,7 @@ class EndToEndHRMSWorkflowTests(TestCase):
 
     def test_edge_case_cross_org_period_access_rejected_with_404(self):
         """Cross-org period IDs are completely invisible (404), preventing IDOR."""
-        period_org2 = PayrollPeriod.objects.create(
+        period_org2 = PayrollRun.objects.create(
             organization=self.org_other, year=2025, month=1,
             start_date=date(2025, 1, 1), end_date=date(2025, 1, 31)
         )
@@ -374,7 +374,7 @@ class EndToEndHRMSWorkflowTests(TestCase):
 
     def test_edge_case_user_with_payroll_view_only_denied_reports_with_403(self):
         """Users with only operational payroll.view cannot access executive reporting endpoints."""
-        period = PayrollPeriod.objects.create(
+        period = PayrollRun.objects.create(
             organization=self.org, year=2025, month=6,
             start_date=date(2025, 6, 1), end_date=date(2025, 6, 30)
         )
@@ -387,7 +387,7 @@ class EndToEndHRMSWorkflowTests(TestCase):
         CompensationHistory.objects.create(
             employee=self.emp1, effective_from=date(2025, 7, 1), basic_salary=Decimal('75000.00')
         )
-        period = PayrollPeriod.objects.create(
+        period = PayrollRun.objects.create(
             organization=self.org, year=2025, month=7,
             start_date=date(2025, 7, 1), end_date=date(2025, 7, 31)
         )

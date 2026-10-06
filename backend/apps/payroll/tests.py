@@ -17,7 +17,7 @@ from .models import CompensationHistory, PayrollRun, PayrollRecord, Payslip
 from .services import (
     generate_payroll_for_period,
     _working_days_in_period,
-    _approved_leave_days,
+    _approved_leave_dates,
 )
 
 User = get_user_model()
@@ -105,7 +105,7 @@ class WorkingDaysTest(TestCase):
         expected_count = WorkingCalendarService.count_working_days(self.branch, date(2024, 9, 2), date(2024, 9, 8))
         self.assertEqual(expected_count, 6)
         self.assertEqual(lr.duration_days, 6)
-        leave_days_payroll = _approved_leave_days(emp, date(2024, 9, 1), date(2024, 9, 30))
+        leave_days_payroll = len(_approved_leave_dates(emp, date(2024, 9, 1), date(2024, 9, 30)))
         self.assertEqual(leave_days_payroll, 6)
 
 
@@ -236,7 +236,7 @@ class ApprovedLeaveInPayrollTest(TestCase):
             end_date=date(2024, 9, 6),
             status='approved',
         )
-        leave_days = _approved_leave_days(self.emp, date(2024, 9, 1), date(2024, 9, 30))
+        leave_days = len(_approved_leave_dates(self.emp, date(2024, 9, 1), date(2024, 9, 30)))
         self.assertEqual(leave_days, 5)
 
     def test_rejected_leave_not_counted(self):
@@ -247,7 +247,7 @@ class ApprovedLeaveInPayrollTest(TestCase):
             end_date=date(2024, 9, 6),
             status='rejected',
         )
-        leave_days = _approved_leave_days(self.emp, date(2024, 9, 1), date(2024, 9, 30))
+        leave_days = len(_approved_leave_dates(self.emp, date(2024, 9, 1), date(2024, 9, 30)))
         self.assertEqual(leave_days, 0)
 
     def test_overlapping_approved_leaves_not_double_counted(self):
@@ -262,7 +262,7 @@ class ApprovedLeaveInPayrollTest(TestCase):
             start_date=date(2024, 9, 4), end_date=date(2024, 9, 6), status='approved',
         )
         # Distinct days: Sep 2, 3, 4, 5, 6 -> 5 days (not 6)
-        leave_days = _approved_leave_days(self.emp, date(2024, 9, 1), date(2024, 9, 30))
+        leave_days = len(_approved_leave_dates(self.emp, date(2024, 9, 1), date(2024, 9, 30)))
         self.assertEqual(leave_days, 5)
 
 

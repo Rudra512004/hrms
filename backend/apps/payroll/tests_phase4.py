@@ -152,7 +152,7 @@ class TestFixedAmountCalculation(TestCase):
         # With no attendance (0 working days tracked), should still create line item
         basic_li = line_items.first()
         self.assertEqual(basic_li.component, self.sc)
-        self.assertEqual(basic_li.calculation_metadata['calculation_type'], 'FIXED_AMOUNT')
+        self.assertEqual(basic_li.calculation_type, 'FIXED_AMOUNT')
 
 
 class TestPercentageOfBasicCalculation(TestCase):
@@ -174,7 +174,7 @@ class TestPercentageOfBasicCalculation(TestCase):
         record = PayrollRecord.objects.get(period=self.run, employee=self.emp)
         hra_li = record.line_items.filter(component=self.hra_sc).first()
         self.assertIsNotNone(hra_li)
-        self.assertEqual(hra_li.calculation_metadata['calculation_type'], 'PERCENTAGE_OF_BASIC')
+        self.assertEqual(hra_li.calculation_type, 'PERCENTAGE_OF_BASIC')
         # 40% of 40000 = 16000
         self.assertAlmostEqual(
             float(Decimal(hra_li.calculation_metadata['raw_amount'])),
@@ -540,8 +540,7 @@ class TestHistoricalSnapshot(TestCase):
         generate_payroll_for_period(self.run)
         record = PayrollRecord.objects.get(period=self.run, employee=self.emp)
         li = record.line_items.first()
-        self.assertIn('basic_salary', li.calculation_metadata)
-        self.assertEqual(li.calculation_metadata['basic_salary'], '45000.00')
+        self.assertEqual(li.calculation_base, Decimal('45000.00'))
 
 
 class TestLineItemLineage(TestCase):
