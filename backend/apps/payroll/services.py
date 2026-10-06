@@ -250,7 +250,7 @@ def _build_structure_line_items(
     lop_ratio: effective_days / working_days (0.0–1.0), used to prorate earnings.
     Deductions are NOT prorated (e.g., a deduction is taken regardless of LOP).
     """
-    components = structure.components.select_related('component').all()
+    components = structure.components.select_related('component').order_by('id')
     if not components.exists():
         raise PayrollCalculationError(
             f"SalaryStructure '{structure.name}' has no components. "
@@ -420,7 +420,20 @@ def generate_payroll_for_period(run: PayrollRun, requesting_user=None) -> list:
     # -------------------------------------------------------------------
     # 1. Delete previous DRAFT PayrollRecords (and their line items via CASCADE)
     # -------------------------------------------------------------------
-    PayrollRecord.objects.filter(period=run, status=PayrollRecord.STATUS_DRAFT).delete()
+    draft_records = PayrollRecord.objects.filter(period=run, status=PayrollRecord.STATUS_DRAFT)
+    
+    # Reset any processed adjustments back to approved so they aren't lost on recalculation
+    draft_adj_ids = PayrollLineItem.objects.filter(
+        payroll_record__in=draft_records,
+        source_adjustment__isnull=False
+    ).values_list('source_adjustment_id', flat=True)
+    
+    if draft_adj_ids:
+        PayrollAdjustment.objects.filter(id__in=draft_adj_ids).update(
+            status=PayrollAdjustment.STATUS_APPROVED
+        )
+
+    draft_records.delete()
 
     # -------------------------------------------------------------------
     # 2. Collect eligible employees (scoped to run.organization)
@@ -526,7 +539,7 @@ def generate_payroll_for_period(run: PayrollRun, requesting_user=None) -> list:
                 period_year=run.year,
                 period_month=run.month,
                 status=PayrollAdjustment.STATUS_APPROVED,
-            ).select_related('component')
+            ).select_related('component').order_by('id')
         )
 
         records_to_create.append({
