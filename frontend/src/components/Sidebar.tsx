@@ -124,6 +124,8 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, isMobile, onNavigate }
         { path: '/admin/audit-logs',     label: 'Audit Logs',          icon: Settings,    permission: 'audit.view' },
         { path: '/admin/data-import',    label: 'Data Import',         icon: FileText,    permission: 'data_import.view' },
         { path: '/admin/office-networks',label: 'Office Networks',     icon: Network,     permission: 'office_network.view' },
+        { path: '/admin/documents/templates', label: 'Document Templates', icon: FileText, permission: 'document.manage_templates' },
+        { path: '/admin/documents/vault', label: 'Document Vault', icon: FileCheck, permission: ['document.view_all', 'document.issue'] },
       ],
     },
   ];

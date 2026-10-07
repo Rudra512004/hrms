@@ -64,6 +64,8 @@ import { OrgChartPage } from '../pages/OrgChartPage';
 import { ApprovalDelegationPage } from '../pages/ApprovalDelegationPage';
 import { AdminLetterRequestsPage } from '../pages/admin/AdminLetterRequestsPage';
 import { DataImportPage } from '../pages/admin/DataImportPage';
+import { AdminDocumentTemplatesPage } from '../pages/admin/AdminDocumentTemplatesPage';
+import { AdminDocumentVaultPage } from '../pages/admin/AdminDocumentVaultPage';
 import { ProtectedRoute } from '../components/ProtectedRoute';
 import { OnboardingRoute } from '../components/OnboardingRoute';
 import { OnboardingLayout } from '../layouts/OnboardingLayout';
@@ -225,6 +227,14 @@ export const AppRouter: React.FC = () => {
 
           <Route element={<ProtectedRoute requiredPermission="audit.view" />}>
             <Route path="/admin/audit-logs" element={<AuditLogsPage />} />
+          </Route>
+
+          <Route element={<ProtectedRoute requiredPermission="document.manage_templates" />}>
+            <Route path="/admin/documents/templates" element={<AdminDocumentTemplatesPage />} />
+          </Route>
+
+          <Route element={<ProtectedRoute />}>
+            <Route path="/admin/documents/vault" element={<AdminDocumentVaultPage />} />
           </Route>
 
           {/* Candidate & Onboarding — templates MUST come before :id param route */}

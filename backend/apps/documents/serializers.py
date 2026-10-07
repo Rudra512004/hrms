@@ -11,7 +11,7 @@ class TemplateVersionSerializer(serializers.ModelSerializer):
     class Meta:
         model = TemplateVersion
         fields = '__all__'
-        read_only_fields = ('template', 'created_at', 'created_by')
+        read_only_fields = ('template', 'version_number', 'created_at', 'created_by')
 
 class DocumentTemplateListSerializer(serializers.ModelSerializer):
     category_name = serializers.CharField(source='category.name', read_only=True)

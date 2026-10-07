@@ -57,8 +57,23 @@ class DocumentTemplateViewSet(viewsets.ModelViewSet):
         
         serializer = TemplateVersionSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
+        is_published = serializer.validated_data.get('is_published', False)
+        if is_published:
+            template.versions.all().update(is_published=False)
         serializer.save(template=template, version_number=new_version_number, created_by=request.user)
         return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['post'])
+    def activate_version(self, request, pk=None):
+        template = self.get_object()
+        version_id = request.data.get('version_id')
+        if not version_id:
+            return Response({'detail': 'version_id is required.'}, status=status.HTTP_400_BAD_REQUEST)
+        version = get_object_or_404(template.versions, id=version_id)
+        template.versions.all().update(is_published=False)
+        version.is_published = True
+        version.save()
+        return Response(TemplateVersionSerializer(version).data)
 
     @action(detail=True, methods=['post'])
     def preview(self, request, pk=None):
@@ -136,13 +151,22 @@ class IssuedDocumentViewSet(viewsets.ModelViewSet):
         context_data = serializer.validated_data.get('context_data', {})
         if employee:
             context_data['employee'] = {
-                'first_name': employee.user.first_name if employee.user else '',
-                'last_name': employee.user.last_name if employee.user else '',
-                'email': employee.user.email if employee.user else '',
+                'first_name': employee.user.first_name if (employee.user) else '',
+                'last_name': employee.user.last_name if (employee.user) else '',
+                'email': employee.user.email if (employee.user) else '',
                 'code': employee.employee_code,
             }
             if employee.designation:
                 context_data['employee']['designation'] = employee.designation.name
+        elif candidate:
+            context_data['candidate'] = {
+                'first_name': candidate.first_name,
+                'last_name': candidate.last_name,
+                'email': candidate.email,
+                'full_name': candidate.get_full_name(),
+            }
+            if candidate.applied_designation:
+                context_data['candidate']['designation'] = candidate.applied_designation.name
 
         try:
             django_template = Template(version.body)
@@ -150,13 +174,19 @@ class IssuedDocumentViewSet(viewsets.ModelViewSet):
         except Exception as e:
             return Response({'detail': f'Template rendering error: {str(e)}'}, status=status.HTTP_400_BAD_REQUEST)
 
+        doc_title_name = ''
+        if employee:
+            doc_title_name = employee.user.get_full_name() if (employee.user) else employee.employee_code
+        elif candidate:
+            doc_title_name = candidate.get_full_name()
+
         doc = IssuedDocument(
             organization=org,
             employee=employee,
             candidate=candidate,
             template_version=version,
             document_type=template.template_type,
-            title=f"{template.name} - {employee.user.get_full_name() if employee else candidate.get_full_name()}",
+            title=f"{template.name} - {doc_title_name}".strip(" -"),
             issued_by=request.user
         )
 
