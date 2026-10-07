@@ -4,6 +4,7 @@ from .views import AttendanceViewSet, AttendanceManagementViewSet, HolidayViewSe
 from .break_type_view import BreakTypeViewSet
 from .location_alerts import LocationAlertView
 from .timesheet_views import TimesheetPolicyViewSet,ProjectViewSet,TimesheetViewSet
+from .analytics_views import ProductivityAnalyticsViewSet
 
 router = DefaultRouter()
 router.register(r'management', AttendanceManagementViewSet, basename='attendance-management')
@@ -13,6 +14,7 @@ router.register(r'break-types', BreakTypeViewSet, basename='break-type')
 router.register(r'projects', ProjectViewSet, basename='project')
 router.register(r'timesheets', TimesheetViewSet, basename='timesheet')
 router.register(r'timesheet-policy', TimesheetPolicyViewSet, basename='timesheet-policy')
+router.register(r'productivity', ProductivityAnalyticsViewSet, basename='productivity-analytics')
 router.register(r'', AttendanceViewSet, basename='attendance')
 
 urlpatterns = [

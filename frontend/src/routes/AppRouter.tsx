@@ -17,6 +17,7 @@ import { NotFoundPage } from '../pages/NotFoundPage';
 import { ProfilePage } from '../pages/ProfilePage';
 import { AttendancePage } from '../pages/AttendancePage';
 import { AttendanceManagementPage } from '../pages/admin/AttendanceManagementPage';
+import { ProductivityAnalyticsPage } from '../pages/admin/ProductivityAnalyticsPage';
 import { LeavePage } from '../pages/LeavePage';
 import { CalendarPage } from '../pages/CalendarPage';
 import { PayrollPage } from '../pages/PayrollPage';
@@ -144,6 +145,7 @@ export const AppRouter: React.FC = () => {
 
           <Route element={<ProtectedRoute requiredPermission="attendance.view_all" />}>
             <Route path="/admin/attendance" element={<AttendanceManagementPage />} />
+            <Route path="/admin/productivity" element={<ProductivityAnalyticsPage />} />
             <Route path="/admin/daily-roster" element={<DailyRosterPage />} />
             <Route path="/admin/location-alerts" element={<LocationAlertsPage />} />
             <Route path="/admin/projects" element={<ProjectsPage />} />

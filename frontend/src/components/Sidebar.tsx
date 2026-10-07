@@ -83,6 +83,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, isMobile, onNavigate }
         { path: '/attendance',         label: 'My Attendance',         icon: Clock,        requiresEmployee: true },
         { path: '/approval-delegations', label: 'Approval Delegation', icon: UserCheck,    requiresEmployee: true },
         { path: '/admin/attendance',   label: 'Attendance Management', icon: CalendarDays, permission: 'attendance.view_all' },
+        { path: '/admin/productivity', label: 'Productivity Analytics',icon: BarChart2,    permission: 'attendance.view_all' },
         { path: '/admin/daily-roster', label: 'Daily Roster',          icon: ListChecks,   permission: 'attendance.view_all' },
         { path: '/admin/break-types',  label: 'Break Types',           icon: Coffee,       permission: 'shift.view' },
         { path: '/admin/location-alerts',label: 'Location Alerts',     icon: MapPin,       permission: 'attendance.view_all' },
