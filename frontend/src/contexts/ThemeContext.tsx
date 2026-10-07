@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
+import { useBranding } from './BrandingContext';
 
 type Theme = 'light' | 'dark' | 'system';
 
@@ -11,6 +12,8 @@ interface ThemeContextType {
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
 
 export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const { branding } = useBranding();
+
   const [theme, setThemeState] = useState<Theme>(() => {
     const saved = localStorage.getItem('beyondsure-theme');
     return (saved as Theme) || 'system';
@@ -22,7 +25,20 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const root = document.documentElement;
     const systemPrefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
 
-    const activeThemeIsDark = theme === 'dark' || (theme === 'system' && systemPrefersDark);
+    let activeThemeIsDark = false;
+    
+    if (theme === 'system') {
+      if (branding?.default_theme_mode === 'dark') {
+        activeThemeIsDark = true;
+      } else if (branding?.default_theme_mode === 'light') {
+        activeThemeIsDark = false;
+      } else {
+        activeThemeIsDark = systemPrefersDark;
+      }
+    } else {
+      activeThemeIsDark = theme === 'dark';
+    }
+
     setIsDark(activeThemeIsDark);
 
     if (activeThemeIsDark) {
@@ -30,7 +46,7 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     } else {
       root.removeAttribute('data-theme');
     }
-  }, [theme]);
+  }, [theme, branding]);
 
   const setTheme = (newTheme: Theme) => {
     setThemeState(newTheme);

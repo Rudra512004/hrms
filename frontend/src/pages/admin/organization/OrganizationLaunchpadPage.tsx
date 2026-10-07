@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import {
   Building2, CheckCircle2, ChevronRight, Circle, Loader2,
@@ -7,6 +7,9 @@ import {
 import { Card } from '../../../components/Card';
 import { organizationService, type OrganizationSetupPayload } from '../../../services/organization';
 import { useAuth } from '../../../contexts/AuthContext';
+import { useBranding } from '../../../contexts/BrandingContext';
+
+type Tab = 'setup' | 'branding';
 
 type SetupForm = {
   organizationName: string;
@@ -66,6 +69,45 @@ export const OrganizationLaunchpadPage: React.FC = () => {
   const [form, setForm] = useState<SetupForm>(initialForm);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<Tab>('setup');
+  
+  const { branding, updateBranding } = useBranding();
+  const [brandingForm, setBrandingForm] = useState<{
+    logo_url: string; favicon_url: string; watermark_url: string; watermark_opacity: string;
+    primary_color: string; secondary_color: string; accent_color: string; sidebar_bg_color: string; default_theme_mode: 'light' | 'dark' | 'system';
+  }>({
+    logo_url: '', favicon_url: '', watermark_url: '', watermark_opacity: '0.08',
+    primary_color: '', secondary_color: '', accent_color: '', sidebar_bg_color: '', default_theme_mode: 'light',
+  });
+
+  useEffect(() => {
+    if (branding) {
+      setBrandingForm({
+        logo_url: branding.logo_url || '',
+        favicon_url: branding.favicon_url || '',
+        watermark_url: branding.watermark_url || '',
+        watermark_opacity: branding.watermark_opacity || '0.08',
+        primary_color: branding.primary_color || '',
+        secondary_color: branding.secondary_color || '',
+        accent_color: branding.accent_color || '',
+        sidebar_bg_color: branding.sidebar_bg_color || '',
+        default_theme_mode: branding.default_theme_mode || 'light',
+      });
+    }
+  }, [branding]);
+
+  const handleBrandingSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSaving(true);
+    try {
+      await updateBranding(brandingForm);
+      alert('Branding updated successfully');
+    } catch (err) {
+      alert('Failed to update branding');
+    } finally {
+      setSaving(false);
+    }
+  };
 
   const canLaunch = Boolean(user?.isSuperuser || user?.canCreateOrganization || hasPermission('organization.manage'));
   const hasCompleteCoordinates = Boolean(form.latitude) === Boolean(form.longitude);
@@ -149,6 +191,15 @@ export const OrganizationLaunchpadPage: React.FC = () => {
         <Link to="/admin/organizations" className="btn btn-secondary">View organizations</Link>
       </div>
 
+      <div style={{ display: 'flex', gap: 'var(--spacing-md)', marginBottom: 'var(--spacing-lg)', borderBottom: '1px solid var(--color-border-subtle)' }}>
+        <button className={`tab-btn ${activeTab === 'setup' ? 'active' : ''}`} onClick={() => setActiveTab('setup')} style={{ padding: '10px 16px', background: 'none', border: 'none', borderBottom: activeTab === 'setup' ? '2px solid var(--color-primary)' : '2px solid transparent', color: activeTab === 'setup' ? 'var(--color-primary)' : 'var(--color-text-sub)', fontWeight: activeTab === 'setup' ? 600 : 400, cursor: 'pointer' }}>Initial Setup</button>
+        {user?.isSuperuser && (
+          <button className={`tab-btn ${activeTab === 'branding' ? 'active' : ''}`} onClick={() => setActiveTab('branding')} style={{ padding: '10px 16px', background: 'none', border: 'none', borderBottom: activeTab === 'branding' ? '2px solid var(--color-primary)' : '2px solid transparent', color: activeTab === 'branding' ? 'var(--color-primary)' : 'var(--color-text-sub)', fontWeight: activeTab === 'branding' ? 600 : 400, cursor: 'pointer' }}>Branding & Theme</button>
+        )}
+      </div>
+
+      {activeTab === 'setup' && (
+        <>
       {!canLaunch && (
         <div style={styles.error} role="alert"><ShieldCheck size={18} /> Verify a tenant-owner account before launching an organization. Existing organization administrators can continue using the linked configuration screens.</div>
       )}
@@ -206,6 +257,37 @@ export const OrganizationLaunchpadPage: React.FC = () => {
           </Card>
         </div>
       </div>
+        </>
+      )}
+
+      {activeTab === 'branding' && user?.isSuperuser && (
+        <Card>
+          <form onSubmit={handleBrandingSubmit}>
+            <h2 style={styles.sectionTitle}>Brand Configuration</h2>
+            <p style={styles.sectionHelp}>Configure your organization's logo, colors, and theme.</p>
+            <div style={styles.fieldGrid}>
+              <label style={styles.field}><span style={styles.label}>Logo URL</span><input style={styles.input} value={brandingForm.logo_url} onChange={e => setBrandingForm(f => ({ ...f, logo_url: e.target.value }))} placeholder="https://example.com/logo.png" /></label>
+              <label style={styles.field}><span style={styles.label}>Favicon URL</span><input style={styles.input} value={brandingForm.favicon_url} onChange={e => setBrandingForm(f => ({ ...f, favicon_url: e.target.value }))} placeholder="https://example.com/favicon.png" /></label>
+              <label style={styles.field}><span style={styles.label}>Primary Color</span><input type="color" style={styles.input} value={brandingForm.primary_color || '#3b82f6'} onChange={e => setBrandingForm(f => ({ ...f, primary_color: e.target.value }))} /></label>
+              <label style={styles.field}><span style={styles.label}>Secondary Color</span><input type="color" style={styles.input} value={brandingForm.secondary_color || '#64748b'} onChange={e => setBrandingForm(f => ({ ...f, secondary_color: e.target.value }))} /></label>
+              <label style={styles.field}><span style={styles.label}>Accent Color</span><input type="color" style={styles.input} value={brandingForm.accent_color || '#f59e0b'} onChange={e => setBrandingForm(f => ({ ...f, accent_color: e.target.value }))} /></label>
+              <label style={styles.field}><span style={styles.label}>Sidebar Background</span><input type="color" style={styles.input} value={brandingForm.sidebar_bg_color || '#f8fafc'} onChange={e => setBrandingForm(f => ({ ...f, sidebar_bg_color: e.target.value }))} /></label>
+              <label style={styles.field}><span style={styles.label}>Watermark URL</span><input style={styles.input} value={brandingForm.watermark_url} onChange={e => setBrandingForm(f => ({ ...f, watermark_url: e.target.value }))} placeholder="Watermark image" /></label>
+              <label style={styles.field}><span style={styles.label}>Watermark Opacity</span><input type="number" step="0.01" min="0" max="1" style={styles.input} value={brandingForm.watermark_opacity} onChange={e => setBrandingForm(f => ({ ...f, watermark_opacity: e.target.value }))} /></label>
+              <label style={styles.field}><span style={styles.label}>Default Theme Mode</span>
+                <select style={styles.input} value={brandingForm.default_theme_mode} onChange={e => setBrandingForm(f => ({ ...f, default_theme_mode: e.target.value as 'light' | 'dark' | 'system' }))}>
+                  <option value="light">Light</option>
+                  <option value="dark">Dark</option>
+                  <option value="system">System</option>
+                </select>
+              </label>
+            </div>
+            <button className="btn btn-primary" style={styles.primary} type="submit" disabled={saving}>
+              {saving ? <Loader2 size={18} className="animate-spin" /> : <CheckCircle2 size={18} />} Save Branding
+            </button>
+          </form>
+        </Card>
+      )}
     </div>
   );
 };

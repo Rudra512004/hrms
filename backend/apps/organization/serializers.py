@@ -2,7 +2,8 @@ from rest_framework import serializers
 from django.db import transaction
 from .models import (
     OfficeNetwork, Organization, Department, Designation, Branch,
-    WorkingCalendar, WorkingCalendarRule, Team, AttendancePolicy
+    WorkingCalendar, WorkingCalendarRule, Team, AttendancePolicy,
+    TenantBrandingAndConfig,
 )
 
 class WorkingCalendarRuleSerializer(serializers.ModelSerializer):
@@ -162,10 +163,63 @@ class OrganizationSetupSerializer(serializers.ModelSerializer):
 
         return instance
 
+class TenantBrandingAndConfigSerializer(serializers.ModelSerializer):
+    """
+    Serializes all tenant branding, theme, and custom-field-schema configuration.
+    Used both inline on OrganizationSerializer (read) and as the standalone
+    branding action endpoint (read/write).
+    """
+    class Meta:
+        model = TenantBrandingAndConfig
+        fields = [
+            'logo_url', 'favicon_url', 'login_banner_url', 'watermark_url',
+            'watermark_opacity', 'primary_color', 'secondary_color',
+            'accent_color', 'sidebar_bg_color', 'default_theme_mode',
+            'font_family', 'currency_code', 'date_format',
+            'enabled_modules_json', 'custom_fields_schema', 'updated_at',
+        ]
+        read_only_fields = ['updated_at']
+
+    def validate_watermark_opacity(self, value):
+        if value is not None and not (0 <= value <= 1):
+            raise serializers.ValidationError('Watermark opacity must be between 0 and 1.')
+        return value
+
+    def validate_custom_fields_schema(self, value):
+        """Validate that each schema entry has required keys and a supported type."""
+        allowed_types = {'text', 'number', 'date', 'boolean', 'select'}
+        if not isinstance(value, list):
+            raise serializers.ValidationError('custom_fields_schema must be a list.')
+        seen_keys = set()
+        for idx, entry in enumerate(value):
+            if not isinstance(entry, dict):
+                raise serializers.ValidationError(f'Entry at index {idx} must be an object.')
+            for required_key in ('key', 'label', 'type', 'module'):
+                if required_key not in entry:
+                    raise serializers.ValidationError(
+                        f'Entry at index {idx} is missing required field "{required_key}".'
+                    )
+            if entry['type'] not in allowed_types:
+                raise serializers.ValidationError(
+                    f'Entry at index {idx} has unsupported type "{entry["type"]}". '
+                    f'Allowed: {sorted(allowed_types)}.'
+                )
+            if entry['key'] in seen_keys:
+                raise serializers.ValidationError(
+                    f'Duplicate custom field key "{entry["key"]}" at index {idx}.'
+                )
+            seen_keys.add(entry['key'])
+        return value
+
+
 class OrganizationSerializer(serializers.ModelSerializer):
+    # Embed branding inline on every org read so the frontend can hydrate
+    # ThemeContext without an extra round-trip.
+    branding = TenantBrandingAndConfigSerializer(read_only=True)
+
     class Meta:
         model = Organization
-        fields = ['id', 'name', 'status', 'created_at', 'updated_at']
+        fields = ['id', 'name', 'status', 'created_at', 'updated_at', 'branding']
         read_only_fields = ['id', 'created_at', 'updated_at']
 
 class DepartmentSerializer(serializers.ModelSerializer):

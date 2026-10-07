@@ -1,23 +1,25 @@
-
 import { BrowserRouter } from 'react-router-dom';
 import { AppRouter } from './routes/AppRouter';
 import './index.css'; // Design tokens and base styles
 import { AuthProvider } from './contexts/AuthContext';
 import { BranchProvider } from './contexts/BranchContext';
 import { ThemeProvider } from './contexts/ThemeContext';
+import { BrandingProvider } from './contexts/BrandingContext';
 import { GlobalWatermark } from './components/GlobalWatermark';
 
 function App() {
   return (
     <BrowserRouter>
-      <ThemeProvider>
-        <AuthProvider>
-          <BranchProvider>
-            <GlobalWatermark />
-            <AppRouter />
-          </BranchProvider>
-        </AuthProvider>
-      </ThemeProvider>
+      <AuthProvider>
+        <BrandingProvider>
+          <ThemeProvider>
+            <BranchProvider>
+              <GlobalWatermark />
+              <AppRouter />
+            </BranchProvider>
+          </ThemeProvider>
+        </BrandingProvider>
+      </AuthProvider>
     </BrowserRouter>
   );
 }

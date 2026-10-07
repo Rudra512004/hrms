@@ -5,7 +5,7 @@ from django.db import IntegrityError, transaction
 from rest_framework.exceptions import ValidationError
 from .models import OfficeNetwork, Organization, Department, Designation, Branch, Team, WorkingCalendar
 from .services import OrganizationReadinessService
-from .serializers import OfficeNetworkSerializer, OrganizationSerializer, DepartmentSerializer, DesignationSerializer, BranchSerializer, WorkingCalendarSerializer, OrganizationSetupSerializer, TeamSerializer, AttendancePolicySerializer
+from .serializers import OfficeNetworkSerializer, OrganizationSerializer, DepartmentSerializer, DesignationSerializer, BranchSerializer, WorkingCalendarSerializer, OrganizationSetupSerializer, TeamSerializer, AttendancePolicySerializer, TenantBrandingAndConfigSerializer
 from apps.authorization.permissions import require_permission, IsNetworkAllowed
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.views import APIView
@@ -69,7 +69,27 @@ class OrganizationSetupViewSet(viewsets.ModelViewSet):
     queryset = Organization.objects.all()
 
     def perform_create(self, serializer):
-        organization = serializer.save()
+        with transaction.atomic():
+            organization = serializer.save()
+            from apps.authorization.models import Permission, Role, RolePermission, ScopeChoices, UserRole
+            
+            # Super Admins are headless. To manage this organization, they need an explicit role within it.
+            owner_role = Role.objects.create(
+                organization=organization,
+                name='Organization Owner (Super Admin)',
+                description='Full administrative access within this organization only.',
+            )
+            RolePermission.objects.bulk_create([
+                RolePermission(role=owner_role, permission=permission)
+                for permission in Permission.objects.filter(is_active=True)
+            ])
+            UserRole.objects.create(
+                user=self.request.user,
+                role=owner_role,
+                assigned_by=self.request.user,
+                scope=ScopeChoices.ORGANIZATION,
+            )
+            
         AuditService.log(
             action='organization_launched',
             actor=self.request.user,
@@ -128,47 +148,41 @@ class WorkingCalendarViewSet(OrganizationConfigurationAuditMixin, viewsets.Model
 
     def get_queryset(self):
         user = self.request.user
-        if getattr(user, 'is_superuser', False):
-            return WorkingCalendar.objects.all()
 
         from apps.authorization.services import AuthorizationService
         authorized_branches = AuthorizationService.get_authorized_branches(user, 'organization.update')
         return WorkingCalendar.objects.filter(branch__in=authorized_branches)
 
     def perform_create(self, serializer):
-        user = self.request.user
-        if getattr(user, 'is_superuser', False):
-            pass
-        else:
-            # Creation is typically via signals, but if explicit, we would need a branch_id.
-            # Usually handled automatically or via BranchViewSet.
-            pass
+        pass
 
 class OrganizationViewSet(OrganizationConfigurationAuditMixin, viewsets.ModelViewSet):
     serializer_class = OrganizationSerializer
     audit_resource = 'organization'
 
     def get_queryset(self):
-        user = self.request.user
-        if user.is_superuser:
-            return Organization.objects.all()
         org = _get_request_user_org(self.request)
         if org:
             return Organization.objects.filter(id=org.id)
         return Organization.objects.none()
 
     def get_permissions(self):
-        if self.action in ['list', 'retrieve', 'readiness']:
+        if self.action in ['list', 'retrieve', 'readiness', 'org_chart']:
             permission = require_permission('organization.view')
+        elif self.action == 'branding':
+            if self.request.method in ['GET', 'HEAD']:
+                permission = require_permission('organization.view')
+            else:
+                from apps.authorization.permissions import IsSuperAdmin
+                permission = IsSuperAdmin
         else:
             permission = require_permission('organization.manage')
         return [IsAuthenticated(), permission()]
 
     def perform_create(self, serializer):
-        if not self.request.user.is_superuser:
-            # Organizations are tenant boundaries. Client accounts can only
-            # create their one tenant through the verified self-setup flow.
-            raise ValidationError({'detail': 'Use the verified organization launch flow to create a tenant.'})
+        # Organizations are tenant boundaries. Client accounts can only
+        # create their one tenant through the verified self-setup flow.
+        raise ValidationError({'detail': 'Use the verified organization launch flow to create a tenant.'})
         organization = serializer.save()
         self._audit('organization_created', organization)
 
@@ -177,6 +191,79 @@ class OrganizationViewSet(OrganizationConfigurationAuditMixin, viewsets.ModelVie
         organization = self.get_object()
         return Response(OrganizationReadinessService.assess(organization))
 
+    @action(detail=True, methods=['get', 'patch'])
+    def branding(self, request, pk=None):
+        """
+        Manage Tenant Branding and Theme Configuration.
+        Auto-creates the config record if it somehow doesn't exist.
+        """
+        organization = self.get_object()
+        from .models import TenantBrandingAndConfig
+        branding_config, _ = TenantBrandingAndConfig.objects.get_or_create(
+            organization=organization
+        )
+
+        if request.method == 'GET':
+            serializer = TenantBrandingAndConfigSerializer(branding_config)
+            return Response(serializer.data)
+
+        # PATCH
+        serializer = TenantBrandingAndConfigSerializer(
+            branding_config, data=request.data, partial=True
+        )
+        serializer.is_valid(raise_exception=True)
+        updated_config = serializer.save()
+        self._audit('tenant_branding_updated', organization, {'fields': list(request.data.keys())})
+        return Response(serializer.data)
+
+    @action(detail=True, methods=['get'], url_path='org-chart')
+    def org_chart(self, request, pk=None):
+        organization = self.get_object()
+        from apps.employees.models import Employee
+        # Fetch all active employees
+        employees = Employee.objects.filter(
+            organization=organization,
+            employment_status__in=['onboarding', 'active', 'probation', 'notice_period']
+        ).select_related('designation', 'department')
+
+        # Build hierarchical representation
+        nodes = {}
+        for emp in employees:
+            nodes[emp.id] = {
+                'id': emp.id,
+                'name': f"{emp.user.first_name} {emp.user.last_name}".strip() or emp.user.email,
+                'email': emp.user.email,
+                'designation': emp.designation.name if emp.designation else None,
+                'department': emp.department.name if emp.department else None,
+                'headcount': 0, # To be computed
+                'reporting_manager_id': emp.reporting_manager_id,
+                'children': []
+            }
+
+        # Link children and compute direct headcount
+        roots = []
+        for emp_id, node in nodes.items():
+            manager_id = node['reporting_manager_id']
+            if manager_id and manager_id in nodes:
+                nodes[manager_id]['children'].append(node)
+                nodes[manager_id]['headcount'] += 1
+            else:
+                roots.append(node)
+                
+        # Recursive compute total headcount (subtree size)
+        def compute_total_headcount(node):
+            total = len(node['children'])
+            for child in node['children']:
+                total += compute_total_headcount(child)
+            node['total_headcount'] = total
+            return total
+
+        for root in roots:
+            compute_total_headcount(root)
+
+        return Response(roots)
+
+
 
 class DepartmentViewSet(OrganizationConfigurationAuditMixin, viewsets.ModelViewSet):
     serializer_class = DepartmentSerializer
@@ -184,12 +271,6 @@ class DepartmentViewSet(OrganizationConfigurationAuditMixin, viewsets.ModelViewS
 
     def get_queryset(self):
         user = self.request.user
-        if user.is_superuser:
-            qs = Department.objects.all()
-            branch_id = self.request.query_params.get('branch')
-            if branch_id:
-                qs = qs.filter(branch_id=branch_id)
-            return qs
 
         from apps.authorization.services import AuthorizationService
 
@@ -222,10 +303,9 @@ class DepartmentViewSet(OrganizationConfigurationAuditMixin, viewsets.ModelViewS
             raise ValidationError({"branch": "Specified branch does not exist."})
 
         from apps.authorization.services import AuthorizationService
-        if not user.is_superuser:
-            authorized_branches = AuthorizationService.get_authorized_branches(user, 'department.manage')
-            if branch not in authorized_branches:
-                raise ValidationError({"branch": "You do not have permission to create a department in this branch."})
+        authorized_branches = AuthorizationService.get_authorized_branches(user, 'department.manage')
+        if branch not in authorized_branches:
+            raise ValidationError({"branch": "You do not have permission to create a department in this branch."})
 
         try:
             department = serializer.save(branch=branch)
@@ -239,12 +319,6 @@ class TeamViewSet(OrganizationConfigurationAuditMixin, viewsets.ModelViewSet):
 
     def get_queryset(self):
         user = self.request.user
-        if user.is_superuser:
-            qs = Team.objects.all()
-            dept_id = self.request.query_params.get('department')
-            if dept_id:
-                qs = qs.filter(department_id=dept_id)
-            return qs
         from apps.authorization.services import AuthorizationService
         permission = 'team.view' if self.action in ['list', 'retrieve'] else 'team.manage'
         qs = AuthorizationService.get_authorized_teams(user, permission)
@@ -282,10 +356,9 @@ class TeamViewSet(OrganizationConfigurationAuditMixin, viewsets.ModelViewSet):
             raise ValidationError({"department": "Specified department does not exist."})
 
         from apps.authorization.services import AuthorizationService
-        if not user.is_superuser:
-            authorized_branches = AuthorizationService.get_authorized_branches(user, 'team.manage')
-            if dept.branch not in authorized_branches:
-                raise ValidationError({"department": "You do not have permission to create a team in this department's branch."})
+        authorized_branches = AuthorizationService.get_authorized_branches(user, 'team.manage')
+        if dept.branch not in authorized_branches:
+            raise ValidationError({"department": "You do not have permission to create a team in this department's branch."})
 
         try:
             team = serializer.save(department=dept)
@@ -300,12 +373,6 @@ class DesignationViewSet(OrganizationConfigurationAuditMixin, viewsets.ModelView
 
     def get_queryset(self):
         user = self.request.user
-        if user.is_superuser:
-            qs = Designation.objects.all()
-            org_id = self.request.query_params.get('organization')
-            if org_id:
-                qs = qs.filter(organization_id=org_id)
-            return qs
         org = _get_request_user_org(self.request)
         if org:
             return Designation.objects.filter(organization_id=org.id)
@@ -320,28 +387,16 @@ class DesignationViewSet(OrganizationConfigurationAuditMixin, viewsets.ModelView
 
     def perform_create(self, serializer):
         user = self.request.user
-        if user.is_superuser:
-            org_id = self.request.data.get('organization')
-            if org_id:
-                try:
-                    org = Organization.objects.get(id=org_id)
-                except Organization.DoesNotExist:
-                    raise ValidationError({"organization": "Specified organization does not exist."})
-            else:
-                org = _get_request_user_org(self.request)
-                if not org:
-                    raise ValidationError({"organization": "Organization context is required."})
-        else:
-            org = _get_request_user_org(self.request)
-            if not org:
-                raise ValidationError({"organization": "User does not belong to an organization."})
-            req_org_id = self.request.data.get('organization')
-            if req_org_id:
-                try:
-                    if int(req_org_id) != org.id:
-                        raise ValidationError({"organization": "Cannot create resources for another organization."})
-                except (ValueError, TypeError):
-                    raise ValidationError({"organization": "Invalid organization ID."})
+        org = _get_request_user_org(self.request)
+        if not org:
+            raise ValidationError({"organization": "User does not belong to an organization."})
+        req_org_id = self.request.data.get('organization')
+        if req_org_id:
+            try:
+                if int(req_org_id) != org.id:
+                    raise ValidationError({"organization": "Cannot create resources for another organization."})
+            except (ValueError, TypeError):
+                raise ValidationError({"organization": "Invalid organization ID."})
 
         try:
             designation = serializer.save(organization=org)
@@ -356,12 +411,6 @@ class OfficeNetworkViewSet(OrganizationConfigurationAuditMixin, viewsets.ModelVi
 
     def get_queryset(self):
         user = self.request.user
-        if user.is_superuser:
-            qs = OfficeNetwork.objects.all()
-            branch_id = self.request.query_params.get('branch')
-            if branch_id:
-                qs = qs.filter(branch_id=branch_id)
-            return qs
 
         from apps.authorization.services import AuthorizationService
         if self.action in ['list', 'retrieve']:
@@ -396,11 +445,10 @@ class OfficeNetworkViewSet(OrganizationConfigurationAuditMixin, viewsets.ModelVi
         except Branch.DoesNotExist:
             raise ValidationError({"branch": "Specified branch does not exist."})
 
-        if not user.is_superuser:
-            from apps.authorization.services import AuthorizationService
-            authorized_branches = AuthorizationService.get_authorized_branches(user, 'office_network.create')
-            if branch not in authorized_branches:
-                raise ValidationError({"branch": "Cannot create resources for a branch you do not have permission for."})
+        from apps.authorization.services import AuthorizationService
+        authorized_branches = AuthorizationService.get_authorized_branches(user, 'office_network.create')
+        if branch not in authorized_branches:
+            raise ValidationError({"branch": "Cannot create resources for a branch you do not have permission for."})
 
         try:
             network = serializer.save(branch=branch)
@@ -415,12 +463,6 @@ class BranchViewSet(OrganizationConfigurationAuditMixin, viewsets.ModelViewSet):
 
     def get_queryset(self):
         user = self.request.user
-        if user.is_superuser:
-            qs = Branch.objects.all()
-            org_id = self.request.query_params.get('organization')
-            if org_id:
-                qs = qs.filter(organization_id=org_id)
-            return qs
 
         from apps.authorization.services import AuthorizationService
         is_read = self.action in ['list', 'retrieve'] or (self.action == 'attendance_policy' and getattr(self.request, 'method', None) == 'GET')
@@ -441,28 +483,16 @@ class BranchViewSet(OrganizationConfigurationAuditMixin, viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         user = self.request.user
-        if user.is_superuser:
-            org_id = self.request.data.get('organization')
-            if org_id:
-                try:
-                    org = Organization.objects.get(id=org_id)
-                except Organization.DoesNotExist:
-                    raise ValidationError({"organization": "Specified organization does not exist."})
-            else:
-                org = _get_request_user_org(self.request)
-                if not org:
-                    raise ValidationError({"organization": "Organization context is required."})
-        else:
-            org = _get_request_user_org(self.request)
-            if not org:
-                raise ValidationError({"organization": "User does not belong to an organization."})
-            req_org_id = self.request.data.get('organization')
-            if req_org_id:
-                try:
-                    if int(req_org_id) != org.id:
-                        raise ValidationError({"organization": "Cannot create resources for another organization."})
-                except (ValueError, TypeError):
-                    raise ValidationError({"organization": "Invalid organization ID."})
+        org = _get_request_user_org(self.request)
+        if not org:
+            raise ValidationError({"organization": "User does not belong to an organization."})
+        req_org_id = self.request.data.get('organization')
+        if req_org_id:
+            try:
+                if int(req_org_id) != org.id:
+                    raise ValidationError({"organization": "Cannot create resources for another organization."})
+            except (ValueError, TypeError):
+                raise ValidationError({"organization": "Invalid organization ID."})
 
         try:
             branch = serializer.save(organization=org)
@@ -482,13 +512,12 @@ class BranchViewSet(OrganizationConfigurationAuditMixin, viewsets.ModelViewSet):
 
         # Write actions require branch.manage on this branch
         user = request.user
-        if not user.is_superuser:
-            from apps.authorization.services import AuthorizationService
-            if not AuthorizationService.has_permission(user, 'branch.manage', branch.id):
-                return Response(
-                    {'detail': 'You do not have permission to manage attendance policy for this branch.'},
-                    status=status.HTTP_403_FORBIDDEN
-                )
+        from apps.authorization.services import AuthorizationService
+        if not AuthorizationService.has_permission(user, 'branch.manage', branch.id):
+            return Response(
+                {'detail': 'You do not have permission to manage attendance policy for this branch.'},
+                status=status.HTTP_403_FORBIDDEN
+            )
 
         serializer = AttendancePolicySerializer(policy, data=request.data, partial=(request.method == 'PATCH'))
         serializer.is_valid(raise_exception=True)
