@@ -38,6 +38,7 @@ const routeLabels: Record<string, string> = {
   '/admin/holidays': 'Holidays',
   '/admin/shifts': 'Shifts',
   '/admin/assets': 'Assets',
+  '/admin/data-import': 'Data Import',
   '/notifications': 'Notifications',
 };
 

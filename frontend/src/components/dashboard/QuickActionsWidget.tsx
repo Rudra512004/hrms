@@ -1,5 +1,5 @@
 import React from 'react';
-import { Calendar, Laptop, Receipt, Users, ShieldAlert, Clock, ArrowRight, Settings, Network } from 'lucide-react';
+import { Calendar, Laptop, Receipt, Users, ShieldAlert, Clock, ArrowRight, Settings, Network, Database } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { Card } from '../Card';
 import { useAuth } from '../../contexts/AuthContext';
@@ -14,7 +14,7 @@ export const QuickActionsWidget: React.FC<QuickActionsWidgetProps> = ({
   hasOrg = false,
 }) => {
   const navigate = useNavigate();
-  const { hasEmployeeProfile } = useAuth();
+  const { hasEmployeeProfile, hasPermission } = useAuth();
 
   const routineActions = hasEmployeeProfile
     ? [
@@ -131,6 +131,17 @@ export const QuickActionsWidget: React.FC<QuickActionsWidgetProps> = ({
       color: '#0284c7',
       bg: '#f0f9ff',
       onClick: () => navigate('/admin/office-networks'),
+    });
+  }
+
+  if (hasPermission('data_import.view')) {
+    elevatedActions.push({
+      title: 'Data Import',
+      description: 'Bulk import organizational data',
+      icon: Database,
+      color: '#059669',
+      bg: '#ecfdf5',
+      onClick: () => navigate('/admin/data-import'),
     });
   }
 

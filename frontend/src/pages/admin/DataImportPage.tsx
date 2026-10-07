@@ -5,7 +5,19 @@ import { Card } from '../../components/Card';
 import { useAuth } from '../../contexts/AuthContext';
 import { dataImportService } from '../../services/dataImport';
 import type { CsvTemplate, ImportJob, ImportJobError } from '../../types/dataImport';
-import { Upload, Download, Check, AlertCircle, FileText } from 'lucide-react';
+import { Upload, Download, Check, AlertCircle, FileText, Users, MapPin, Building, Briefcase, CalendarDays, Umbrella, Clock, DollarSign, BatteryCharging } from 'lucide-react';
+
+const TEMPLATE_META: Record<string, { icon: React.ElementType, color: string, bg: string }> = {
+  'employees': { icon: Users, color: '#2563eb', bg: '#eff6ff' },
+  'branches': { icon: MapPin, color: '#16a34a', bg: '#dcfce7' },
+  'departments': { icon: Building, color: '#0284c7', bg: '#e0f2fe' },
+  'designations': { icon: Briefcase, color: '#7c3aed', bg: '#f3e8ff' },
+  'leave_types': { icon: Umbrella, color: '#db2777', bg: '#fce7f3' },
+  'holidays': { icon: CalendarDays, color: '#ea580c', bg: '#ffedd5' },
+  'attendance': { icon: Clock, color: '#d97706', bg: '#fef3c7' },
+  'salary_structures': { icon: DollarSign, color: '#059669', bg: '#d1fae5' },
+  'leave_balances': { icon: BatteryCharging, color: '#4f46e5', bg: '#e0e7ff' }
+};
 
 type ImportStep = 'select' | 'upload' | 'validate' | 'preview' | 'execute' | 'result';
 
@@ -120,44 +132,61 @@ export const DataImportPage: React.FC = () => {
 
   const renderStepper = () => {
     const steps = ['Select Template', 'Upload', 'Validate', 'Preview', 'Result'];
-    const currentIndex = ['select', 'upload', 'validate', 'preview', 'execute', 'result'].indexOf(step);
-    
+    const currentStepIndex = ['select', 'upload', 'validate', 'preview', 'execute', 'result'].indexOf(step);
+    // map execute to index 4 (Preview) during execution state, result to index 5
+    const effectiveIndex = currentStepIndex === 4 ? 3 : currentStepIndex === 5 ? 4 : currentStepIndex;
+
     return (
-      <div className="flex items-center justify-between mb-8">
-        {steps.map((s, idx) => {
-          let stepIndex = idx;
-          if (idx === 4) stepIndex = 5; // Result is index 5 in the array
+      <div className="mb-10 w-full overflow-hidden">
+        <div className="flex items-center justify-between relative w-full">
+          {/* Background track */}
+          <div className="absolute top-3 left-[10%] w-[80%] h-1 bg-gray-200 dark:bg-gray-700 rounded-full" />
           
-          const isActive = currentIndex === stepIndex;
-          const isPast = currentIndex > stepIndex;
-          
-          return (
-            <div key={s} className="flex flex-col items-center flex-1">
-              <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium ${
-                isActive ? 'bg-indigo-600 text-white' : 
-                isPast ? 'bg-green-500 text-white' : 'bg-gray-200 text-gray-500'
-              }`}>
-                {isPast ? <Check /> : idx + 1}
+          {/* Active track */}
+          <div 
+            className="absolute top-3 left-[10%] h-1 bg-indigo-600 rounded-full transition-all duration-300 ease-in-out" 
+            style={{ width: `${(effectiveIndex / (steps.length - 1)) * 80}%` }}
+          />
+
+          {steps.map((s, idx) => {
+            const isActive = effectiveIndex === idx;
+            const isPast = effectiveIndex > idx;
+            
+            return (
+              <div key={s} className="relative flex flex-col items-center z-10 w-1/5">
+                <div className={`w-7 h-7 rounded-full flex items-center justify-center border-2 transition-colors duration-300 ${
+                  isPast 
+                    ? 'bg-indigo-600 border-indigo-600' 
+                    : isActive
+                      ? 'bg-white dark:bg-gray-800 border-indigo-600'
+                      : 'bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600'
+                }`}>
+                  {isPast ? (
+                    <Check className="w-4 h-4 text-white" strokeWidth={3} />
+                  ) : isActive ? (
+                    <div className="w-2.5 h-2.5 rounded-full bg-indigo-600" />
+                  ) : null}
+                </div>
+                <span className={`mt-3 text-xs font-medium text-center transition-colors duration-300 ${
+                  isActive ? 'text-indigo-600 dark:text-indigo-400' :
+                  isPast ? 'text-gray-900 dark:text-gray-100' : 'text-gray-500 dark:text-gray-400'
+                }`}>
+                  {s}
+                </span>
               </div>
-              <span className={`mt-2 text-xs font-medium ${isActive ? 'text-indigo-600' : 'text-gray-500'}`}>
-                {s}
-              </span>
-            </div>
-          );
-        })}
+            );
+          })}
+        </div>
       </div>
     );
   };
 
   return (
     <div className="p-6 max-w-5xl mx-auto">
-      <PageHeader
-        title="Universal Data Import"
+      <PageHeader 
+        title="Universal Data Import" 
+        subtitle="Import bulk data into HRMS securely and reliably."
       />
-      <p className="text-gray-600 mb-6 -mt-2">Import bulk data into HRMS securely and reliably.</p>
-
-      {renderStepper()}
-
       {errorMessage && (
         <div className="mb-6 p-4 bg-red-50 border border-red-200 text-red-700 rounded-md flex items-start">
           <AlertCircle className="mt-0.5 mr-2 flex-shrink-0" />
@@ -166,21 +195,45 @@ export const DataImportPage: React.FC = () => {
       )}
 
       {step === 'select' && (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
           {loading ? (
-            <div className="col-span-3 text-center py-12 text-gray-500">Loading templates...</div>
+            <div style={{ textAlign: 'center', padding: '48px 0', color: 'var(--color-text-muted)' }}>Loading templates...</div>
           ) : (
-            templates.map(t => (
-              <div key={t.key} className="cursor-pointer h-full" onClick={() => handleTemplateSelect(t)}>
-                <Card className="flex flex-col h-full hover:border-indigo-300 transition-colors">
-                  <h3 className="text-lg font-medium text-gray-900 mb-2">{t.display_name}</h3>
-                  <p className="text-sm text-gray-500 flex-grow">{t.description}</p>
-                  <div className="mt-4 text-xs font-medium text-indigo-600 uppercase">
-                    {t.headers.length} Columns
+            templates.map(t => {
+              const meta = TEMPLATE_META[t.key] || { icon: FileText, color: '#475569', bg: '#f1f5f9' };
+              const Icon = meta.icon;
+              return (
+              <div
+                key={t.key}
+                onClick={() => handleTemplateSelect(t)}
+                style={{ cursor: 'pointer' }}
+              >
+                <Card className="flex flex-col">
+                  <div style={{ display: 'flex', alignItems: 'flex-start', gap: '16px', padding: '8px' }}>
+                    <div style={{
+                      width: 48,
+                      height: 48,
+                      borderRadius: 'var(--radius-md)',
+                      backgroundColor: meta.bg,
+                      color: meta.color,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      flexShrink: 0,
+                    }}>
+                      <Icon size={24} />
+                    </div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <h3 style={{ fontSize: 'var(--font-size-lg)', fontWeight: 500, color: 'var(--color-text-main)', marginBottom: '8px' }}>{t.display_name}</h3>
+                      <p style={{ fontSize: 'var(--font-size-sm)', color: 'var(--color-text-sub)' }}>{t.description}</p>
+                      <div style={{ marginTop: '12px', fontSize: 'var(--font-size-xs)', fontWeight: 600, color: 'var(--color-primary)', textTransform: 'uppercase' }}>
+                        {t.headers.length} Columns
+                      </div>
+                    </div>
                   </div>
                 </Card>
               </div>
-            ))
+            )})
           )}
         </div>
       )}
@@ -194,9 +247,9 @@ export const DataImportPage: React.FC = () => {
             </div>
             <button
               onClick={handleDownload}
-              className="inline-flex items-center px-4 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+              className="btn btn-secondary"
             >
-              <Download className="mr-2 -ml-1 h-4 w-4" />
+              <Download className="h-4 w-4" />
               Download Template
             </button>
           </div>
@@ -204,15 +257,15 @@ export const DataImportPage: React.FC = () => {
           <div className="mt-6 flex justify-center px-6 pt-5 pb-6 border-2 border-gray-300 border-dashed rounded-md">
             <div className="space-y-1 text-center">
               <Upload className="mx-auto h-12 w-12 text-gray-400" />
-              <div className="flex text-sm text-gray-600 justify-center">
+              <div style={{ display: 'flex', fontSize: 'var(--font-size-sm)', color: 'var(--color-text-sub)', justifyContent: 'center', gap: '4px' }}>
                 <label
                   htmlFor="file-upload"
-                  className="relative cursor-pointer bg-white rounded-md font-medium text-indigo-600 hover:text-indigo-500 focus-within:outline-none focus-within:ring-2 focus-within:ring-offset-2 focus-within:ring-indigo-500"
+                  style={{ color: 'var(--color-primary)', cursor: 'pointer', fontWeight: 600 }}
                 >
                   <span>Upload a file</span>
-                  <input id="file-upload" name="file-upload" type="file" className="sr-only" accept=".csv" ref={fileInputRef} onChange={handleFileChange} />
+                  <input id="file-upload" name="file-upload" type="file" style={{ opacity: 0, position: 'absolute', zIndex: -1, width: '1px', height: '1px' }} accept=".csv" ref={fileInputRef} onChange={handleFileChange} />
                 </label>
-                <p className="pl-1">or drag and drop</p>
+                <span>or drag and drop</span>
               </div>
               <p className="text-xs text-gray-500">CSV up to 10MB</p>
             </div>
@@ -223,22 +276,28 @@ export const DataImportPage: React.FC = () => {
               <div className="flex items-center">
                 <FileText className="text-gray-400 mr-2" />
                 <span className="text-sm font-medium text-gray-900">{file.name}</span>
-                <span className="ml-2 text-xs text-gray-500">({(file.size / 1024).toFixed(2)} KB)</span>
               </div>
-              <button onClick={() => setFile(null)} className="text-sm text-red-600 hover:text-red-900">Remove</button>
+              <button onClick={() => setFile(null)} className="btn btn-sm btn-ghost" style={{ color: 'var(--color-status-danger)' }}>Remove</button>
             </div>
           )}
 
-          <div className="mt-8 flex justify-end space-x-3">
-            <button onClick={resetWorkflow} className="px-4 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50">
+          <div className="mt-8 flex justify-end gap-6">
+            <button onClick={resetWorkflow} className="btn btn-secondary">
               Cancel
             </button>
             <button
               onClick={handleUpload}
               disabled={!file || loading || !hasPermission('data_import.execute')}
-              className={`px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white ${!file || loading || !hasPermission('data_import.execute') ? 'bg-indigo-400 cursor-not-allowed' : 'bg-indigo-600 hover:bg-indigo-700'}`}
+              className="btn btn-primary"
+              title={
+                !hasPermission('data_import.execute') 
+                  ? "You don't have permission to execute imports" 
+                  : !file 
+                    ? "Please select a file above first" 
+                    : ""
+              }
             >
-              {loading ? 'Uploading...' : 'Upload & Continue'}
+              {loading ? 'Uploading...' : !file ? 'Select a File to Continue' : 'Upload & Continue'}
             </button>
           </div>
         </Card>
@@ -252,7 +311,7 @@ export const DataImportPage: React.FC = () => {
           <button
             onClick={handleValidate}
             disabled={loading}
-            className={`px-6 py-3 border border-transparent shadow-sm text-base font-medium rounded-md text-white ${loading ? 'bg-indigo-400 cursor-not-allowed' : 'bg-indigo-600 hover:bg-indigo-700'}`}
+            className="btn btn-primary btn-lg"
           >
             {loading ? 'Validating...' : 'Validate Import File'}
           </button>
@@ -301,14 +360,14 @@ export const DataImportPage: React.FC = () => {
             </table>
           </div>
           
-          <div className="p-6 bg-gray-50 flex justify-end space-x-3">
-            <button onClick={resetWorkflow} className="px-4 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50">
+          <div className="p-6 bg-gray-50 flex justify-end gap-6">
+            <button onClick={resetWorkflow} className="btn btn-secondary">
               Cancel
             </button>
             <button
               onClick={handleExecute}
               disabled={loading}
-              className={`px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white ${loading ? 'bg-indigo-400 cursor-not-allowed' : 'bg-indigo-600 hover:bg-indigo-700'}`}
+              className="btn btn-primary"
             >
               {loading ? 'Executing...' : 'Confirm & Execute Import'}
             </button>
@@ -355,7 +414,7 @@ export const DataImportPage: React.FC = () => {
             <div className="mt-10">
               <button
                 onClick={resetWorkflow}
-                className="px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700"
+                className="btn btn-primary"
               >
                 Start Another Import
               </button>
