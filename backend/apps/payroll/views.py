@@ -17,6 +17,8 @@ from .serializers import (
     PayslipDetailSerializer,
 )
 from .services import generate_payroll_for_period, issue_payslips_for_period, finalize_payroll_run, PayrollImmutableError
+from .validation import PayrollValidator, PayrollValidationIssue
+from .variance import PayrollVarianceEngine
 
 
 def _require(user, codename):
@@ -262,6 +264,19 @@ class PayrollRunViewSet(viewsets.ModelViewSet):
         if not period.records.exists():
             return Response({'detail': 'Generate payroll before approving.'}, status=status.HTTP_400_BAD_REQUEST)
 
+        validator = PayrollValidator(period)
+        issues = validator.validate()
+        blocking_issues = [i for i in issues if i.severity == PayrollValidationIssue.SEVERITY_BLOCKING]
+        
+        if blocking_issues:
+            return Response(
+                {
+                    'detail': 'Cannot approve payroll due to blocking validation issues.',
+                    'issues': [i.as_dict() for i in blocking_issues]
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
         with transaction.atomic():
             period = PayrollRun.objects.select_for_update().get(id=period.id)
             if period.status == PayrollRun.STATUS_APPROVED:
@@ -295,6 +310,30 @@ class PayrollRunViewSet(viewsets.ModelViewSet):
             request=request,
         )
         return Response(self.get_serializer(period).data, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['get'])
+    def validation(self, request, pk=None):
+        err = _require(request.user, 'payroll.view')
+        if err:
+            return err
+            
+        period = self.get_object()
+        validator = PayrollValidator(period)
+        issues = validator.validate()
+        
+        return Response([i.as_dict() for i in issues], status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['get'])
+    def variance(self, request, pk=None):
+        err = _require(request.user, 'payroll.view')
+        if err:
+            return err
+            
+        period = self.get_object()
+        engine = PayrollVarianceEngine(period)
+        results = engine.analyze()
+        
+        return Response(results, status=status.HTTP_200_OK)
 
 
 
