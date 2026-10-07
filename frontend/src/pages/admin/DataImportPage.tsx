@@ -193,6 +193,8 @@ export const DataImportPage: React.FC = () => {
           <span>{errorMessage}</span>
         </div>
       )}
+      
+      {renderStepper()}
 
       {step === 'select' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
