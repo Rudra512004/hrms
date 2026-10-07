@@ -144,6 +144,11 @@ class Command(BaseCommand):
             # Communications
             {'codename': 'announcement.view', 'resource': 'announcement', 'action': 'view', 'name': 'View Announcements'},
             {'codename': 'announcement.manage', 'resource': 'announcement', 'action': 'manage', 'name': 'Manage Announcements'},
+            
+            # Documents
+            {'codename': 'document.view_all', 'resource': 'document', 'action': 'view_all', 'name': 'View All Documents'},
+            {'codename': 'document.manage_templates', 'resource': 'document', 'action': 'manage_templates', 'name': 'Manage Document Templates'},
+            {'codename': 'document.issue', 'resource': 'document', 'action': 'issue', 'name': 'Issue Documents'},
         ]
 
         for p_data in permissions_data:

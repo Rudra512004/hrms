@@ -57,6 +57,7 @@ INSTALLED_APPS = [
     'apps.dashboard',
     'apps.candidates',
     'apps.data_import',
+    'apps.documents',
     'django_filters',
 ]
 

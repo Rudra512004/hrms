@@ -22,4 +22,5 @@ urlpatterns = [
     path('api/v1/dashboard/', include('apps.dashboard.urls')),
     path('api/v1/data-import/', include('apps.data_import.urls')),
     path('api/v1/candidates/', include('apps.candidates.urls')),
+    path('api/v1/documents/', include('apps.documents.urls')),
 ]
