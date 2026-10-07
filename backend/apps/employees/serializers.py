@@ -149,17 +149,8 @@ class ProvisionEmployeeSerializer(serializers.Serializer):
         request = self.context.get('request')
         org = None
         if request and request.user.is_authenticated:
-            if hasattr(request.user, 'employee') and request.user.employee and request.user.employee.organization_id:
-                org = request.user.employee.organization
-            elif not request.user.is_superuser:
-                from apps.authorization.services import AuthorizationService
-                org = AuthorizationService.get_primary_organization(request.user)
-            elif request.user.is_superuser:
-                org_id = self.initial_data.get('organization') if hasattr(self, 'initial_data') else None
-                if org_id:
-                    org = Organization.objects.filter(id=org_id).first()
-                if not org and hasattr(request.user, 'employee') and request.user.employee and request.user.employee.organization_id:
-                    org = request.user.employee.organization
+            from apps.authorization.services import AuthorizationService
+            org = AuthorizationService.get_primary_organization(request.user)
 
         if not org:
             raise serializers.ValidationError({'organization': 'Cannot provision employee without a valid organization.'})
@@ -197,25 +188,24 @@ class ProvisionEmployeeSerializer(serializers.Serializer):
                     raise serializers.ValidationError({'department': 'Department must belong to the specified branch.'})
 
                 # Verify scope authorization
-                if not request.user.is_superuser:
-                    from apps.authorization.services import AuthorizationService
-                    has_access = False
+                from apps.authorization.services import AuthorizationService
+                has_access = False
 
-                    if AuthorizationService.has_permission(request.user, 'employee.create', branch_id=None, global_only=True):
+                if AuthorizationService.has_permission(request.user, 'employee.create', branch_id=None, global_only=True):
+                    has_access = True
+                else:
+                    authorized_branches = AuthorizationService.get_authorized_branches(request.user, 'employee.create')
+                    if branch and branch in authorized_branches:
                         has_access = True
                     else:
-                        authorized_branches = AuthorizationService.get_authorized_branches(request.user, 'employee.create')
-                        if branch and branch in authorized_branches:
+                        authorized_teams = AuthorizationService.get_authorized_teams(request.user, 'employee.create')
+                        if team and team in authorized_teams:
                             has_access = True
-                        else:
-                            authorized_teams = AuthorizationService.get_authorized_teams(request.user, 'employee.create')
-                            if team and team in authorized_teams:
-                                has_access = True
 
-                    if not has_access:
-                        if not branch and not team:
-                            raise serializers.ValidationError({'non_field_errors': 'You must specify an authorized branch or team.'})
-                        raise serializers.ValidationError({'non_field_errors': 'You do not have permission to provision employees into this organizational unit.'})
+                if not has_access:
+                    if not branch and not team:
+                        raise serializers.ValidationError({'non_field_errors': 'You must specify an authorized branch or team.'})
+                    raise serializers.ValidationError({'non_field_errors': 'You do not have permission to provision employees into this organizational unit.'})
 
                 if designation and designation.organization_id != org.id:
                     raise serializers.ValidationError({'designation': 'Designation must belong to the same organization.'})
@@ -248,13 +238,8 @@ class ProvisionEmployeeSerializer(serializers.Serializer):
                     role = Role.objects.filter(id=role_id, organization=org).first()
                     if not role:
                         raise serializers.ValidationError({'role': 'Role does not exist in this organization.'})
-                    if role.name == 'Super Admin' and not request.user.is_superuser:
-                        raise serializers.ValidationError({'role': 'Cannot assign Super Admin role.'})
-                    # We check if requester can manage roles, but here we assume provisioning implies they have employee.create
-                    # We should also ensure they have 'role.assign' or similar if that's a requirement, but for now we assign it
-                    # based on their ability to provision. Wait, user said: "Verify: requester can assign the role".
                     from apps.authorization.services import AuthorizationService
-                    if not AuthorizationService.has_permission(request.user, 'role.assign') and not request.user.is_superuser:
+                    if not AuthorizationService.has_permission(request.user, 'role.assign'):
                          raise serializers.ValidationError({'role': 'You do not have permission to assign roles.'})
                     UserRole.objects.create(user=user, role=role)
 
@@ -512,3 +497,68 @@ class EmployeeSelfServiceSerializer(serializers.ModelSerializer):
             'employment_status', 'joining_date', 'exit_date', 'resignation_date',
             'exit_reason', 'notice_period_start', 'notice_period_end'
         )
+
+from .models import EmployeeStatutoryAndBank, EmployeeDependent, EmployeeEducation, EmployeePriorExperience
+
+class EmployeeStatutoryAndBankSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = EmployeeStatutoryAndBank
+        fields = '__all__'
+        read_only_fields = ['id', 'employee']
+
+    def to_representation(self, instance):
+        ret = super().to_representation(instance)
+        request = self.context.get('request')
+        if request and request.user.is_authenticated:
+            # Mask aadhaar number unless the user has 'employee.manage_statutory' or it is their own profile
+            from apps.authorization.services import AuthorizationService
+            is_own = hasattr(request.user, 'employee') and request.user.employee.id == instance.employee_id
+            can_manage = AuthorizationService.has_permission(request.user, 'employee.manage_statutory')
+            if not is_own and not can_manage:
+                if ret.get('aadhaar_number') and len(ret['aadhaar_number']) > 4:
+                    ret['aadhaar_number'] = '*' * (len(ret['aadhaar_number']) - 4) + ret['aadhaar_number'][-4:]
+                if ret.get('pan_number') and len(ret['pan_number']) > 4:
+                    ret['pan_number'] = '*' * (len(ret['pan_number']) - 4) + ret['pan_number'][-4:]
+        return ret
+
+class EmployeeDependentSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = EmployeeDependent
+        fields = '__all__'
+        read_only_fields = ['id', 'employee']
+
+class EmployeeEducationSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = EmployeeEducation
+        fields = '__all__'
+        read_only_fields = ['id', 'employee']
+
+class EmployeePriorExperienceSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = EmployeePriorExperience
+        fields = '__all__'
+        read_only_fields = ['id', 'employee', 'bgv_status']
+
+from .models import ApprovalDelegation, LetterRequest
+
+class ApprovalDelegationSerializer(serializers.ModelSerializer):
+    delegator_name = serializers.CharField(source='delegator.email', read_only=True)
+    delegate_name = serializers.CharField(source='delegate.email', read_only=True)
+
+    class Meta:
+        model = ApprovalDelegation
+        fields = '__all__'
+        read_only_fields = ['id', 'organization', 'delegator', 'created_at', 'updated_at']
+
+class LetterRequestSerializer(serializers.ModelSerializer):
+    employee_name = serializers.SerializerMethodField(read_only=True)
+    approved_by_name = serializers.CharField(source='approved_by.email', read_only=True)
+
+    class Meta:
+        model = LetterRequest
+        fields = '__all__'
+        read_only_fields = ['id', 'employee', 'issued_document', 'approved_by', 'created_at', 'updated_at']
+        
+    def get_employee_name(self, obj):
+        return f"{obj.employee.user.first_name} {obj.employee.user.last_name}".strip() or obj.employee.user.email
+

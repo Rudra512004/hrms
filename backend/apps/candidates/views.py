@@ -50,18 +50,8 @@ User = get_user_model()
 
 def _get_candidate_org(request):
     """Return the org context for the requesting HR user."""
-    user = request.user
-    if user.is_superuser:
-        org_id = request.query_params.get('organization_id') or request.data.get('organization')
-        if org_id:
-            from apps.organization.models import Organization
-            try:
-                return Organization.objects.get(id=org_id)
-            except Organization.DoesNotExist:
-                return None
-        return None
-    emp = getattr(user, 'employee', None)
-    return emp.organization if emp else None
+    from apps.authorization.services import AuthorizationService
+    return AuthorizationService.get_primary_organization(request.user)
 
 
 # ---------------------------------------------------------------------------
@@ -103,12 +93,9 @@ class CandidateViewSet(viewsets.ModelViewSet):
             'organization', 'applied_designation', 'created_by', 'user', 'employee'
         ).prefetch_related('documents', 'issued_letters')
 
-        if user.is_superuser:
-            org_id = self.request.query_params.get('organization_id')
-            if org_id:
-                qs = qs.filter(organization_id=org_id)
-        elif hasattr(user, 'employee') and user.employee.organization_id:
-            qs = qs.filter(organization=user.employee.organization)
+        org = _get_candidate_org(self.request)
+        if org:
+            qs = qs.filter(organization=org)
         else:
             return Candidate.objects.none()
 
@@ -131,17 +118,8 @@ class CandidateViewSet(viewsets.ModelViewSet):
         user = self.request.user
         org = _get_candidate_org(self.request)
         if not org:
-            if user.is_superuser:
-                org_id = self.request.data.get('organization')
-                if org_id:
-                    try:
-                        org = Organization.objects.get(id=org_id)
-                    except Organization.DoesNotExist:
-                        from rest_framework.exceptions import ValidationError
-                        raise ValidationError({'organization': 'Organization not found.'})
-            if not org:
-                from rest_framework.exceptions import ValidationError
-                raise ValidationError({'organization': 'Organization context is required.'})
+            from rest_framework.exceptions import ValidationError
+            raise ValidationError({'organization': 'Organization context is required.'})
 
         # Pass org to serializer validator
         serializer.context['organization'] = org
@@ -503,10 +481,13 @@ class HRCandidateDocumentView(APIView):
         except Candidate.DoesNotExist:
             return None, Response({'detail': 'Candidate not found.'}, status=status.HTTP_404_NOT_FOUND)
 
-        if not user.is_superuser:
-            emp = getattr(user, 'employee', None)
-            if not emp or emp.organization_id != candidate.organization_id:
-                return None, Response({'detail': 'Access denied.'}, status=status.HTTP_403_FORBIDDEN)
+        org = _get_candidate_org(request=user._request if hasattr(user, '_request') else None) # we can't do this easily. I will get it via user
+        
+        # Better: get the org using AuthorizationService directly
+        from apps.authorization.services import AuthorizationService
+        org = AuthorizationService.get_primary_organization(user)
+        if not org or org.id != candidate.organization_id:
+            return None, Response({'detail': 'Access denied.'}, status=status.HTTP_403_FORBIDDEN)
         return candidate, None
 
     def get(self, request, candidate_id):
@@ -535,10 +516,9 @@ class HRCandidateDocumentVerifyView(APIView):
             return Response({'detail': 'Document not found.'}, status=status.HTTP_404_NOT_FOUND)
 
         # Tenant check
-        if not request.user.is_superuser:
-            emp = getattr(request.user, 'employee', None)
-            if not emp or emp.organization_id != doc.candidate.organization_id:
-                return Response({'detail': 'Access denied.'}, status=status.HTTP_403_FORBIDDEN)
+        org = AuthorizationService.get_primary_organization(request.user)
+        if not org or org.id != doc.candidate.organization_id:
+            return Response({'detail': 'Access denied.'}, status=status.HTTP_403_FORBIDDEN)
 
         decision = request.data.get('decision')  # 'verified' or 'rejected'
         if decision not in ('verified', 'rejected'):
@@ -586,12 +566,9 @@ class LetterTemplateViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         user = self.request.user
         qs = LetterTemplate.objects.select_related('organization', 'created_by')
-        if user.is_superuser:
-            org_id = self.request.query_params.get('organization_id')
-            if org_id:
-                qs = qs.filter(organization_id=org_id)
-        elif hasattr(user, 'employee') and user.employee.organization_id:
-            qs = qs.filter(organization=user.employee.organization)
+        org = _get_candidate_org(self.request)
+        if org:
+            qs = qs.filter(organization=org)
         else:
             return LetterTemplate.objects.none()
 
@@ -607,15 +584,7 @@ class LetterTemplateViewSet(viewsets.ModelViewSet):
         user = self.request.user
         org = _get_candidate_org(self.request)
         if not org:
-            if user.is_superuser:
-                org_id = self.request.data.get('organization')
-                if org_id:
-                    try:
-                        org = Organization.objects.get(id=org_id)
-                    except Organization.DoesNotExist:
-                        raise ValidationError({'organization': 'Organization not found.'})
-            if not org:
-                raise ValidationError({'organization': 'Organization context is required.'})
+            raise ValidationError({'organization': 'Organization context is required.'})
 
         letter_type = serializer.validated_data['letter_type']
 
@@ -817,3 +786,53 @@ class CandidatePortalActivateView(APIView):
             request=request, organization=candidate.organization,
         )
         return Response({'detail': 'Account activated successfully. You can now log in to the onboarding portal.'})
+
+from .models import JobRequisition, InterviewScorecard
+from .serializers import JobRequisitionSerializer, InterviewScorecardSerializer
+
+class JobRequisitionViewSet(viewsets.ModelViewSet):
+    serializer_class = JobRequisitionSerializer
+
+    def get_queryset(self):
+        user = self.request.user
+        org = AuthorizationService.get_primary_organization(user)
+        if not org:
+            return JobRequisition.objects.none()
+        return JobRequisition.objects.filter(organization=org)
+
+    def get_permissions(self):
+        permissions = [IsAuthenticated()]
+        if self.action in ['create', 'update', 'partial_update', 'destroy']:
+            permissions.append(require_permission('candidate.requisition.manage')())
+        else:
+            permissions.append(require_permission('candidate.view')())
+        return permissions
+
+    def perform_create(self, serializer):
+        org = AuthorizationService.get_primary_organization(self.request.user)
+        serializer.save(organization=org, created_by=self.request.user)
+
+class InterviewScorecardViewSet(viewsets.ModelViewSet):
+    serializer_class = InterviewScorecardSerializer
+
+    def get_queryset(self):
+        user = self.request.user
+        org = AuthorizationService.get_primary_organization(user)
+        if not org:
+            return InterviewScorecard.objects.none()
+        qs = InterviewScorecard.objects.filter(candidate__organization=org)
+        candidate_id = self.request.query_params.get('candidate')
+        if candidate_id:
+            qs = qs.filter(candidate_id=candidate_id)
+        return qs
+
+    def get_permissions(self):
+        permissions = [IsAuthenticated()]
+        if self.action in ['create', 'update', 'partial_update', 'destroy']:
+            permissions.append(require_permission('candidate.interview.manage')())
+        else:
+            permissions.append(require_permission('candidate.view')())
+        return permissions
+
+    def perform_create(self, serializer):
+        serializer.save(interviewer=self.request.user)

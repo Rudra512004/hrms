@@ -259,3 +259,31 @@ class CandidateListSerializer(serializers.ModelSerializer):
 
     def get_document_count(self, obj):
         return obj.documents.count()
+
+from .models import JobRequisition, InterviewScorecard
+
+class JobRequisitionSerializer(serializers.ModelSerializer):
+    organization_name = serializers.CharField(source='organization.name', read_only=True)
+    branch_name = serializers.CharField(source='branch.name', read_only=True)
+    department_name = serializers.CharField(source='department.name', read_only=True)
+    designation_name = serializers.CharField(source='designation.name', read_only=True)
+    approved_by_name = serializers.CharField(source='approved_by.email', read_only=True)
+    created_by_name = serializers.CharField(source='created_by.email', read_only=True)
+
+    class Meta:
+        model = JobRequisition
+        fields = '__all__'
+        read_only_fields = ['id', 'organization', 'approval_status', 'approved_by', 'created_by', 'created_at', 'updated_at']
+
+class InterviewScorecardSerializer(serializers.ModelSerializer):
+    interviewer_name = serializers.SerializerMethodField(read_only=True)
+
+    class Meta:
+        model = InterviewScorecard
+        fields = '__all__'
+        read_only_fields = ['id', 'interviewer', 'created_at', 'updated_at']
+
+    def get_interviewer_name(self, obj):
+        if obj.interviewer:
+            return f"{obj.interviewer.first_name} {obj.interviewer.last_name}".strip() or obj.interviewer.email
+        return None

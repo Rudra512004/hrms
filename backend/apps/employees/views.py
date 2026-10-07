@@ -94,7 +94,7 @@ class EmployeeAnnouncementsView(APIView):
         queryset = Announcement.objects.filter(organization=employee.organization, is_published=True).filter(
             Q(expires_at__isnull=True) | Q(expires_at__gt=timezone.now())
         ).filter(Q(branch__isnull=True) | Q(branch=employee.branch)).order_by('-published_at')
-        return Response(AnnouncementSerializer(queryset, many=True).data)
+        return Response(AnnouncementSerializer(queryset, many=True, context={'request': request}).data)
 
 class ProvisionEmployeeView(APIView):
     permission_classes = [HasRequiredPermission, IsNetworkAllowed]
@@ -171,12 +171,13 @@ class EmployeeManagementViewSet(viewsets.ModelViewSet):
         user = self.request.user
         qs = Employee.objects.all().select_related('user', 'branch', 'department', 'team', 'designation')
 
-        # Superuser organization leakage fix based on audit report
-        if user.is_superuser:
-            org_id = self.request.query_params.get('organization_id')
-            if org_id:
-                qs = qs.filter(organization_id=org_id)
-        elif hasattr(user, 'employee'):
+        from apps.authorization.services import AuthorizationService
+        org = AuthorizationService.get_primary_organization(user)
+        if not org:
+            return Employee.objects.none()
+            
+        qs = qs.filter(organization=org)
+        if hasattr(user, 'employee'):
             from django.db.models import Q
             authorized_branches = AuthorizationService.get_authorized_branches(user, 'employee.view')
             authorized_teams = AuthorizationService.get_authorized_teams(user, 'employee.view')
@@ -262,14 +263,6 @@ class EmployeeManagementViewSet(viewsets.ModelViewSet):
         if user == request.user:
             return Response({'detail': 'Cannot deactivate own account.'}, status=status.HTTP_403_FORBIDDEN)
 
-        if user.is_superuser and not request.user.is_superuser:
-            return Response({'detail': 'Only superadmin can deactivate a superadmin.'}, status=status.HTTP_403_FORBIDDEN)
-
-        if user.is_superuser:
-            active_superadmins = type(user).objects.filter(is_superuser=True, status='active').count()
-            if active_superadmins <= 1:
-                return Response({'detail': 'Cannot deactivate the last active superadmin.'}, status=status.HTTP_403_FORBIDDEN)
-
         if user.status == 'inactive':
             return Response({'detail': 'Employee is already deactivated.'}, status=status.HTTP_400_BAD_REQUEST)
 
@@ -286,7 +279,7 @@ class EmployeeManagementViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=['post'])
     def change_employment_status(self, request, pk=None):
-        if not (AuthorizationService.has_permission(request.user, 'employee.manage_status') or request.user.is_superuser):
+        if not AuthorizationService.has_permission(request.user, 'employee.manage_status'):
             return Response(status=status.HTTP_403_FORBIDDEN)
 
         employee = self.get_object()
@@ -339,10 +332,7 @@ class EmployeeManagementViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=['post'])
     def transfer(self, request, pk=None):
-        if not (
-            AuthorizationService.has_permission(request.user, 'employee.transfer') or
-            request.user.is_superuser
-        ):
+        if not AuthorizationService.has_permission(request.user, 'employee.transfer'):
             return Response(status=status.HTTP_403_FORBIDDEN)
 
         employee = self.get_object()
@@ -364,22 +354,21 @@ class EmployeeManagementViewSet(viewsets.ModelViewSet):
             return Response({'branch': 'Branch must belong to the same organization.'}, status=status.HTTP_400_BAD_REQUEST)
 
         # DESTINATION AUTHORIZATION
-        if not request.user.is_superuser:
-            has_access = False
-            # Check which permission they are using
-            if AuthorizationService.has_permission(request.user, 'employee.transfer', branch_id=None, global_only=True):
+        has_access = False
+        # Check which permission they are using
+        if AuthorizationService.has_permission(request.user, 'employee.transfer', branch_id=None, global_only=True):
+            has_access = True
+        else:
+            authorized_branches = AuthorizationService.get_authorized_branches(request.user, 'employee.transfer')
+            authorized_teams = AuthorizationService.get_authorized_teams(request.user, 'employee.transfer')
+
+            if branch and branch in authorized_branches:
                 has_access = True
-            else:
-                authorized_branches = AuthorizationService.get_authorized_branches(request.user, 'employee.transfer')
-                authorized_teams = AuthorizationService.get_authorized_teams(request.user, 'employee.transfer')
+            elif team and team in authorized_teams:
+                has_access = True
 
-                if branch and branch in authorized_branches:
-                    has_access = True
-                elif team and team in authorized_teams:
-                    has_access = True
-
-            if not has_access:
-                return Response({'detail': 'You do not have permission to transfer employees into this organizational unit.'}, status=status.HTTP_403_FORBIDDEN)
+        if not has_access:
+            return Response({'detail': 'You do not have permission to transfer employees into this organizational unit.'}, status=status.HTTP_403_FORBIDDEN)
 
         # Restore original consistency checks
         final_team = team if 'team' in serializer.validated_data else employee.team
@@ -446,10 +435,7 @@ class EmployeeManagementViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=['post'])
     def promote(self, request, pk=None):
-        if not (
-            AuthorizationService.has_permission(request.user, 'employee.promote') or
-            request.user.is_superuser
-        ):
+        if not AuthorizationService.has_permission(request.user, 'employee.promote'):
             return Response(status=status.HTTP_403_FORBIDDEN)
 
         employee = self.get_object()
@@ -529,8 +515,7 @@ class EmployeeManagementViewSet(viewsets.ModelViewSet):
     def exit(self, request, pk=None):
         if not (
             AuthorizationService.has_permission(request.user, 'employee.exit') or
-            AuthorizationService.has_permission(request.user, 'employee.manage_status') or
-            request.user.is_superuser
+            AuthorizationService.has_permission(request.user, 'employee.manage_status')
         ):
             return Response(status=status.HTTP_403_FORBIDDEN)
 
@@ -626,7 +611,7 @@ class EmployeeManagementViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=['post'])
     def reactivate(self, request, pk=None):
-        if not (AuthorizationService.has_permission(request.user, 'employee.manage_status') or request.user.is_superuser):
+        if not AuthorizationService.has_permission(request.user, 'employee.manage_status'):
             return Response(status=status.HTTP_403_FORBIDDEN)
 
         employee = self.get_object()
@@ -671,8 +656,7 @@ class EmployeeManagementViewSet(viewsets.ModelViewSet):
     def lifecycle_history(self, request, pk=None):
         if not (
             AuthorizationService.has_permission(request.user, 'employee.lifecycle.view') or
-            AuthorizationService.has_permission(request.user, 'employee.view') or
-            request.user.is_superuser
+            AuthorizationService.has_permission(request.user, 'employee.view')
         ):
             return Response(status=status.HTTP_403_FORBIDDEN)
 
@@ -693,14 +677,12 @@ class WFHRequestViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         user = self.request.user
-        if not user.is_authenticated:
+        from apps.authorization.services import AuthorizationService
+        org = AuthorizationService.get_primary_organization(user)
+        if not org:
             return WFHRequest.objects.none()
-        if user.is_superuser:
-            qs = WFHRequest.objects.all()
-            org_id = self.request.query_params.get('organization')
-            if org_id:
-                qs = qs.filter(employee__organization_id=org_id)
-        elif AuthorizationService.has_permission(user, 'wfh.view'):
+            
+        if AuthorizationService.has_permission(user, 'wfh.view'):
             emp = getattr(user, 'employee', None)
             if emp and emp.organization_id:
                 qs = WFHRequest.objects.filter(employee__organization=emp.organization)
@@ -817,11 +799,14 @@ class EmployeeDocumentViewSet(viewsets.GenericViewSet):
 
     def get_queryset(self):
         user = self.request.user
-        qs = EmployeeDocument.objects.all()
+        from apps.authorization.services import AuthorizationService
+        org = AuthorizationService.get_primary_organization(user)
+        if not org:
+            return EmployeeDocument.objects.none()
+            
+        qs = EmployeeDocument.objects.filter(employee__organization=org)
 
-        if user.is_superuser:
-            pass
-        elif hasattr(user, 'employee'):
+        if hasattr(user, 'employee'):
             from django.db.models import Q
             authorized_branches = AuthorizationService.get_authorized_branches(user, 'employee.document.view')
             authorized_teams = AuthorizationService.get_authorized_teams(user, 'employee.document.view')
@@ -835,7 +820,8 @@ class EmployeeDocumentViewSet(viewsets.GenericViewSet):
             else:
                 qs = qs.filter(Q(employee=user.employee) | Q(employee__branch__in=authorized_branches) | Q(employee__team__in=authorized_teams))
         else:
-            return EmployeeDocument.objects.none()
+            if not AuthorizationService.has_permission(user, 'employee.document.view', branch_id=None, global_only=True):
+                return EmployeeDocument.objects.none()
 
         employee_id = self.request.query_params.get('employee')
         if employee_id:
@@ -845,10 +831,7 @@ class EmployeeDocumentViewSet(viewsets.GenericViewSet):
 
     def list(self, request):
         """List documents. Requires employee.document.view permission."""
-        if not (
-            AuthorizationService.has_permission(request.user, 'employee.document.view') or
-            request.user.is_superuser
-        ):
+        if not AuthorizationService.has_permission(request.user, 'employee.document.view'):
             return Response(status=status.HTTP_403_FORBIDDEN)
 
         queryset = self.get_queryset()
@@ -865,10 +848,7 @@ class EmployeeDocumentViewSet(viewsets.GenericViewSet):
         # Employees may view their own documents
         emp = getattr(request.user, 'employee', None)
         is_own = (emp is not None and doc.employee_id == emp.id)
-        if not is_own and not (
-            AuthorizationService.has_permission(request.user, 'employee.document.view') or
-            request.user.is_superuser
-        ):
+        if not is_own and not AuthorizationService.has_permission(request.user, 'employee.document.view'):
             return Response(status=status.HTTP_403_FORBIDDEN)
 
         serializer = EmployeeDocumentSerializer(doc)
@@ -876,10 +856,7 @@ class EmployeeDocumentViewSet(viewsets.GenericViewSet):
 
     def create(self, request):
         """Upload a document. Requires employee.document.upload permission."""
-        if not (
-            AuthorizationService.has_permission(request.user, 'employee.document.upload') or
-            request.user.is_superuser
-        ):
+        if not AuthorizationService.has_permission(request.user, 'employee.document.upload'):
             return Response(status=status.HTTP_403_FORBIDDEN)
 
         serializer = EmployeeDocumentUploadSerializer(data=request.data, context={'request': request})
@@ -888,24 +865,23 @@ class EmployeeDocumentViewSet(viewsets.GenericViewSet):
         # Branch isolation: ensure the target employee belongs to an authorized branch
         target_employee = serializer.validated_data['employee']
 
-        if not request.user.is_superuser:
-            if not hasattr(request.user, 'employee'):
-                return Response(status=status.HTTP_403_FORBIDDEN)
+        if not hasattr(request.user, 'employee'):
+            return Response(status=status.HTTP_403_FORBIDDEN)
 
-            authorized_branches = AuthorizationService.get_authorized_branches(request.user, 'employee.document.upload')
+        authorized_branches = AuthorizationService.get_authorized_branches(request.user, 'employee.document.upload')
 
-            can_upload = False
-            if target_employee.branch in authorized_branches:
+        can_upload = False
+        if target_employee.branch in authorized_branches:
+            can_upload = True
+        elif target_employee.branch is None and target_employee.organization == request.user.employee.organization:
+            if AuthorizationService.has_permission(request.user, 'employee.document.upload', branch_id=None):
                 can_upload = True
-            elif target_employee.branch is None and target_employee.organization == request.user.employee.organization:
-                if AuthorizationService.has_permission(request.user, 'employee.document.upload', branch_id=None):
-                    can_upload = True
 
-            if not can_upload:
-                return Response(
-                    {'detail': 'Cannot upload documents for an employee in this branch.'},
-                    status=status.HTTP_403_FORBIDDEN
-                )
+        if not can_upload:
+            return Response(
+                {'detail': 'Cannot upload documents for an employee in this branch.'},
+                status=status.HTTP_403_FORBIDDEN
+            )
 
         document = serializer.save()
 
@@ -927,10 +903,7 @@ class EmployeeDocumentViewSet(viewsets.GenericViewSet):
 
     def destroy(self, request, pk=None):
         """Delete a document (db record + file). Requires employee.document.delete."""
-        if not (
-            AuthorizationService.has_permission(request.user, 'employee.document.delete') or
-            request.user.is_superuser
-        ):
+        if not AuthorizationService.has_permission(request.user, 'employee.document.delete'):
             return Response(status=status.HTTP_403_FORBIDDEN)
 
         try:
@@ -975,10 +948,7 @@ class EmployeeDocumentViewSet(viewsets.GenericViewSet):
 
         emp = getattr(request.user, 'employee', None)
         is_own = (emp is not None and doc.employee_id == emp.id)
-        if not is_own and not (
-            AuthorizationService.has_permission(request.user, 'employee.document.view') or
-            request.user.is_superuser
-        ):
+        if not is_own and not AuthorizationService.has_permission(request.user, 'employee.document.view'):
             return Response(status=status.HTTP_403_FORBIDDEN)
 
         try:
@@ -1011,10 +981,7 @@ class EmployeeDocumentViewSet(viewsets.GenericViewSet):
 
         emp = getattr(request.user, 'employee', None)
         is_own = (emp is not None and doc.employee_id == emp.id)
-        if not is_own and not (
-            AuthorizationService.has_permission(request.user, 'employee.document.view') or
-            request.user.is_superuser
-        ):
+        if not is_own and not AuthorizationService.has_permission(request.user, 'employee.document.view'):
             return Response(status=status.HTTP_403_FORBIDDEN)
 
         try:
@@ -1027,3 +994,163 @@ class EmployeeDocumentViewSet(viewsets.GenericViewSet):
         response['Content-Disposition'] = f'inline; filename="{doc.document_name}"'
 
         return response
+
+from .models import EmployeeStatutoryAndBank, EmployeeDependent, EmployeeEducation, EmployeePriorExperience
+from .serializers import EmployeeStatutoryAndBankSerializer, EmployeeDependentSerializer, EmployeeEducationSerializer, EmployeePriorExperienceSerializer
+
+class EmployeeStatutoryAndBankViewSet(viewsets.ModelViewSet):
+    serializer_class = EmployeeStatutoryAndBankSerializer
+
+    def get_queryset(self):
+        user = self.request.user
+        org = AuthorizationService.get_primary_organization(user)
+        if not org:
+            return EmployeeStatutoryAndBank.objects.none()
+        return EmployeeStatutoryAndBank.objects.filter(employee__organization=org)
+
+    def get_permissions(self):
+        permissions = [IsAuthenticated()]
+        # We enforce specific object permissions in methods if needed
+        return permissions
+
+    def perform_create(self, serializer):
+        employee_id = self.kwargs.get('employee_pk') or self.request.data.get('employee')
+        employee = Employee.objects.get(id=employee_id)
+        if not AuthorizationService.has_permission(self.request.user, 'employee.manage_statutory'):
+            if not hasattr(self.request.user, 'employee') or self.request.user.employee.id != employee.id:
+                from rest_framework.exceptions import PermissionDenied
+                raise PermissionDenied("You do not have permission to manage statutory data for this employee.")
+        serializer.save(employee=employee)
+
+class EmployeeDependentViewSet(viewsets.ModelViewSet):
+    serializer_class = EmployeeDependentSerializer
+
+    def get_permissions(self):
+        return [IsAuthenticated()]
+
+
+    def get_queryset(self):
+        user = self.request.user
+        org = AuthorizationService.get_primary_organization(user)
+        if not org:
+            return EmployeeDependent.objects.none()
+        qs = EmployeeDependent.objects.filter(employee__organization=org)
+        employee_id = self.request.query_params.get('employee')
+        if employee_id:
+            qs = qs.filter(employee_id=employee_id)
+        return qs
+
+    def perform_create(self, serializer):
+        employee_id = self.request.data.get('employee')
+        employee = Employee.objects.get(id=employee_id)
+        serializer.save(employee=employee)
+
+class EmployeeEducationViewSet(viewsets.ModelViewSet):
+    serializer_class = EmployeeEducationSerializer
+
+    def get_permissions(self):
+        return [IsAuthenticated()]
+
+
+    def get_queryset(self):
+        user = self.request.user
+        org = AuthorizationService.get_primary_organization(user)
+        if not org:
+            return EmployeeEducation.objects.none()
+        qs = EmployeeEducation.objects.filter(employee__organization=org)
+        employee_id = self.request.query_params.get('employee')
+        if employee_id:
+            qs = qs.filter(employee_id=employee_id)
+        return qs
+
+    def perform_create(self, serializer):
+        employee_id = self.request.data.get('employee')
+        employee = Employee.objects.get(id=employee_id)
+        serializer.save(employee=employee)
+
+class EmployeePriorExperienceViewSet(viewsets.ModelViewSet):
+    serializer_class = EmployeePriorExperienceSerializer
+
+    def get_permissions(self):
+        return [IsAuthenticated()]
+
+
+    def get_queryset(self):
+        user = self.request.user
+        org = AuthorizationService.get_primary_organization(user)
+        if not org:
+            return EmployeePriorExperience.objects.none()
+        qs = EmployeePriorExperience.objects.filter(employee__organization=org)
+        employee_id = self.request.query_params.get('employee')
+        if employee_id:
+            qs = qs.filter(employee_id=employee_id)
+        return qs
+
+    def perform_create(self, serializer):
+        employee_id = self.request.data.get('employee')
+        employee = Employee.objects.get(id=employee_id)
+        serializer.save(employee=employee)
+
+from .models import ApprovalDelegation, LetterRequest
+from .serializers import ApprovalDelegationSerializer, LetterRequestSerializer
+
+class ApprovalDelegationViewSet(viewsets.ModelViewSet):
+    serializer_class = ApprovalDelegationSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        user = self.request.user
+        org = AuthorizationService.get_primary_organization(user)
+        if not org:
+            return ApprovalDelegation.objects.none()
+        
+        # Managers can see their own delegations (given or received)
+        # Admins can see all in the org
+        qs = ApprovalDelegation.objects.filter(organization=org)
+        if not AuthorizationService.has_permission(user, 'employee.manage'):
+            qs = qs.filter(models.Q(delegator=user) | models.Q(delegate=user))
+        return qs
+
+    def perform_create(self, serializer):
+        org = AuthorizationService.get_primary_organization(self.request.user)
+        serializer.save(organization=org, delegator=self.request.user)
+
+class LetterRequestViewSet(viewsets.ModelViewSet):
+    serializer_class = LetterRequestSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        user = self.request.user
+        org = AuthorizationService.get_primary_organization(user)
+        if not org:
+            return LetterRequest.objects.none()
+        
+        qs = LetterRequest.objects.filter(employee__organization=org)
+        
+        # Normal employees can only see their own requests
+        if not hasattr(user, 'employee'):
+            return qs.none()
+            
+        employee_id = self.request.query_params.get('employee')
+        if employee_id:
+            qs = qs.filter(employee_id=employee_id)
+            
+        if not AuthorizationService.has_permission(user, 'employee.manage'):
+            qs = qs.filter(employee=user.employee)
+            
+        return qs
+
+    def perform_create(self, serializer):
+        employee_id = self.request.data.get('employee') or self.request.user.employee.id
+        employee = Employee.objects.get(id=employee_id)
+        serializer.save(employee=employee)
+        
+    def perform_update(self, serializer):
+        instance = serializer.save()
+        if 'status' in serializer.validated_data and serializer.validated_data['status'] == 'APPROVED':
+            instance.approved_by = self.request.user
+            instance.status = 'ISSUED'
+            # Here we will auto-generate PDF in Phase 3
+            # instance.issued_document = ... 
+            instance.save()
+

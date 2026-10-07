@@ -12,11 +12,15 @@ from .views import (
     CandidatePortalSubmitView,
     CandidatePortalLettersView,
     CandidatePortalActivateView,
+    JobRequisitionViewSet,
+    InterviewScorecardViewSet
 )
 
 router = DefaultRouter()
-router.register(r'', CandidateViewSet, basename='candidate')
+router.register(r'requisitions', JobRequisitionViewSet, basename='job-requisition')
+router.register(r'scorecards', InterviewScorecardViewSet, basename='interview-scorecard')
 router.register(r'letters/templates', LetterTemplateViewSet, basename='letter-template')
+router.register(r'', CandidateViewSet, basename='candidate')
 
 urlpatterns = [
     # Candidate portal (restricted self-service — candidate-only)

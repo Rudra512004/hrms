@@ -2,8 +2,8 @@
 Candidate domain models.
 
 Covers the workflow:
-  HR creates Candidate → Offer → Onboarding Portal → Doc Upload →
-  HR Verification → HR Approval → Convert to Employee
+  HR creates Candidate â†’ Offer â†’ Onboarding Portal â†’ Doc Upload â†’
+  HR Verification â†’ HR Approval â†’ Convert to Employee
 
 Candidate and Employee are SEPARATE identity entities.
 Conversion is atomic and idempotent.
@@ -35,7 +35,7 @@ def letter_content_upload_path(instance, filename):
 
 
 # ---------------------------------------------------------------------------
-# Status choices — minimum required by the agreed workflow
+# Status choices â€” minimum required by the agreed workflow
 # ---------------------------------------------------------------------------
 
 class CandidateStatus(models.TextChoices):
@@ -74,7 +74,7 @@ class LetterType(models.TextChoices):
 
 
 # ---------------------------------------------------------------------------
-# LetterTemplate — HR-managed wording/template (versioned snapshot on issue)
+# LetterTemplate â€” HR-managed wording/template (versioned snapshot on issue)
 # ---------------------------------------------------------------------------
 
 class LetterTemplate(models.Model):
@@ -111,7 +111,7 @@ class LetterTemplate(models.Model):
 
 
 # ---------------------------------------------------------------------------
-# Candidate — the core entity
+# Candidate â€” the core entity
 # ---------------------------------------------------------------------------
 
 class Candidate(models.Model):
@@ -138,7 +138,7 @@ class Candidate(models.Model):
         on_delete=models.SET_NULL,
         null=True, blank=True,
         related_name='candidate_record',
-        help_text="Populated after conversion. Establishes candidate→employee traceability."
+        help_text="Populated after conversion. Establishes candidateâ†’employee traceability."
     )
 
     # Basic profile
@@ -203,7 +203,7 @@ class Candidate(models.Model):
 
 
 # ---------------------------------------------------------------------------
-# IssuedLetter — snapshot at issue time (historical preservation)
+# IssuedLetter â€” snapshot at issue time (historical preservation)
 # ---------------------------------------------------------------------------
 
 class IssuedLetter(models.Model):
@@ -240,11 +240,11 @@ class IssuedLetter(models.Model):
         ordering = ['-issued_at']
 
     def __str__(self):
-        return f"{self.get_letter_type_display()} – {self.candidate.get_full_name()} ({self.issued_at.date()})"
+        return f"{self.get_letter_type_display()} â€“ {self.candidate.get_full_name()} ({self.issued_at.date()})"
 
 
 # ---------------------------------------------------------------------------
-# CandidateDocument — uploaded by candidate during onboarding
+# CandidateDocument â€” uploaded by candidate during onboarding
 # ---------------------------------------------------------------------------
 
 ALLOWED_CANDIDATE_DOC_EXTENSIONS = {'.pdf', '.png', '.jpg', '.jpeg', '.doc', '.docx'}
@@ -298,11 +298,11 @@ class CandidateDocument(models.Model):
         ordering = ['-uploaded_at']
 
     def __str__(self):
-        return f"{self.candidate} – {self.document_name} ({self.document_type})"
+        return f"{self.candidate} â€“ {self.document_name} ({self.document_type})"
 
 
 # ---------------------------------------------------------------------------
-# CandidateOnboardingNote — HR internal notes during review
+# CandidateOnboardingNote â€” HR internal notes during review
 # ---------------------------------------------------------------------------
 
 class CandidateOnboardingNote(models.Model):
@@ -316,3 +316,55 @@ class CandidateOnboardingNote(models.Model):
 
     def __str__(self):
         return f"Note on {self.candidate} by {self.author}"
+
+# ---------------------------------------------------------------------------
+# JobRequisition — Phase 2 feature
+# ---------------------------------------------------------------------------
+
+class JobRequisition(models.Model):
+    APPROVAL_STATUS_CHOICES = [
+        ('DRAFT', 'Draft'),
+        ('SUBMITTED', 'Submitted'),
+        ('APPROVED', 'Approved'),
+        ('REJECTED', 'Rejected'),
+    ]
+    organization = models.ForeignKey('organization.Organization', on_delete=models.CASCADE, related_name='job_requisitions')
+    branch = models.ForeignKey('organization.Branch', on_delete=models.SET_NULL, null=True, blank=True, related_name='job_requisitions')
+    department = models.ForeignKey('organization.Department', on_delete=models.SET_NULL, null=True, blank=True, related_name='job_requisitions')
+    designation = models.ForeignKey('organization.Designation', on_delete=models.CASCADE, related_name='job_requisitions')
+    headcount = models.PositiveIntegerField(default=1)
+    budget_ctc = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
+    justification = models.TextField()
+    
+    approval_status = models.CharField(max_length=20, choices=APPROVAL_STATUS_CHOICES, default='DRAFT')
+    approved_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='+')
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='created_requisitions')
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+# ---------------------------------------------------------------------------
+# InterviewScorecard — Phase 2 feature
+# ---------------------------------------------------------------------------
+
+class InterviewScorecard(models.Model):
+    RECOMMENDATION_CHOICES = [
+        ('STRONG_YES', 'Strong Yes'),
+        ('YES', 'Yes'),
+        ('MAYBE', 'Maybe'),
+        ('NO', 'No'),
+    ]
+    candidate = models.ForeignKey(Candidate, on_delete=models.CASCADE, related_name='scorecards')
+    round_name = models.CharField(max_length=150)
+    interviewer = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='given_interviews')
+    technical_score = models.PositiveSmallIntegerField(null=True, blank=True)
+    cultural_score = models.PositiveSmallIntegerField(null=True, blank=True)
+    recommendation = models.CharField(max_length=20, choices=RECOMMENDATION_CHOICES)
+    comments = models.TextField(blank=True)
+    interviewed_at = models.DateTimeField(null=True, blank=True)
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
