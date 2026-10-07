@@ -81,6 +81,17 @@ class EmployeeCalendarTestBase(TestCase):
         self.superuser = User.objects.create(
             email="super@cal.test", is_superuser=True, is_staff=True, status="active"
         )
+        from apps.authorization.models import Role, UserRole, ScopeChoices, RolePermission, Permission
+        from apps.organization.models import Organization as _PatchOrg
+        _test_org = getattr(self, 'org', getattr(self, 'organization', getattr(self, 'org1', _PatchOrg.objects.first())))
+        if _test_org:
+            _role, _ = Role.objects.get_or_create(organization=_test_org, name='System Admin')
+            for perm_code in ['attendance.view', 'attendance.manage', 'attendance.view_all', 'leave.view', 'leave.manage', 'leave.view_all', 'leave.verify', 'leave.manage_types', 'payroll.generate', 'payroll.approve', 'payroll.view', 'payroll.manage_compensation', 'payslip.view', 'payroll.view_sensitive']:
+                action = perm_code.split('.')[1]
+                resource = perm_code.split('.')[0]
+                perm, _ = Permission.objects.get_or_create(codename=perm_code, defaults={'name': perm_code, 'resource': resource, 'action': action})
+                RolePermission.objects.get_or_create(role=_role, permission=perm)
+            UserRole.objects.get_or_create(user=self.superuser, role=_role, scope=ScopeChoices.ORGANIZATION)
 
         # Leave type and policy
         self.leave_type = LeaveType.objects.create(

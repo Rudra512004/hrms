@@ -21,6 +21,12 @@ class AssetNotificationIntegrationTests(TransactionTestCase):
         self.employee = Employee.objects.create(user=self.user, employee_code='ASS01', organization=self.org)
 
         self.admin_user = User.objects.create_user(email='admin_asset@example.com', password='Password123!', status='active', is_superuser=True)
+        from apps.authorization.models import Role, UserRole, ScopeChoices
+        from apps.organization.models import Organization as _PatchOrg
+        _test_org = getattr(self, 'org', getattr(self, 'organization', getattr(self, 'org1', _PatchOrg.objects.first())))
+        if _test_org:
+            _role, _ = Role.objects.get_or_create(organization=_test_org, name='System Admin')
+            UserRole.objects.get_or_create(user=self.admin_user, role=_role, scope=ScopeChoices.ORGANIZATION)
 
         self.category = AssetCategory.objects.create(organization=self.org, name='Laptops', code='LAP')
         self.asset = Asset.objects.create(organization=self.org, category=self.category, asset_tag='LAP-001', name='Dell XPS', status='available')
@@ -61,3 +67,4 @@ class AssetNotificationIntegrationTests(TransactionTestCase):
         self.assertEqual(notif.notification_type, 'ASSET_RETURNED')
         self.assertEqual(notif.organization, self.org)
         self.assertIn('Dell XPS', notif.message)
+

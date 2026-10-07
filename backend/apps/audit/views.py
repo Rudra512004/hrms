@@ -16,13 +16,9 @@ class AuditLogViewSet(viewsets.ReadOnlyModelViewSet):
 
     def get_queryset(self):
         user = self.request.user
-        if user.is_superuser:
-            queryset = AuditLog.objects.all()
-            org_id = self.request.query_params.get('organization')
-            if org_id:
-                queryset = queryset.filter(organization_id=org_id)
-        elif hasattr(user, 'employee') and user.employee.organization_id:
-            queryset = AuditLog.objects.filter(organization_id=user.employee.organization_id)
+        org = AuthorizationService.get_primary_organization(user)
+        if org:
+            queryset = AuditLog.objects.filter(organization=org)
         else:
             return AuditLog.objects.none()
 

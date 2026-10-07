@@ -24,6 +24,13 @@ class CompensationHistory(models.Model):
         decimal_places=2,
         validators=[MinValueValidator(Decimal('0.00'))],
     )
+    ctc_annual = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        null=True, blank=True,
+    )
+    currency = models.CharField(max_length=10, default='INR')
+    notes = models.TextField(blank=True)
     created_by = models.ForeignKey(
         'accounts.User',
         on_delete=models.SET_NULL,

@@ -145,6 +145,9 @@ class WorkingCalendarIDORSecurityTests(TestCase):
         self.super_user = User.objects.create_superuser(
             email='superadmin@system.local', password='Password123!'
         )
+        role_super = Role.objects.create(organization=self.org_a, name='Super Admin Role')
+        RolePermission.objects.create(role=role_super, permission=self.perm_update)
+        UserRole.objects.create(user=self.super_user, role=role_super, scope=ScopeChoices.ORGANIZATION)
 
     # =========================================================================
     # TEST 1 — GET IDOR: Branch A user cannot GET Branch B's WorkingCalendar
@@ -307,13 +310,13 @@ class WorkingCalendarIDORSecurityTests(TestCase):
         self.cal_b.refresh_from_db()
         self.assertEqual(self.cal_b.work_days, '6,0,1,2,3')
 
-        # Super Admin list returns all calendars across all organizations
+        # Super Admin list returns all calendars in their organization (Org A)
         resp_list = self.client.get('/api/v1/organization/working-calendars/')
         self.assertEqual(resp_list.status_code, status.HTTP_200_OK)
         list_ids = [c['id'] for c in resp_list.data]
         self.assertIn(self.cal_a.id, list_ids)
         self.assertIn(self.cal_b.id, list_ids)
-        self.assertIn(self.cal_c.id, list_ids)
+        self.assertNotIn(self.cal_c.id, list_ids)  # Tenant isolation: Should not see Org B calendar
 
     # =========================================================================
     # TEST 7 — AUTHORIZED BRANCH A ACCESS (POSITIVE CONTROL)

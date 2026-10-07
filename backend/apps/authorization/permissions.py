@@ -27,6 +27,18 @@ class IsSuperAdmin(permissions.BasePermission):
     def has_permission(self, request, view):
         return bool(request.user and request.user.is_authenticated and request.user.is_superuser)
 
+    def has_object_permission(self, request, view, obj):
+        from apps.authorization.services import AuthorizationService
+        
+        # A superuser must STILL belong to the organization they are modifying.
+        user_org = AuthorizationService.get_primary_organization(request.user)
+            
+        target_org = getattr(obj, 'organization', None)
+        if hasattr(obj, '_meta') and obj._meta.model_name == 'organization':
+            target_org = obj
+            
+        return bool(user_org and target_org and user_org.id == target_org.id)
+
 class IsNetworkAllowed(permissions.BasePermission):
     message = "Network access denied. You must be on an office network or have an active WFH request."
 

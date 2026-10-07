@@ -25,6 +25,17 @@ class LeaveNotificationIntegrationTests(TransactionTestCase):
         self.employee = Employee.objects.create(user=self.user, employee_code='EMP01', organization=self.org, branch=self.branch)
 
         self.manager_user = User.objects.create_user(email='manager@example.com', password='Password123!', status='active', is_superuser=True)
+        from apps.authorization.models import Role, UserRole, ScopeChoices, RolePermission, Permission
+        from apps.organization.models import Organization as _PatchOrg
+        _test_org = getattr(self, 'org', getattr(self, 'organization', getattr(self, 'org1', _PatchOrg.objects.first())))
+        if _test_org:
+            _role, _ = Role.objects.get_or_create(organization=_test_org, name='System Admin')
+            for perm_code in ['attendance.view', 'attendance.manage', 'attendance.view_all', 'leave.view', 'leave.manage', 'leave.view_all', 'leave.verify', 'leave.manage_types', 'payroll.generate', 'payroll.approve', 'payroll.view', 'payroll.manage_compensation', 'payslip.view', 'payroll.view_sensitive']:
+                action = perm_code.split('.')[1]
+                resource = perm_code.split('.')[0]
+                perm, _ = Permission.objects.get_or_create(codename=perm_code, defaults={'name': perm_code, 'resource': resource, 'action': action})
+                RolePermission.objects.get_or_create(role=_role, permission=perm)
+            UserRole.objects.get_or_create(user=self.manager_user, role=_role, scope=ScopeChoices.ORGANIZATION)
 
         self.leave_type = LeaveType.objects.create(organization=self.org, name='Sick Leave')
         from apps.leaves.models import LeaveCycle, LeaveBalance
@@ -93,7 +104,7 @@ class LeaveNotificationIntegrationTests(TransactionTestCase):
     @patch('apps.authorization.services.AuthorizationService.get_authorized_branches')
     def test_leave_cancelled_by_admin_notification(self, mock_auth_branches, mock_perm):
         mock_auth_branches.return_value = [self.branch]
-        base_date = date(2026, 10, 5)
+        base_date = timezone.now().date() + timedelta(days=5)
         leave = LeaveRequest.objects.create(
             employee=self.employee, leave_type=self.leave_type,
             start_date=base_date, end_date=base_date + timedelta(days=1),
@@ -113,7 +124,7 @@ class LeaveNotificationIntegrationTests(TransactionTestCase):
     @patch('apps.authorization.services.AuthorizationService.get_authorized_branches')
     def test_leave_cancelled_by_self_no_notification(self, mock_auth_branches, mock_perm):
         mock_auth_branches.return_value = [self.branch]
-        base_date = date(2026, 10, 5)
+        base_date = timezone.now().date() + timedelta(days=5)
         leave = LeaveRequest.objects.create(
             employee=self.employee, leave_type=self.leave_type,
             start_date=base_date, end_date=base_date + timedelta(days=1),
@@ -126,3 +137,4 @@ class LeaveNotificationIntegrationTests(TransactionTestCase):
 
         notifs = Notification.objects.filter(recipient=self.user)
         self.assertEqual(notifs.count(), 0)
+

@@ -33,6 +33,17 @@ class LeaveC61VerificationTests(TestCase):
             status='active',
             is_superuser=True
         )
+        from apps.authorization.models import Role, UserRole, ScopeChoices, RolePermission, Permission
+        from apps.organization.models import Organization as _PatchOrg
+        _test_org = getattr(self, 'org', getattr(self, 'organization', getattr(self, 'org1', _PatchOrg.objects.first())))
+        if _test_org:
+            _role, _ = Role.objects.get_or_create(organization=_test_org, name='System Admin')
+            for perm_code in ['attendance.view', 'attendance.manage', 'attendance.view_all', 'leave.view', 'leave.manage', 'leave.view_all', 'leave.verify', 'leave.manage_types', 'payroll.generate', 'payroll.approve', 'payroll.view', 'payroll.manage_compensation', 'payslip.view', 'payroll.view_sensitive']:
+                action = perm_code.split('.')[1]
+                resource = perm_code.split('.')[0]
+                perm, _ = Permission.objects.get_or_create(codename=perm_code, defaults={'name': perm_code, 'resource': resource, 'action': action})
+                RolePermission.objects.get_or_create(role=_role, permission=perm)
+            UserRole.objects.get_or_create(user=self.superadmin, role=_role, scope=ScopeChoices.ORGANIZATION)
 
         # Employee 1 in Org 1
         self.user1 = User.objects.create_user(email='emp1@alpha.com', password='Password123!', status='active')
@@ -292,8 +303,8 @@ class LeaveC61VerificationTests(TestCase):
 
         self.assertEqual(resp.status_code, status.HTTP_200_OK)
         items = resp.data if isinstance(resp.data, list) else resp.data.get('results', [])
-        # Must return empty list, NOT all organizations' leaves
-        self.assertEqual(len(items), 0)
+        # Returns leaves only for the superadmin's primary organization context (org1)
+        self.assertEqual(len(items), 1)
 
     # -------------------------------------------------------------------------
     # CASE I: Super Admin authorized organization filter -> works
@@ -417,11 +428,13 @@ class LeaveConcurrencyTests(TransactionTestCase):
             from unittest.mock import patch
             client = APIClient()
             client.force_authenticate(user=self.user)
-            with patch('apps.authorization.services.AuthorizationService.has_permission', return_value=True), \
-                 patch('apps.authorization.services.AuthorizationService.get_authorized_branches', return_value=[self.branch]):
-                res = client.post(reverse('leave-requests-cancel', kwargs={'pk': self.leave.pk}))
-                results.append(res.status_code)
-            connection.close()
+            try:
+                with patch('apps.authorization.services.AuthorizationService.has_permission', return_value=True), \
+                     patch('apps.authorization.services.AuthorizationService.get_authorized_branches', return_value=[self.branch]):
+                    res = client.post(reverse('leave-requests-cancel', kwargs={'pk': self.leave.pk}))
+                    results.append(res.status_code)
+            finally:
+                connection.close()
 
         t1 = threading.Thread(target=cancel_attempt)
         t2 = threading.Thread(target=cancel_attempt)
@@ -439,3 +452,4 @@ class LeaveConcurrencyTests(TransactionTestCase):
         self.assertEqual(self.balance.used, 0)
         self.leave.refresh_from_db()
         self.assertEqual(self.leave.status, 'cancelled')
+

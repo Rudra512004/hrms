@@ -47,10 +47,10 @@ class NetworkAccessService:
         if not user.is_authenticated or not user.is_active:
             return False
 
-        if getattr(user, 'is_superuser', False):
+        ip = NetworkAccessService.get_client_ip(request)
+        if user.is_superuser:
             return True
 
-        ip = NetworkAccessService.get_client_ip(request)
         employee = getattr(user, 'employee', None)
         if not employee:
             # Tenant owners are headless administration accounts, not employees.

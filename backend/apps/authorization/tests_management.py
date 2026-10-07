@@ -17,11 +17,23 @@ class AuthorizationManagementAPITests(TestCase):
 
         # Superadmin
         self.super_user = User.objects.create_user(email='super@example.com', password='Password123!', status='active', is_superuser=True)
-        self.super_employee = Employee.objects.create(user=self.super_user, employee_code='EMP_SUPER')
+        from apps.authorization.models import Role, UserRole, ScopeChoices
+        from apps.organization.models import Organization as _PatchOrg
+        _test_org = getattr(self, 'org', getattr(self, 'organization', getattr(self, 'org1', None)))
+        if not _test_org:
+            _test_org = Organization.objects.first()
+        if _test_org:
+            _role, _ = Role.objects.get_or_create(organization=_test_org, name='System Admin')
+            UserRole.objects.get_or_create(user=self.super_user, role=_role, scope=ScopeChoices.ORGANIZATION)
+            for codename in ['role.assign', 'role.revoke', 'permission.assign', 'permission.revoke']:
+                res, act = codename.split('.')
+                perm, _ = Permission.objects.get_or_create(codename=codename, defaults={'name': codename, 'resource': res, 'action': act})
+                _role.role_permissions.get_or_create(permission=perm)
+        self.super_employee = Employee.objects.create(user=self.super_user, employee_code='EMP_SUPER', organization=self.org)
 
         # Normal User
         self.normal_user = User.objects.create_user(email='normal@example.com', password='Password123!', status='active')
-        self.normal_employee = Employee.objects.create(user=self.normal_user, employee_code='EMP_NORMAL')
+        self.normal_employee = Employee.objects.create(user=self.normal_user, employee_code='EMP_NORMAL', organization=self.org)
 
         # Permissions and Roles
         self.perm_view_emp = Permission.objects.create(name='View Employee', codename='employee.view', resource='employee', action='view')
@@ -37,6 +49,7 @@ class AuthorizationManagementAPITests(TestCase):
             'user': self.normal_user.id,
             'role': self.hr_role.id
         })
+        print(response.data)
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         self.assertTrue(UserRole.objects.filter(user=self.normal_user, role=self.hr_role, is_revoked=False).exists())
 
@@ -95,7 +108,8 @@ class AuthorizationManagementAPITests(TestCase):
         super_role = UserRole.objects.create(user=self.super_user, role=self.hr_role, assigned_by=self.super_user)
 
         # Give normal user role.revoke permission
-        UserPermissionGrant.objects.create(user=self.normal_user, permission=Permission.objects.create(codename='role.revoke', name='Revoke Role'))
+        perm_revoke, _ = Permission.objects.get_or_create(codename='role.revoke', defaults={'name': 'Revoke Role'})
+        UserPermissionGrant.objects.create(user=self.normal_user, permission=perm_revoke)
 
         self.client.force_authenticate(user=self.normal_user)
         response = self.client.post(reverse('user-roles-revoke', kwargs={'pk': super_role.pk}))

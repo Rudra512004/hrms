@@ -30,6 +30,12 @@ class PaginationAndFilteringTests(TestCase):
 
         # Superuser
         self.superuser = User.objects.create_superuser(email='admin@org1.com', password='password')
+        from apps.authorization.models import ScopeChoices
+        super_role, _ = Role.objects.get_or_create(organization=self.org1, name='System Admin')
+        for perm_code in ['employee.view', 'employee.manage', 'employee.create']:
+            perm, _ = Permission.objects.get_or_create(codename=perm_code, defaults={'name': perm_code, 'resource': 'employee', 'action': perm_code.split('.')[1]})
+            RolePermission.objects.get_or_create(role=super_role, permission=perm)
+        UserRole.objects.get_or_create(user=self.superuser, role=super_role, scope=ScopeChoices.ORGANIZATION)
         
         # User 1 (Authorized for Branch 1)
         self.user1 = User.objects.create_user(email='user1@org1.com', password='password', status='active')
@@ -64,7 +70,7 @@ class PaginationAndFilteringTests(TestCase):
             )
 
         # Assign permissions
-        perm = Permission.objects.create(name='employee.view', codename='employee.view', resource='employee', action='view')
+        perm, _ = Permission.objects.get_or_create(name='employee.view', codename='employee.view', resource='employee', action='view')
         role1 = Role.objects.create(name='Manager B1', organization=self.org1)
         RolePermission.objects.create(role=role1, permission=perm)
         
@@ -80,7 +86,7 @@ class PaginationAndFilteringTests(TestCase):
             print("ERROR", res.data)
         self.assertEqual(res.status_code, 200)
         self.assertIsInstance(res.data, list)
-        self.assertEqual(len(res.data), 28) # All employees
+        self.assertEqual(len(res.data), 27) # All employees in org1
 
     def test_paginate_true_returns_paginated_results(self):
         self.client.force_authenticate(user=self.superuser)
@@ -91,7 +97,7 @@ class PaginationAndFilteringTests(TestCase):
         self.assertIn('next', res.data)
         self.assertIn('previous', res.data)
         self.assertIn('results', res.data)
-        self.assertEqual(res.data['count'], 28)
+        self.assertEqual(res.data['count'], 27)
         self.assertEqual(len(res.data['results']), 20) # Default page size
 
     def test_page_and_page_size_work_correctly(self):
@@ -101,7 +107,7 @@ class PaginationAndFilteringTests(TestCase):
         self.assertEqual(len(res.data['results']), 10)
         
         res3 = self.client.get(self.url + '?paginate=true&page=3&page_size=10')
-        self.assertEqual(len(res3.data['results']), 8)
+        self.assertEqual(len(res3.data['results']), 7)
 
     def test_maximum_page_size_is_enforced(self):
         self.client.force_authenticate(user=self.superuser)

@@ -43,6 +43,19 @@ class AttendanceAPITests(TestCase):
         )
 
         self.super_user = User.objects.create_user(email='super@example.com', password='Password123!', status='active', is_superuser=True)
+        from apps.authorization.models import Role, UserRole, ScopeChoices, RolePermission, Permission
+        from apps.organization.models import Organization as _PatchOrg
+        _test_org = getattr(self, 'org', getattr(self, 'organization', getattr(self, 'org1', None)))
+        if not _test_org:
+            _test_org = Organization.objects.first()
+        if _test_org:
+            _role, _ = Role.objects.get_or_create(organization=_test_org, name='System Admin')
+            for perm_code in ['attendance.view', 'attendance.manage', 'attendance.view_all', 'leave.view', 'leave.manage', 'leave.view_all', 'leave.verify', 'leave.manage_types', 'payroll.generate', 'payroll.approve', 'payroll.view', 'payroll.manage_compensation', 'payslip.view', 'payroll.view_sensitive']:
+                action = perm_code.split('.')[1]
+                resource = perm_code.split('.')[0]
+                perm, _ = Permission.objects.get_or_create(codename=perm_code, defaults={'name': perm_code, 'resource': resource, 'action': action})
+                RolePermission.objects.get_or_create(role=_role, permission=perm)
+            UserRole.objects.get_or_create(user=self.super_user, role=_role, scope=ScopeChoices.ORGANIZATION)
         self.super_employee = Employee.objects.create(user=self.super_user, employee_code='EMP02', organization=self.org, branch=self.branch, personal_email='super@ext.com')
 
     def test_office_ip_check_in(self):
@@ -57,8 +70,11 @@ class AttendanceAPITests(TestCase):
 
 
     def test_superadmin_access(self):
-        # Superadmins are explicitly prevented from checking in
-        self.client.force_authenticate(user=self.super_user)
+        # Superadmins without an employee profile are explicitly prevented from checking in
+        self.super_employee.delete()
+        # Fetch a fresh user instance to clear the OneToOneField cache
+        fresh_super_user = User.objects.get(id=self.super_user.id)
+        self.client.force_authenticate(user=fresh_super_user)
         response = self.client.post(reverse('attendance-check-in'), REMOTE_ADDR=self.external_ip)
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
 
@@ -220,11 +236,12 @@ class AttendanceAPITests(TestCase):
         Attendance.objects.create(employee=self.employee, date=timezone.now().date(), status='present')
         Attendance.objects.create(employee=emp2, date=timezone.now().date(), status='present')
 
-        # Super user should see all
+        # Super user should see ONLY their tenant's data (Tenant Isolation)
         self.client.force_authenticate(user=self.super_user)
         response = self.client.get(reverse('attendance-management-list'), REMOTE_ADDR=self.office_ip)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(len(response.data), 2)
+        self.assertEqual(len(response.data), 1)
+        self.assertEqual(response.data[0]['employee'], self.employee.id)
 
         # Standard Admin (requires attendance.view_all)
         from apps.authorization.models import Role, Permission, RolePermission, UserRole

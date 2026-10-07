@@ -20,8 +20,7 @@ class AttendanceViewSet(viewsets.GenericViewSet):
     def _validate_location(self, request, employee):
         from apps.authorization.network import NetworkAccessService
 
-        if getattr(request.user, 'is_superuser', False):
-            return None # Superusers bypass location restrictions
+        pass # Superusers bypass removed
 
         # Determine Attendance Policy
         # Using getattr to safely handle case where branch lacks a policy (fallback to strict defaults)
@@ -81,7 +80,7 @@ class AttendanceViewSet(viewsets.GenericViewSet):
 
     def get_queryset(self):
         user = self.request.user
-        if not user.is_superuser and hasattr(user, 'employee'):
+        if hasattr(user, 'employee'):
             return Attendance.objects.filter(employee=user.employee)
         return Attendance.objects.none()
 
@@ -92,7 +91,7 @@ class AttendanceViewSet(viewsets.GenericViewSet):
 
     @action(detail=False, methods=['post'], url_path='check-in')
     def check_in(self, request):
-        if request.user.is_superuser or not hasattr(request.user, 'employee'):
+        if not hasattr(request.user, 'employee'):
             return Response({'detail': 'Employee profile not found.'}, status=status.HTTP_404_NOT_FOUND)
 
         employee = request.user.employee
@@ -140,7 +139,7 @@ class AttendanceViewSet(viewsets.GenericViewSet):
 
     @action(detail=False, methods=['post'], url_path='check-out')
     def check_out(self, request):
-        if request.user.is_superuser or not hasattr(request.user, 'employee'):
+        if not hasattr(request.user, 'employee'):
             return Response({'detail': 'Employee profile not found.'}, status=status.HTTP_404_NOT_FOUND)
 
         employee = request.user.employee
@@ -200,7 +199,7 @@ class AttendanceViewSet(viewsets.GenericViewSet):
 
     @action(detail=False, methods=['post'], url_path='start-break')
     def start_break(self, request):
-        if request.user.is_superuser or not hasattr(request.user, 'employee'):
+        if not hasattr(request.user, 'employee'):
             return Response({'detail': 'Employee profile not found.'}, status=status.HTTP_404_NOT_FOUND)
 
         employee = request.user.employee
@@ -254,7 +253,7 @@ class AttendanceViewSet(viewsets.GenericViewSet):
 
     @action(detail=False, methods=['post'], url_path='end-break')
     def end_break(self, request):
-        if request.user.is_superuser or not hasattr(request.user, 'employee'):
+        if not hasattr(request.user, 'employee'):
             return Response({'detail': 'Employee profile not found.'}, status=status.HTTP_404_NOT_FOUND)
 
         employee = request.user.employee
@@ -308,19 +307,14 @@ class AttendanceManagementViewSet(viewsets.GenericViewSet):
     def get_queryset(self):
         user = self.request.user
         qs = Attendance.objects.all()
-        if user.is_superuser:
-            pass
-        elif hasattr(user, 'employee') and user.employee:
-            from apps.authorization.services import AuthorizationService
-            authorized_branches = AuthorizationService.get_authorized_branches(user, 'attendance.view_all')
-            authorized_teams = AuthorizationService.get_authorized_teams(user, 'attendance.view_all')
+        from apps.authorization.services import AuthorizationService
+        authorized_branches = AuthorizationService.get_authorized_branches(user, 'attendance.view_all')
+        authorized_teams = AuthorizationService.get_authorized_teams(user, 'attendance.view_all')
 
-            qs = qs.filter(
-                Q(employee__branch__in=authorized_branches) |
-                Q(employee__team__in=authorized_teams)
-            )
-        else:
-            return Attendance.objects.none()
+        qs = qs.filter(
+            Q(employee__branch__in=authorized_branches) |
+            Q(employee__team__in=authorized_teams)
+        )
 
         branch_id = self.request.query_params.get('branch_id')
         if branch_id:
@@ -367,30 +361,30 @@ class AttendanceManagementViewSet(viewsets.GenericViewSet):
         except (Employee.DoesNotExist, ValueError):
             return Response({'detail': 'Employee not found.'}, status=status.HTTP_404_NOT_FOUND)
 
-        if not user.is_superuser:
-            caller_emp = getattr(user, 'employee', None)
-            if not caller_emp or target_emp.organization_id != caller_emp.organization_id:
-                return Response({'detail': 'Cross-organization modification forbidden.'}, status=status.HTTP_403_FORBIDDEN)
-            from apps.authorization.services import AuthorizationService
-            auth_branches = AuthorizationService.get_authorized_branches(user, 'attendance.view_all')
-            auth_teams = AuthorizationService.get_authorized_teams(user, 'attendance.view_all')
+        from apps.authorization.services import AuthorizationService
+        org = AuthorizationService.get_primary_organization(user)
+        if not org or target_emp.organization_id != org.id:
+            return Response({'detail': 'Cross-organization modification forbidden.'}, status=status.HTTP_403_FORBIDDEN)
+        from apps.authorization.services import AuthorizationService
+        auth_branches = AuthorizationService.get_authorized_branches(user, 'attendance.view_all')
+        auth_teams = AuthorizationService.get_authorized_teams(user, 'attendance.view_all')
 
-            is_branch_auth = False
-            if target_emp.branch_id:
-                if hasattr(auth_branches, 'filter'):
-                    is_branch_auth = auth_branches.filter(id=target_emp.branch_id).exists()
-                else:
-                    is_branch_auth = any(str(getattr(b, 'id', b)) == str(target_emp.branch_id) for b in auth_branches)
+        is_branch_auth = False
+        if target_emp.branch_id:
+            if hasattr(auth_branches, 'filter'):
+                is_branch_auth = auth_branches.filter(id=target_emp.branch_id).exists()
+            else:
+                is_branch_auth = any(str(getattr(b, 'id', b)) == str(target_emp.branch_id) for b in auth_branches)
 
-            is_team_auth = False
-            if target_emp.team_id:
-                if hasattr(auth_teams, 'filter'):
-                    is_team_auth = auth_teams.filter(id=target_emp.team_id).exists()
-                else:
-                    is_team_auth = any(str(getattr(t, 'id', t)) == str(target_emp.team_id) for t in auth_teams)
+        is_team_auth = False
+        if target_emp.team_id:
+            if hasattr(auth_teams, 'filter'):
+                is_team_auth = auth_teams.filter(id=target_emp.team_id).exists()
+            else:
+                is_team_auth = any(str(getattr(t, 'id', t)) == str(target_emp.team_id) for t in auth_teams)
 
-            if not (is_branch_auth or is_team_auth):
-                return Response({'detail': 'You do not have permission to adjust attendance for this employee.'}, status=status.HTTP_403_FORBIDDEN)
+        if not (is_branch_auth or is_team_auth):
+            return Response({'detail': 'You do not have permission to adjust attendance for this employee.'}, status=status.HTTP_403_FORBIDDEN)
 
         from django.utils.dateparse import parse_date, parse_datetime
         from datetime import datetime
@@ -484,15 +478,10 @@ class HolidayViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         user = self.request.user
         qs = Holiday.objects.all()
-        if user.is_superuser:
-            pass
-        elif hasattr(user, 'employee') and user.employee:
-            from apps.authorization.services import AuthorizationService
-            perm = 'holiday.view' if self.action in ['list', 'retrieve'] else 'holiday.manage'
-            authorized_branches = AuthorizationService.get_authorized_branches(user, perm)
-            qs = qs.filter(branch__in=authorized_branches)
-        else:
-            return Holiday.objects.none()
+        from apps.authorization.services import AuthorizationService
+        perm = 'holiday.view' if self.action in ['list', 'retrieve'] else 'holiday.manage'
+        authorized_branches = AuthorizationService.get_authorized_branches(user, perm)
+        qs = qs.filter(branch__in=authorized_branches)
 
         branch_id = self.request.query_params.get('branch_id')
         if branch_id:
@@ -512,37 +501,36 @@ class HolidayViewSet(viewsets.ModelViewSet):
         if not branch:
             raise ValidationError({"branch": "Branch is required."})
         user = self.request.user
-        if not user.is_superuser:
-            if hasattr(user, 'employee') and user.employee and branch.organization_id != user.employee.organization_id:
-                raise ValidationError({"branch": "Cannot create holiday for another organization."})
-            from apps.authorization.services import AuthorizationService
-            if not AuthorizationService.has_permission(user, 'holiday.manage', branch.id):
-                raise ValidationError({"branch": "You do not have permission to manage holidays for this branch."})
+        from apps.authorization.services import AuthorizationService
+        org = AuthorizationService.get_primary_organization(user)
+        if not org or branch.organization_id != org.id:
+            raise ValidationError({"branch": "Cannot create holiday for another organization."})
+        if not AuthorizationService.has_permission(user, 'holiday.manage', branch.id):
+            raise ValidationError({"branch": "You do not have permission to manage holidays for this branch."})
         serializer.save()
 
     def perform_update(self, serializer):
         from rest_framework.exceptions import ValidationError
         instance = serializer.instance
         user = self.request.user
-        if not user.is_superuser:
-            from apps.authorization.services import AuthorizationService
-            if not AuthorizationService.has_permission(user, 'holiday.manage', instance.branch_id):
-                raise ValidationError({"branch": "You do not have permission to manage holidays for this branch."})
-            target_branch = serializer.validated_data.get('branch')
-            if target_branch and target_branch != instance.branch:
-                if hasattr(user, 'employee') and user.employee and target_branch.organization_id != user.employee.organization_id:
-                    raise ValidationError({"branch": "Cannot move holiday to another organization."})
-                if not AuthorizationService.has_permission(user, 'holiday.manage', target_branch.id):
-                    raise ValidationError({"branch": "You do not have permission to manage holidays for the target branch."})
+        from apps.authorization.services import AuthorizationService
+        if not AuthorizationService.has_permission(user, 'holiday.manage', instance.branch_id):
+            raise ValidationError({"branch": "You do not have permission to manage holidays for this branch."})
+        target_branch = serializer.validated_data.get('branch')
+        if target_branch and target_branch != instance.branch:
+            org = AuthorizationService.get_primary_organization(user)
+            if not org or target_branch.organization_id != org.id:
+                raise ValidationError({"branch": "Cannot move holiday to another organization."})
+            if not AuthorizationService.has_permission(user, 'holiday.manage', target_branch.id):
+                raise ValidationError({"branch": "You do not have permission to manage holidays for the target branch."})
         serializer.save()
 
     def perform_destroy(self, instance):
         from rest_framework.exceptions import ValidationError
         user = self.request.user
-        if not user.is_superuser:
-            from apps.authorization.services import AuthorizationService
-            if not AuthorizationService.has_permission(user, 'holiday.manage', instance.branch_id):
-                raise ValidationError({"branch": "You do not have permission to delete holidays for this branch."})
+        from apps.authorization.services import AuthorizationService
+        if not AuthorizationService.has_permission(user, 'holiday.manage', instance.branch_id):
+            raise ValidationError({"branch": "You do not have permission to delete holidays for this branch."})
         instance.delete()
 
 class ShiftViewSet(viewsets.ModelViewSet):
@@ -551,15 +539,10 @@ class ShiftViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         user = self.request.user
         qs = Shift.objects.all()
-        if user.is_superuser:
-            pass
-        elif hasattr(user, 'employee') and user.employee:
-            from apps.authorization.services import AuthorizationService
-            perm = 'shift.view' if self.action in ['list', 'retrieve'] else 'shift.manage'
-            authorized_branches = AuthorizationService.get_authorized_branches(user, perm)
-            qs = qs.filter(branch__in=authorized_branches)
-        else:
-            return Shift.objects.none()
+        from apps.authorization.services import AuthorizationService
+        perm = 'shift.view' if self.action in ['list', 'retrieve'] else 'shift.manage'
+        authorized_branches = AuthorizationService.get_authorized_branches(user, perm)
+        qs = qs.filter(branch__in=authorized_branches)
 
         branch_id = self.request.query_params.get('branch_id')
         if branch_id:
@@ -579,35 +562,34 @@ class ShiftViewSet(viewsets.ModelViewSet):
         if not branch:
             raise ValidationError({"branch": "Branch is required."})
         user = self.request.user
-        if not user.is_superuser:
-            if hasattr(user, 'employee') and user.employee and branch.organization_id != user.employee.organization_id:
-                raise ValidationError({"branch": "Cannot create shift for another organization."})
-            from apps.authorization.services import AuthorizationService
-            if not AuthorizationService.has_permission(user, 'shift.manage', branch.id):
-                raise ValidationError({"branch": "You do not have permission to manage shifts for this branch."})
+        from apps.authorization.services import AuthorizationService
+        org = AuthorizationService.get_primary_organization(user)
+        if not org or branch.organization_id != org.id:
+            raise ValidationError({"branch": "Cannot create shift for another organization."})
+        if not AuthorizationService.has_permission(user, 'shift.manage', branch.id):
+            raise ValidationError({"branch": "You do not have permission to manage shifts for this branch."})
         serializer.save()
 
     def perform_update(self, serializer):
         from rest_framework.exceptions import ValidationError
         instance = serializer.instance
         user = self.request.user
-        if not user.is_superuser:
-            from apps.authorization.services import AuthorizationService
-            if not AuthorizationService.has_permission(user, 'shift.manage', instance.branch_id):
-                raise ValidationError({"branch": "You do not have permission to manage shifts for this branch."})
-            target_branch = serializer.validated_data.get('branch')
-            if target_branch and target_branch != instance.branch:
-                if hasattr(user, 'employee') and user.employee and target_branch.organization_id != user.employee.organization_id:
-                    raise ValidationError({"branch": "Cannot move shift to another organization."})
-                if not AuthorizationService.has_permission(user, 'shift.manage', target_branch.id):
-                    raise ValidationError({"branch": "You do not have permission to manage shifts for the target branch."})
+        from apps.authorization.services import AuthorizationService
+        if not AuthorizationService.has_permission(user, 'shift.manage', instance.branch_id):
+            raise ValidationError({"branch": "You do not have permission to manage shifts for this branch."})
+        target_branch = serializer.validated_data.get('branch')
+        if target_branch and target_branch != instance.branch:
+            org = AuthorizationService.get_primary_organization(user)
+            if not org or target_branch.organization_id != org.id:
+                raise ValidationError({"branch": "Cannot move shift to another organization."})
+            if not AuthorizationService.has_permission(user, 'shift.manage', target_branch.id):
+                raise ValidationError({"branch": "You do not have permission to manage shifts for the target branch."})
         serializer.save()
 
     def perform_destroy(self, instance):
         from rest_framework.exceptions import ValidationError
         user = self.request.user
-        if not user.is_superuser:
-            from apps.authorization.services import AuthorizationService
-            if not AuthorizationService.has_permission(user, 'shift.manage', instance.branch_id):
-                raise ValidationError({"branch": "You do not have permission to delete shifts for this branch."})
+        from apps.authorization.services import AuthorizationService
+        if not AuthorizationService.has_permission(user, 'shift.manage', instance.branch_id):
+            raise ValidationError({"branch": "You do not have permission to delete shifts for this branch."})
         instance.delete()

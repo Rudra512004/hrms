@@ -88,7 +88,7 @@ class C63ModelValidationTests(TestCase):
         # Should not raise validation error
         cycle2.clean()
         cycle2.save()
-        self.assertEqual(LeaveCycle.objects.count(), 2)
+        self.assertEqual(LeaveCycle.objects.filter(name__startswith="Cycle").count(), 2)
 
     def test_leave_balance_operational_invariant(self):
         from apps.employees.models import Employee

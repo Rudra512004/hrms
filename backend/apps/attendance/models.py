@@ -24,7 +24,6 @@ class Attendance(models.Model):
     check_out_longitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
     check_out_accuracy = models.FloatField(null=True, blank=True)
     total_break_duration = models.DurationField(null=True, blank=True)
-    productive_work_duration = models.DurationField(null=True, blank=True)
     is_late = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -33,8 +32,53 @@ class Attendance(models.Model):
         unique_together = ('employee', 'date')
         ordering = ['-date', '-check_in']
 
+    @property
+    def productive_work_duration(self):
+        try:
+            return self.productivity.productive_duration
+        except:
+            return getattr(self, '_unsaved_productive_work_duration', None)
+
+    @productive_work_duration.setter
+    def productive_work_duration(self, value):
+        if not getattr(self, 'id', None):
+            self._unsaved_productive_work_duration = value
+        else:
+            from .models import AttendanceProductivity
+            prod, _ = AttendanceProductivity.objects.get_or_create(attendance=self)
+            prod.productive_duration = value
+            prod.save(update_fields=['productive_duration'])
+
+    def save(self, *args, **kwargs):
+        super().save(*args, **kwargs)
+        val = getattr(self, '_unsaved_productive_work_duration', None)
+        if val is not None:
+            from .models import AttendanceProductivity
+            prod, _ = AttendanceProductivity.objects.get_or_create(attendance=self)
+            prod.productive_duration = val
+            prod.save(update_fields=['productive_duration'])
+            self._unsaved_productive_work_duration = None
+
     def __str__(self):
         return f"{self.employee} - {self.date}"
+
+class AttendanceProductivity(models.Model):
+    attendance = models.OneToOneField(Attendance, on_delete=models.CASCADE, related_name='productivity')
+    online_duration = models.DurationField(null=True, blank=True)
+    active_duration = models.DurationField(null=True, blank=True)
+    idle_duration = models.DurationField(null=True, blank=True)
+    productive_duration = models.DurationField(null=True, blank=True)
+    unproductive_duration = models.DurationField(null=True, blank=True)
+    neutral_duration = models.DurationField(null=True, blank=True)
+    active_percent = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
+    mouse_clicks = models.PositiveIntegerField(null=True, blank=True)
+    key_presses = models.PositiveIntegerField(null=True, blank=True)
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"Productivity for {self.attendance}"
 
 class AttendanceBreak(models.Model):
     attendance = models.ForeignKey(Attendance, on_delete=models.CASCADE, related_name='breaks')
@@ -96,6 +140,9 @@ class Holiday(models.Model):
     branch = models.ForeignKey('organization.Branch', on_delete=models.CASCADE, related_name='holidays')
     name = models.CharField(max_length=255)
     date = models.DateField()
+    holiday_type = models.CharField(max_length=50, blank=True)
+    description = models.TextField(blank=True)
+    is_recurring = models.BooleanField(default=False)
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -110,6 +157,7 @@ class Holiday(models.Model):
 class Shift(models.Model):
     branch = models.ForeignKey('organization.Branch', on_delete=models.CASCADE, related_name='shifts')
     name = models.CharField(max_length=255)
+    code = models.CharField(max_length=50, null=True, blank=True)
     start_time = models.TimeField()
     end_time = models.TimeField()
     grace_period = models.DurationField(null=True, blank=True, help_text="Allowed late check-in grace period")
@@ -121,7 +169,7 @@ class Shift(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
-        unique_together = ('branch', 'name')
+        unique_together = [('branch', 'name'), ('branch', 'code')]
         ordering = ['start_time']
 
     def __str__(self):

@@ -22,8 +22,9 @@ class AssetCategorySerializer(serializers.ModelSerializer):
 
     def validate(self, attrs):
         request = self.context.get('request')
-        org = getattr(request.user.employee, 'organization', None) if hasattr(request.user, 'employee') else None
-        if not org and not request.user.is_superuser:
+        from apps.authorization.services import AuthorizationService
+        org = AuthorizationService.get_primary_organization(request.user)
+        if not org:
             raise serializers.ValidationError("User has no associated organization.")
 
         target_org = org or self.instance.organization if self.instance else org
@@ -144,18 +145,20 @@ class AssetCreateUpdateSerializer(serializers.ModelSerializer):
 
     def validate_category(self, value):
         request = self.context.get('request')
-        if not request.user.is_superuser and hasattr(request.user, 'employee'):
-            if value.organization_id != request.user.employee.organization_id:
-                raise serializers.ValidationError("Category does not belong to your organization.")
+        from apps.authorization.services import AuthorizationService
+        org = AuthorizationService.get_primary_organization(request.user)
+        if org and value.organization_id != org.id:
+            raise serializers.ValidationError("Category does not belong to your organization.")
         return value
 
     def validate_branch(self, value):
         if value is None:
             return value
         request = self.context.get('request')
-        if not request.user.is_superuser and hasattr(request.user, 'employee'):
-            if value.organization_id != request.user.employee.organization_id:
-                raise serializers.ValidationError("Branch does not belong to your organization.")
+        from apps.authorization.services import AuthorizationService
+        org = AuthorizationService.get_primary_organization(request.user)
+        if org and value.organization_id != org.id:
+            raise serializers.ValidationError("Branch does not belong to your organization.")
         return value
 
 

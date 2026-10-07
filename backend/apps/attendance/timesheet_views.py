@@ -12,13 +12,14 @@ from .models import TimesheetPolicy,Project,Timesheet,TimeEntry
 from .serializers import TimesheetPolicySerializer,ProjectSerializer,TimesheetSerializer,TimeEntrySerializer
 
 def org(user):
- e=getattr(user,'employee',None); return e.organization if e and e.organization_id else None
+ from apps.authorization.services import AuthorizationService
+ return AuthorizationService.get_primary_organization(user)
 class TimesheetPolicyViewSet(viewsets.GenericViewSet):
  serializer_class=TimesheetPolicySerializer
  def get_permissions(self):return [IsAuthenticated(),require_permission('attendance.view_all' if self.action in ['retrieve','current'] and self.request.method=='GET' else 'shift.manage')()]
  def retrieve(self,request,pk=None):
   o=org(request.user)
-  if request.user.is_superuser and pk: from apps.organization.models import Organization; o=Organization.objects.get(pk=pk)
+  pass
   if not o: raise ValidationError({'organization':'Organization context is required.'})
   policy,_=TimesheetPolicy.objects.get_or_create(organization=o);return Response(self.get_serializer(policy).data)
  def update(self,request,pk=None):
@@ -42,7 +43,8 @@ class ProjectViewSet(viewsets.ModelViewSet):
   # restricted to scheduling administrators.
   return [IsAuthenticated()] if self.action in ['list','retrieve'] else [IsAuthenticated(),require_permission('shift.manage')()]
  def get_queryset(self):
-  return Project.objects.all() if self.request.user.is_superuser else Project.objects.filter(organization=org(self.request.user))
+  o=org(self.request.user)
+  return Project.objects.filter(organization=o) if o else Project.objects.none()
  def perform_create(self,s):
   o=org(self.request.user)
   if not o:raise ValidationError({'organization':'Organization context is required.'})
@@ -51,7 +53,7 @@ class TimesheetViewSet(viewsets.ModelViewSet):
  serializer_class=TimesheetSerializer
  def get_queryset(self):
   u=self.request.user
-  if u.is_superuser:return Timesheet.objects.all().select_related('employee__user')
+  pass
   e=getattr(u,'employee',None)
   if not e:return Timesheet.objects.none()
   scoped=Timesheet.objects.filter(employee__organization=e.organization).select_related('employee__user').prefetch_related('entries__project')
@@ -79,10 +81,9 @@ class TimesheetViewSet(viewsets.ModelViewSet):
  def review(self,request,pk=None):
   if not require_permission('attendance.view_all')().has_permission(request,self):raise PermissionDenied()
   qs=Timesheet.objects.select_related('employee__user','employee__organization')
-  if not request.user.is_superuser:
-   organization=org(request.user)
-   if not organization:raise PermissionDenied()
-   qs=qs.filter(employee__organization=organization)
+  organization=org(request.user)
+  if not organization:raise PermissionDenied()
+  qs=qs.filter(employee__organization=organization)
   try:x=qs.get(pk=pk)
   except Timesheet.DoesNotExist:raise ValidationError({'detail':'Timesheet not found in your organization.'})
   decision=request.data.get('decision');

@@ -23,10 +23,17 @@ class OrganizationAPITests(TestCase):
             RolePermission.objects.create(role=self.role, permission=perm)
 
     def test_create_organization(self):
+        # test that OrganizationSetupViewSet correctly creates an organization
+        # and assigns the user the owner role scoped to it.
+        self.user.is_superuser = True
+        self.user.save()
         self.client.force_authenticate(user=self.user)
-        response = self.client.post(reverse('organization-list'), {'name': 'New Org', 'status': 'active'})
+        response = self.client.post(reverse('setup-list'), {'name': 'New Org', 'status': 'active', 'branches': [{'name': 'HQ', 'radius': 100}], 'working_calendar': {'work_days': '1,2,3,4,5'}, 'attendance_policy': {'is_office_gps_enabled': True, 'is_office_ip_enabled': False, 'is_wfh_enabled': False, 'wfh_bypasses_office_restrictions': True}}, format='json')
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         self.assertEqual(Organization.objects.count(), 2)
+        # Check that the user is now the owner of the new organization
+        new_org = Organization.objects.get(name='New Org')
+        self.assertTrue(UserRole.objects.filter(user=self.user, role__organization=new_org).exists())
 
     def test_create_department(self):
         from apps.organization.models import Branch

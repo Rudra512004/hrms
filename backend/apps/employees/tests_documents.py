@@ -257,6 +257,16 @@ class EmployeeDocumentTests(TestCase):
     def test_14b_superadmin_without_employee_can_list_administrative_documents(self):
         # Create a pure super admin
         superadmin = User.objects.create_user(email='pure_super@admin.com', password='pw', is_superuser=True, status='active')
+        from apps.authorization.models import Role, UserRole, ScopeChoices, RolePermission, Permission
+        from apps.organization.models import Organization as _PatchOrg
+        _test_org = getattr(self, 'org', getattr(self, 'organization', getattr(self, 'org1', None)))
+        if not _test_org:
+            _test_org = Organization.objects.first()
+        if _test_org:
+            _role, _ = Role.objects.get_or_create(organization=_test_org, name='System Admin')
+            _perm, _ = Permission.objects.get_or_create(codename='employee.document.view')
+            RolePermission.objects.get_or_create(role=_role, permission=_perm)
+            UserRole.objects.get_or_create(user=superadmin, role=_role, scope=ScopeChoices.ORGANIZATION)
         client = auth_client(superadmin)
         response = client.get(LIST_URL)
         # Super admin should be able to view documents administratively, 200 OK.

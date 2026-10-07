@@ -480,7 +480,7 @@ class AuditAPIPermissionTests(TestCase):
         self.normal_user.save()
 
         AuditLog.objects.create(
-            actor=self.super_user, action='test_action', target_type='user', target_id='1'
+            organization=self.org, actor=self.super_user, action='test_action', target_type='user', target_id='1'
         )
 
     def test_superadmin_can_read_audit_logs(self):

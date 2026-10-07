@@ -33,8 +33,14 @@ class AttendancePaginationTests(TestCase):
         self.dept2 = Department.objects.create(branch=self.branch2, name='Design')
         self.team2 = Team.objects.create(department=self.dept2, name='UI')
 
-        # Superuser
+        # Superuser (Must be tenant-scoped to org1)
         self.superuser = User.objects.create_superuser(email='super@att.com', password='password123')
+        from apps.authorization.models import Role, UserRole, ScopeChoices, RolePermission, Permission
+        super_role, _ = Role.objects.get_or_create(organization=self.org1, name='System Admin')
+        for perm_code in ['attendance.view', 'attendance.manage', 'attendance.view_all']:
+            perm, _ = Permission.objects.get_or_create(codename=perm_code, defaults={'name': perm_code, 'resource': 'attendance', 'action': perm_code.split('.')[1]})
+            RolePermission.objects.get_or_create(role=super_role, permission=perm)
+        UserRole.objects.create(user=self.superuser, role=super_role, scope=ScopeChoices.ORGANIZATION)
 
         # Authorized Manager for Branch 1
         self.manager_user = User.objects.create_user(email='manager@att.com', password='password123', status='active')

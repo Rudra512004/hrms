@@ -20,6 +20,14 @@ class EmployeeNotificationIntegrationTests(TransactionTestCase):
         self.employee = Employee.objects.create(user=self.user, employee_code='EMP01', organization=self.org)
 
         self.admin_user = User.objects.create_user(email='admin_emp@example.com', password='Password123!', status='active', is_superuser=True)
+        from apps.authorization.models import Role, UserRole, ScopeChoices
+        from apps.organization.models import Organization as _PatchOrg
+        _test_org = getattr(self, 'org', getattr(self, 'organization', getattr(self, 'org1', None)))
+        if not _test_org:
+            _test_org = Organization.objects.first()
+        if _test_org:
+            _role, _ = Role.objects.get_or_create(organization=_test_org, name='System Admin')
+            UserRole.objects.get_or_create(user=self.admin_user, role=_role, scope=ScopeChoices.ORGANIZATION)
 
         self.branch = Branch.objects.create(organization=self.org, name='Main Branch', radius=100)
         self.department = Department.objects.create(branch=self.branch, name='Engineering')

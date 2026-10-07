@@ -540,6 +540,18 @@ class PayrollWorkflowRegressionTest(TestCase):
             status='active',
             is_superuser=True,
         )
+        from apps.authorization.models import Role, UserRole, ScopeChoices
+        from apps.organization.models import Organization as _PatchOrg
+        _test_org = getattr(self, 'org', getattr(self, 'organization', getattr(self, 'org1', _PatchOrg.objects.first())))
+        if _test_org:
+            _role, _ = Role.objects.get_or_create(organization=_test_org, name='System Admin')
+            UserRole.objects.get_or_create(user=self.superadmin, role=_role, scope=ScopeChoices.ORGANIZATION)
+            from apps.authorization.models import Permission, RolePermission
+            for perm_code in ['attendance.view', 'attendance.manage', 'attendance.view_all', 'leave.view', 'leave.manage', 'leave.view_all', 'leave.verify', 'leave_type.manage', 'payroll.generate', 'payroll.approve', 'payroll.view', 'payroll.manage_compensation', 'payslip.view', 'payroll.view_sensitive', 'payroll.view_reports']:
+                action = perm_code.split('.')[1]
+                resource = perm_code.split('.')[0]
+                perm, _ = Permission.objects.get_or_create(codename=perm_code, defaults={'name': perm_code, 'resource': resource, 'action': action})
+                RolePermission.objects.get_or_create(role=_role, permission=perm)
         # Normal employee with user and compensation
         self.emp_user = User.objects.create_user(
             email='reg_emp@company.com',
@@ -582,6 +594,7 @@ class PayrollWorkflowRegressionTest(TestCase):
 
     def test_superuser_complete_payroll_flow(self):
         self.client.force_authenticate(user=self.superadmin)
+        
         # 1. Create period
         create_resp = self.client.post('/api/v1/payroll/periods/', {
             'organization': self.org.id,

@@ -5,11 +5,16 @@ from apps.organization.models import Organization
 class LeaveType(models.Model):
     organization = models.ForeignKey(Organization, on_delete=models.CASCADE, related_name='leave_types')
     name = models.CharField(max_length=100)
+    code = models.CharField(max_length=50, null=True, blank=True)
     description = models.TextField(blank=True)
+    color_code = models.CharField(max_length=20, blank=True)
+    
+    ACCRUAL_CHOICES = [('monthly', 'Monthly'), ('yearly', 'Yearly'), ('none', 'None')]
+    accrual_frequency = models.CharField(max_length=20, choices=ACCRUAL_CHOICES, default='none')
     is_active = models.BooleanField(default=True)
 
     class Meta:
-        unique_together = ('organization', 'name')
+        unique_together = [('organization', 'name'), ('organization', 'code')]
 
     def __str__(self):
         return f"{self.name} - {self.organization.name}"
@@ -25,8 +30,12 @@ class BranchLeavePolicy(models.Model):
     leave_type = models.ForeignKey(LeaveType, on_delete=models.CASCADE, related_name='branch_policies')
 
     monthly_allocation = models.DecimalField(max_digits=8, decimal_places=2, default=0)
+    probation_monthly_allocation = models.DecimalField(max_digits=8, decimal_places=2, null=True, blank=True)
     proration_enabled = models.BooleanField(default=True)
     proration_rounding = models.CharField(max_length=20, choices=PRORATION_ROUNDING_CHOICES, default='nearest_half')
+    
+    accrue_in_advance = models.BooleanField(default=False)
+    accrual_starts_on = models.CharField(max_length=20, choices=[('joining_date', 'Joining Date'), ('confirmation_date', 'Confirmation Date')], default='joining_date')
 
     carry_forward_enabled = models.BooleanField(default=False)
     carry_forward_limit = models.DecimalField(max_digits=8, decimal_places=2, null=True, blank=True)
@@ -35,9 +44,14 @@ class BranchLeavePolicy(models.Model):
     negative_balance_allowed = models.BooleanField(default=False)
     half_day_allowed = models.BooleanField(default=False)
     is_paid = models.BooleanField(default=True)
+    requires_approval = models.BooleanField(default=True)
     requires_supporting_document = models.BooleanField(default=False)
     advance_notice_days = models.PositiveIntegerField(default=0)
+    max_consecutive_days = models.PositiveIntegerField(null=True, blank=True)
     cancellation_allowed = models.BooleanField(default=True)
+    
+    applicable_gender = models.CharField(max_length=20, choices=[('all', 'All'), ('male', 'Male'), ('female', 'Female'), ('other', 'Other')], default='all')
+    applicable_after_months = models.PositiveIntegerField(default=0)
 
     class Meta:
         unique_together = ('branch', 'leave_type')
@@ -88,6 +102,7 @@ class LeaveBalance(models.Model):
     allocated = models.DecimalField(max_digits=8, decimal_places=2, default=0)
     used = models.DecimalField(max_digits=8, decimal_places=2, default=0)
     carried_forward = models.DecimalField(max_digits=8, decimal_places=2, default=0)
+    encashed = models.DecimalField(max_digits=8, decimal_places=2, default=0)
     adjustment = models.DecimalField(max_digits=8, decimal_places=2, default=0)
 
     class Meta:
@@ -95,7 +110,7 @@ class LeaveBalance(models.Model):
 
     @property
     def remaining(self):
-        return self.allocated + self.carried_forward + self.adjustment - self.used
+        return self.allocated + self.carried_forward + self.adjustment - self.used - self.encashed
 
     def clean(self):
         super().clean()
@@ -111,7 +126,9 @@ class LeaveBalance(models.Model):
 class LeaveBalanceTransaction(models.Model):
     TRANSACTION_TYPES = [
         ('legacy_conversion_allocated', 'Legacy Conversion Allocated'),
+        ('legacy_conversion_carry_forward', 'Legacy Conversion Carry Forward'),
         ('legacy_conversion_used', 'Legacy Conversion Used'),
+        ('legacy_conversion_encashed', 'Legacy Conversion Encashed'),
         ('allocation', 'Allocation'),
         ('monthly_accrual', 'Monthly Accrual'),
         ('proration', 'Proration'),

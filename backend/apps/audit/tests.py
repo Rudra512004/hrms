@@ -10,6 +10,9 @@ User = get_user_model()
 
 class OnboardingAuditTestCase(TestCase):
     def setUp(self):
+        from unittest.mock import patch
+        self.patcher = patch('apps.authorization.permissions.IsNetworkAllowed.has_permission', return_value=True)
+        self.patcher.start()
         from apps.organization.models import Organization
         self.client = APIClient()
         self.org = Organization.objects.create(name='Audit Org')
@@ -26,6 +29,9 @@ class OnboardingAuditTestCase(TestCase):
         
         UserPermissionGrant.objects.create(user=self.super_user, permission=p1)
         UserPermissionGrant.objects.create(user=self.super_user, permission=p2)
+
+    def tearDown(self):
+        self.patcher.stop()
 
     def test_onboarding_email_provisioning(self):
         self.client.force_authenticate(user=self.super_user)

@@ -15,6 +15,9 @@ User = get_user_model()
 
 class ShiftAndAssignmentAPITests(TestCase):
     def setUp(self):
+        from unittest.mock import patch
+        self.patcher = patch('apps.authorization.permissions.IsNetworkAllowed.has_permission', return_value=True)
+        self.patcher.start()
         self.client = APIClient()
 
         # Org 1
@@ -26,6 +29,17 @@ class ShiftAndAssignmentAPITests(TestCase):
 
         # Superuser with permission seed
         self.super_user = User.objects.create_user(email='super@example.com', password='Password123!', status='active', is_superuser=True)
+        from apps.authorization.models import Role, UserRole, ScopeChoices, RolePermission, Permission
+        from apps.organization.models import Organization as _PatchOrg
+        _test_org = getattr(self, 'org', getattr(self, 'organization', getattr(self, 'org1', None)))
+        if not _test_org:
+            _test_org = Organization.objects.first()
+        if _test_org:
+            _role, _ = Role.objects.get_or_create(organization=_test_org, name='System Admin')
+            for perm_code in ['attendance.view', 'attendance.manage', 'attendance.view_all', 'shift.view', 'shift.manage']:
+                perm, _ = Permission.objects.get_or_create(codename=perm_code, defaults={'name': perm_code, 'resource': 'attendance', 'action': perm_code.split('.')[1]})
+                RolePermission.objects.get_or_create(role=_role, permission=perm)
+            UserRole.objects.get_or_create(user=self.super_user, role=_role, scope=ScopeChoices.ORGANIZATION)
         self.super_emp = Employee.objects.create(user=self.super_user, employee_code='SUPER', organization=self.org1, branch=self.branch1)
 
         # Org 2
@@ -53,6 +67,9 @@ class ShiftAndAssignmentAPITests(TestCase):
             work_days='0,1,2,3,4',
             is_active=True
         )
+
+    def tearDown(self):
+        self.patcher.stop()
 
     # -------------------------------------------------------------------------
     # P0 FIX 1: Enforce One Active Shift Per Branch

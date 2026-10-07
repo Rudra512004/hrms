@@ -59,7 +59,7 @@ class ImportJobViewSet(viewsets.ModelViewSet):
         return [IsAuthenticated(), require_permission('data_import.view')()]
 
     def get_queryset(self):
-        tenant = getattr(self.request, 'tenant', None)
+        tenant = AuthorizationService.get_primary_organization(self.request.user)
         if not tenant:
             return ImportJob.objects.none()
         return ImportJob.objects.filter(organization=tenant).order_by('-created_at')
@@ -70,7 +70,7 @@ class ImportJobViewSet(viewsets.ModelViewSet):
         
         file_obj = request.data['file']
         
-        tenant = getattr(request, 'tenant', None)
+        tenant = AuthorizationService.get_primary_organization(request.user)
         if not tenant:
             return Response({'error': 'Organization context is missing'}, status=status.HTTP_400_BAD_REQUEST)
 

@@ -28,30 +28,8 @@ def _require(user, codename):
 
 def _employee_org(request):
     """Return the organization of the requesting user's employee profile or fallback for superadmin."""
-    try:
-        if hasattr(request.user, 'employee') and request.user.employee and request.user.employee.organization:
-            return request.user.employee.organization
-    except Exception:
-        pass
-
-    if getattr(request.user, 'is_superuser', False):
-        from apps.organization.models import Organization
-        org_id = None
-        if hasattr(request, 'query_params'):
-            org_id = request.query_params.get('organization')
-        if not org_id and hasattr(request, 'data') and isinstance(request.data, dict):
-            org_id = request.data.get('organization')
-        if org_id:
-            try:
-                return Organization.objects.get(id=org_id)
-            except (Organization.DoesNotExist, ValueError):
-                from rest_framework.exceptions import ValidationError
-                raise ValidationError({"organization": "Specified organization does not exist."})
-
-        from rest_framework.exceptions import ValidationError
-        raise ValidationError({"organization": "Organization context is required."})
-
-    return None
+    from apps.authorization.services import AuthorizationService
+    return AuthorizationService.get_primary_organization(request.user)
 
 
 class CompensationHistoryViewSet(viewsets.ReadOnlyModelViewSet):

@@ -255,6 +255,14 @@ class LeaveRequestIntegrationTests(TestCase):
         )
         # Using a superuser who is NOT the employee to avoid "Cannot approve own request"
         user2 = User.objects.create(email="mgr3_" + str(req.id) + "@test.com", is_staff=True, is_superuser=True)
+        from apps.authorization.models import Role, UserRole, ScopeChoices
+        from apps.organization.models import Organization as _PatchOrg
+        _test_org = getattr(self, 'org', getattr(self, 'organization', getattr(self, 'org1', None)))
+        if not _test_org:
+            _test_org = Organization.objects.first()
+        if _test_org:
+            _role, _ = Role.objects.get_or_create(organization=_test_org, name='System Admin')
+            UserRole.objects.get_or_create(user=user2, role=_role, scope=ScopeChoices.ORGANIZATION)
         Employee.objects.create(user=user2, employee_code="MGR_" + str(req.id), organization=self.org1, branch=self.branch1, joining_date=date(2026,1,1), employment_status='active')
         self.client.force_authenticate(user=user2)
 
@@ -271,6 +279,14 @@ class LeaveRequestIntegrationTests(TestCase):
             status='pending', reason="Long"
         )
         user2 = User.objects.create(email="mgr3_" + str(req.id) + "@test.com", is_staff=True, is_superuser=True)
+        from apps.authorization.models import Role, UserRole, ScopeChoices
+        from apps.organization.models import Organization as _PatchOrg
+        _test_org = getattr(self, 'org', getattr(self, 'organization', getattr(self, 'org1', None)))
+        if not _test_org:
+            _test_org = Organization.objects.first()
+        if _test_org:
+            _role, _ = Role.objects.get_or_create(organization=_test_org, name='System Admin')
+            UserRole.objects.get_or_create(user=user2, role=_role, scope=ScopeChoices.ORGANIZATION)
         Employee.objects.create(user=user2, employee_code="MGR_" + str(req.id), organization=self.org1, branch=self.branch1, joining_date=date(2026,1,1), employment_status='active')
         self.client.force_authenticate(user=user2)
 
@@ -287,6 +303,14 @@ class LeaveRequestIntegrationTests(TestCase):
             status='pending', reason="Short"
         )
         user2 = User.objects.create(email="mgr3_" + str(req.id) + "@test.com", is_staff=True, is_superuser=True)
+        from apps.authorization.models import Role, UserRole, ScopeChoices
+        from apps.organization.models import Organization as _PatchOrg
+        _test_org = getattr(self, 'org', getattr(self, 'organization', getattr(self, 'org1', None)))
+        if not _test_org:
+            _test_org = Organization.objects.first()
+        if _test_org:
+            _role, _ = Role.objects.get_or_create(organization=_test_org, name='System Admin')
+            UserRole.objects.get_or_create(user=user2, role=_role, scope=ScopeChoices.ORGANIZATION)
         Employee.objects.create(user=user2, employee_code="MGR_" + str(req.id), organization=self.org1, branch=self.branch1, joining_date=date(2026,1,1), employment_status='active')
         self.client.force_authenticate(user=user2)
 
@@ -325,6 +349,14 @@ class LeaveRequestIntegrationTests(TestCase):
             status='approved', reason="Short"
         )
         user2 = User.objects.create(email="mgr3_" + str(req.id) + "@test.com", is_staff=True, is_superuser=True)
+        from apps.authorization.models import Role, UserRole, ScopeChoices
+        from apps.organization.models import Organization as _PatchOrg
+        _test_org = getattr(self, 'org', getattr(self, 'organization', getattr(self, 'org1', None)))
+        if not _test_org:
+            _test_org = Organization.objects.first()
+        if _test_org:
+            _role, _ = Role.objects.get_or_create(organization=_test_org, name='System Admin')
+            UserRole.objects.get_or_create(user=user2, role=_role, scope=ScopeChoices.ORGANIZATION)
         Employee.objects.create(user=user2, employee_code="MGR_" + str(req.id), organization=self.org1, branch=self.branch1, joining_date=date(2026,1,1), employment_status='active')
         self.client.force_authenticate(user=user2)
 
@@ -341,6 +373,14 @@ class LeaveRequestIntegrationTests(TestCase):
             status='approved', reason="Short"
         )
         user2 = User.objects.create(email="mgr3_" + str(req.id) + "@test.com", is_staff=True, is_superuser=True)
+        from apps.authorization.models import Role, UserRole, ScopeChoices
+        from apps.organization.models import Organization as _PatchOrg
+        _test_org = getattr(self, 'org', getattr(self, 'organization', getattr(self, 'org1', None)))
+        if not _test_org:
+            _test_org = Organization.objects.first()
+        if _test_org:
+            _role, _ = Role.objects.get_or_create(organization=_test_org, name='System Admin')
+            UserRole.objects.get_or_create(user=user2, role=_role, scope=ScopeChoices.ORGANIZATION)
         Employee.objects.create(user=user2, employee_code="MGR_" + str(req.id), organization=self.org1, branch=self.branch1, joining_date=date(2026,1,1), employment_status='active')
         self.client.force_authenticate(user=user2)
 
@@ -356,6 +396,14 @@ class LeaveRequestIntegrationTests(TestCase):
             status='approved', reason="Short"
         )
         user2 = User.objects.create(email="mgr3_" + str(req.id) + "@test.com", is_staff=True, is_superuser=True)
+        from apps.authorization.models import Role, UserRole, ScopeChoices
+        from apps.organization.models import Organization as _PatchOrg
+        _test_org = getattr(self, 'org', getattr(self, 'organization', getattr(self, 'org1', None)))
+        if not _test_org:
+            _test_org = Organization.objects.first()
+        if _test_org:
+            _role, _ = Role.objects.get_or_create(organization=_test_org, name='System Admin')
+            UserRole.objects.get_or_create(user=user2, role=_role, scope=ScopeChoices.ORGANIZATION)
         Employee.objects.create(user=user2, employee_code="MGR_" + str(req.id), organization=self.org1, branch=self.branch1, joining_date=date(2026,1,1), employment_status='active')
         self.client.force_authenticate(user=user2)
 
@@ -373,6 +421,14 @@ class LeaveRequestIntegrationTests(TestCase):
         self.balance.save()
 
         user2 = User.objects.create(email="mgr3_" + str(req.id) + "@test.com", is_staff=True, is_superuser=True)
+        from apps.authorization.models import Role, UserRole, ScopeChoices
+        from apps.organization.models import Organization as _PatchOrg
+        _test_org = getattr(self, 'org', getattr(self, 'organization', getattr(self, 'org1', None)))
+        if not _test_org:
+            _test_org = Organization.objects.first()
+        if _test_org:
+            _role, _ = Role.objects.get_or_create(organization=_test_org, name='System Admin')
+            UserRole.objects.get_or_create(user=user2, role=_role, scope=ScopeChoices.ORGANIZATION)
         Employee.objects.create(user=user2, employee_code="MGR_" + str(req.id), organization=self.org1, branch=self.branch1, joining_date=date(2026,1,1), employment_status='active')
         self.client.force_authenticate(user=user2)
 

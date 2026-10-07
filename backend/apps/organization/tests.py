@@ -9,10 +9,20 @@ User = get_user_model()
 class OrganizationSetupTests(APITestCase):
     def setUp(self):
         self.superadmin = User.objects.create_user(email='super@admin.com', password='password', is_superuser=True, status='active')
+        from apps.authorization.models import Role, UserRole, ScopeChoices
+        from apps.organization.models import Organization as _PatchOrg
+        _test_org = getattr(self, 'org', getattr(self, 'organization', getattr(self, 'org1', None)))
+        if not _test_org:
+            _test_org = Organization.objects.first()
+        if _test_org:
+            _role, _ = Role.objects.get_or_create(organization=_test_org, name='System Admin')
+            UserRole.objects.get_or_create(user=self.superadmin, role=_role, scope=ScopeChoices.ORGANIZATION)
         self.normal_user = User.objects.create_user(email='normal@user.com', password='password')
         self.url = '/api/v1/organization/setup/'
 
     def test_setup_success(self):
+        from apps.authorization.models import Permission
+        Permission.objects.get_or_create(codename='office_network.view', defaults={'name': 'View', 'resource': 'office_network', 'action': 'view', 'is_active': True})
         self.client.force_authenticate(user=self.superadmin)
         data = {
             'name': 'New Org Ltd',

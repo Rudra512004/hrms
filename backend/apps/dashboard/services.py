@@ -256,9 +256,10 @@ class DashboardAggregationService:
 
         Safely returns None if user has no organization context or lacks all permissions.
         """
-        if not user.is_superuser:
-            if not hasattr(user, 'employee') or not user.employee or not user.employee.organization_id:
-                return None
+        from apps.authorization.services import AuthorizationService
+        org = AuthorizationService.get_primary_organization(user)
+        if not org:
+            return None
 
         emp_branches = AuthorizationService.get_authorized_branches(user, 'employee.view')
         att_branches = AuthorizationService.get_authorized_branches(user, 'attendance.view_all')
@@ -445,15 +446,15 @@ class DashboardTrendsService:
                 if not emp_branches.filter(id=b_id).exists():
                     raise PermissionDenied("You do not have permission to access workforce trends for this branch.")
 
-        if not user.is_superuser:
-            if not hasattr(user, 'employee') or not user.employee or not user.employee.organization_id:
-                return {
-                    'window': window,
-                    'attendance_trend': None,
-                    'workforce_trend': None,
-                }
-
-        org_id = user.employee.organization_id if (hasattr(user, 'employee') and user.employee) else None
+        org = AuthorizationService.get_primary_organization(user)
+        if not org:
+            return {
+                'window': window,
+                'attendance_trend': None,
+                'workforce_trend': None,
+            }
+        
+        org_id = org.id
         today = timezone.localdate()
 
         has_att_view = AuthorizationService.has_permission(user, 'attendance.view_all')

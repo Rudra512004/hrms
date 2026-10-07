@@ -361,6 +361,14 @@ class HTTPStatusMatrixTests(TestCase):
         self.deactivated_employee = Employee.objects.create(user=self.deactivated_user, employee_code='MAT002', organization=org)
 
         self.superadmin = User.objects.create_user(email='matrix_super@company.com', password='Password123!', status='active', is_superuser=True)
+        from apps.authorization.models import Role, UserRole, ScopeChoices
+        from apps.organization.models import Organization as _PatchOrg
+        _test_org = getattr(self, 'org', getattr(self, 'organization', getattr(self, 'org1', None)))
+        if not _test_org:
+            _test_org = Organization.objects.first()
+        if _test_org:
+            _role, _ = Role.objects.get_or_create(organization=_test_org, name='System Admin')
+            UserRole.objects.get_or_create(user=self.superadmin, role=_role, scope=ScopeChoices.ORGANIZATION)
         self.super_employee = Employee.objects.create(user=self.superadmin, employee_code='MAT003', organization=org)
 
         OfficeNetwork.objects.create(branch=branch, name='MatrixNet', network='127.0.0.0/8', is_active=True)

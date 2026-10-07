@@ -264,7 +264,11 @@ class DashboardOverviewTests(TestCase):
         self.assertNotIn('pending_approvals', org_data)
 
     def test_superuser_without_employee_profile_safe_behavior(self):
-        """Superuser without an employee profile safely gets None for personal/team, but gets global organization data."""
+        """Superuser without an employee profile safely gets None for personal/team, but gets organization data if assigned a tenant role."""
+        sysadmin_role = Role.objects.create(organization=self.org1, name="SysAdmin")
+        RolePermission.objects.create(role=sysadmin_role, permission=self.perm_emp_view)
+        UserRole.objects.create(user=self.superadmin, role=sysadmin_role)
+
         self.client.force_authenticate(user=self.superadmin)
         response = self.client.get(self.overview_url)
         self.assertEqual(response.status_code, status.HTTP_200_OK)

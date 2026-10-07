@@ -30,38 +30,32 @@ class AssetCategoryViewSet(viewsets.ModelViewSet):
     serializer_class = AssetCategorySerializer
 
     def _get_org_id(self, user):
-        if user.is_superuser:
-            return None
-        if hasattr(user, 'employee') and user.employee.organization_id:
-            return user.employee.organization_id
-        return -1
+        org = AuthorizationService.get_primary_organization(user)
+        return org.id if org else -1
 
     def get_queryset(self):
         org_id = self._get_org_id(self.request.user)
-        if org_id is None:
-            return AssetCategory.objects.all().order_by('name')
         if org_id == -1:
             return AssetCategory.objects.none()
         return AssetCategory.objects.filter(organization_id=org_id).order_by('name')
 
     def list(self, request, *args, **kwargs):
-        if not (AuthorizationService.has_permission(request.user, 'asset.view') or request.user.is_superuser):
+        if not AuthorizationService.has_permission(request.user, 'asset.view'):
             return Response({'detail': 'Permission denied: asset.view required.'}, status=status.HTTP_403_FORBIDDEN)
         return super().list(request, *args, **kwargs)
 
     def retrieve(self, request, *args, **kwargs):
-        if not (AuthorizationService.has_permission(request.user, 'asset.view') or request.user.is_superuser):
+        if not AuthorizationService.has_permission(request.user, 'asset.view'):
             return Response({'detail': 'Permission denied: asset.view required.'}, status=status.HTTP_403_FORBIDDEN)
         return super().retrieve(request, *args, **kwargs)
 
     def create(self, request, *args, **kwargs):
-        if not (AuthorizationService.has_permission(request.user, 'asset.create') or request.user.is_superuser):
+        if not AuthorizationService.has_permission(request.user, 'asset.create'):
             return Response({'detail': 'Permission denied: asset.create required.'}, status=status.HTTP_403_FORBIDDEN)
 
         org_id = self._get_org_id(request.user)
-        if org_id is None:
-            # Superuser without employee record - fallback to target org from payload if present
-            org_id = request.data.get('organization')
+        if org_id == -1:
+            return Response({'detail': 'Organization context required.'}, status=status.HTTP_403_FORBIDDEN)
 
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -69,12 +63,12 @@ class AssetCategoryViewSet(viewsets.ModelViewSet):
         return Response(self.get_serializer(category).data, status=status.HTTP_201_CREATED)
 
     def update(self, request, *args, **kwargs):
-        if not (AuthorizationService.has_permission(request.user, 'asset.update') or request.user.is_superuser):
+        if not AuthorizationService.has_permission(request.user, 'asset.update'):
             return Response({'detail': 'Permission denied: asset.update required.'}, status=status.HTTP_403_FORBIDDEN)
         return super().update(request, *args, **kwargs)
 
     def destroy(self, request, *args, **kwargs):
-        if not (AuthorizationService.has_permission(request.user, 'asset.delete') or request.user.is_superuser):
+        if not AuthorizationService.has_permission(request.user, 'asset.delete'):
             return Response({'detail': 'Permission denied: asset.delete required.'}, status=status.HTTP_403_FORBIDDEN)
         category = self.get_object()
         if category.assets.exists():
@@ -91,17 +85,12 @@ class AssetViewSet(viewsets.ModelViewSet):
     """
 
     def _get_org_id(self, user):
-        if user.is_superuser:
-            return None
-        if hasattr(user, 'employee') and user.employee.organization_id:
-            return user.employee.organization_id
-        return -1
+        org = AuthorizationService.get_primary_organization(user)
+        return org.id if org else -1
 
     def get_queryset(self):
         org_id = self._get_org_id(self.request.user)
-        if org_id is None:
-            qs = Asset.objects.all()
-        elif org_id == -1:
+        if org_id == -1:
             return Asset.objects.none()
         else:
             qs = Asset.objects.filter(organization_id=org_id)
@@ -145,7 +134,7 @@ class AssetViewSet(viewsets.ModelViewSet):
         return AssetListSerializer
 
     def list(self, request, *args, **kwargs):
-        if not (AuthorizationService.has_permission(request.user, 'asset.view') or request.user.is_superuser):
+        if not AuthorizationService.has_permission(request.user, 'asset.view'):
             return Response({'detail': 'Permission denied: asset.view required.'}, status=status.HTTP_403_FORBIDDEN)
         return super().list(request, *args, **kwargs)
 
@@ -156,19 +145,19 @@ class AssetViewSet(viewsets.ModelViewSet):
             hasattr(request.user, 'employee') and
             instance.assignments.filter(employee=request.user.employee, is_active=True).exists()
         )
-        if not (is_assigned or AuthorizationService.has_permission(request.user, 'asset.view') or request.user.is_superuser):
+        if not (is_assigned or AuthorizationService.has_permission(request.user, 'asset.view')):
             return Response({'detail': 'Permission denied: asset.view required.'}, status=status.HTTP_403_FORBIDDEN)
 
         serializer = self.get_serializer(instance)
         return Response(serializer.data)
 
     def create(self, request, *args, **kwargs):
-        if not (AuthorizationService.has_permission(request.user, 'asset.create') or request.user.is_superuser):
+        if not AuthorizationService.has_permission(request.user, 'asset.create'):
             return Response({'detail': 'Permission denied: asset.create required.'}, status=status.HTTP_403_FORBIDDEN)
 
         org_id = self._get_org_id(request.user)
-        if org_id is None:
-            org_id = request.data.get('organization')
+        if org_id == -1:
+            return Response({'detail': 'Organization context required.'}, status=status.HTTP_403_FORBIDDEN)
 
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -190,12 +179,12 @@ class AssetViewSet(viewsets.ModelViewSet):
         return Response(AssetDetailSerializer(asset).data, status=status.HTTP_201_CREATED)
 
     def update(self, request, *args, **kwargs):
-        if not (AuthorizationService.has_permission(request.user, 'asset.update') or request.user.is_superuser):
+        if not AuthorizationService.has_permission(request.user, 'asset.update'):
             return Response({'detail': 'Permission denied: asset.update required.'}, status=status.HTTP_403_FORBIDDEN)
         return super().update(request, *args, **kwargs)
 
     def destroy(self, request, *args, **kwargs):
-        if not (AuthorizationService.has_permission(request.user, 'asset.delete') or request.user.is_superuser):
+        if not AuthorizationService.has_permission(request.user, 'asset.delete'):
             return Response({'detail': 'Permission denied: asset.delete required.'}, status=status.HTTP_403_FORBIDDEN)
 
         asset = self.get_object()
@@ -228,7 +217,7 @@ class AssetViewSet(viewsets.ModelViewSet):
         Assign an available asset to an active employee.
         Requires dynamic RBAC permission: asset.assign
         """
-        if not (AuthorizationService.has_permission(request.user, 'asset.assign') or request.user.is_superuser):
+        if not AuthorizationService.has_permission(request.user, 'asset.assign'):
             return Response({'detail': 'Permission denied: asset.assign required.'}, status=status.HTTP_403_FORBIDDEN)
 
         serializer = AssetAssignSerializer(data=request.data)
@@ -239,10 +228,9 @@ class AssetViewSet(viewsets.ModelViewSet):
         with transaction.atomic():
             org_id = self._get_org_id(request.user)
             lock_qs = Asset.objects.select_for_update()
-            if org_id is not None:
-                if org_id == -1:
-                    return Response(status=status.HTTP_404_NOT_FOUND)
-                lock_qs = lock_qs.filter(organization_id=org_id)
+            if org_id == -1:
+                return Response(status=status.HTTP_404_NOT_FOUND)
+            lock_qs = lock_qs.filter(organization_id=org_id)
 
             try:
                 asset = lock_qs.get(pk=pk)
@@ -317,7 +305,7 @@ class AssetViewSet(viewsets.ModelViewSet):
         Return an assigned asset from an employee.
         Requires dynamic RBAC permission: asset.assign
         """
-        if not (AuthorizationService.has_permission(request.user, 'asset.assign') or request.user.is_superuser):
+        if not AuthorizationService.has_permission(request.user, 'asset.assign'):
             return Response({'detail': 'Permission denied: asset.assign required.'}, status=status.HTTP_403_FORBIDDEN)
 
         serializer = AssetReturnSerializer(data=request.data)
@@ -330,10 +318,9 @@ class AssetViewSet(viewsets.ModelViewSet):
         with transaction.atomic():
             org_id = self._get_org_id(request.user)
             lock_qs = Asset.objects.select_for_update()
-            if org_id is not None:
-                if org_id == -1:
-                    return Response(status=status.HTTP_404_NOT_FOUND)
-                lock_qs = lock_qs.filter(organization_id=org_id)
+            if org_id == -1:
+                return Response(status=status.HTTP_404_NOT_FOUND)
+            lock_qs = lock_qs.filter(organization_id=org_id)
 
             try:
                 asset = lock_qs.get(pk=pk)

@@ -29,10 +29,10 @@ class AdminLeaveTypeViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         user = self.request.user
-        if user.is_superuser:
-            return LeaveType.objects.all()
-        if hasattr(user, 'employee') and user.employee.organization_id:
-            return LeaveType.objects.filter(organization_id=user.employee.organization_id)
+        from apps.authorization.services import AuthorizationService
+        org = AuthorizationService.get_primary_organization(user)
+        if org:
+            return LeaveType.objects.filter(organization_id=org.id)
         return LeaveType.objects.none()
 
     def get_permissions(self):
@@ -43,22 +43,8 @@ class AdminLeaveTypeViewSet(viewsets.ModelViewSet):
         from django.db import IntegrityError
         from rest_framework.exceptions import ValidationError
 
-        org_id = self.request.data.get('organization')
-        if self.request.user.is_superuser and not hasattr(self.request.user, 'employee'):
-            if org_id:
-                try:
-                    from apps.organization.models import Organization
-                    org = Organization.objects.get(id=org_id)
-                except (Organization.DoesNotExist, ValueError):
-                    raise ValidationError({"organization": "Specified organization does not exist."})
-            else:
-                org = None
-        else:
-            emp = getattr(self.request.user, 'employee', None)
-            org = emp.organization if emp else None
-            if org_id and org and str(org.id) != str(org_id):
-                raise ValidationError({"organization": "Cannot create resources for another organization."})
-
+        from apps.authorization.services import AuthorizationService
+        org = AuthorizationService.get_primary_organization(self.request.user)
         if not org:
             raise ValidationError({"organization": "Organization context is required."})
 
@@ -124,21 +110,29 @@ class LeaveBalanceViewSet(viewsets.ReadOnlyModelViewSet):
         emp_id = self.request.query_params.get('employee_id') or self.request.query_params.get('employee')
         leave_type_id = self.request.query_params.get('leave_type_id') or self.request.query_params.get('leave_type')
 
-        if user.is_superuser:
-            qs = LeaveBalance.objects.all()
-            if emp_id:
-                qs = qs.filter(employee_id=emp_id)
-            if leave_type_id:
-                qs = qs.filter(leave_type_id=leave_type_id)
-            return qs.select_related('employee__user', 'leave_type', 'branch', 'leave_cycle')
-
-        caller_emp = getattr(user, 'employee', None)
-        if not caller_emp:
-            return LeaveBalance.objects.none()
-
         from apps.authorization.services import AuthorizationService
+        org = AuthorizationService.get_primary_organization(user)
+        if not org:
+            return LeaveBalance.objects.none()
+            
+        caller_emp = getattr(user, 'employee', None)
+
         can_manage = AuthorizationService.has_permission(user, 'leave_type.manage')
         can_view = AuthorizationService.has_permission(user, 'leave.view')
+
+        if not caller_emp:
+            if can_manage or can_view:
+                authorized_branches = AuthorizationService.get_authorized_branches(user, 'leave_type.manage' if can_manage else 'leave.view')
+                qs = LeaveBalance.objects.filter(
+                    employee__organization=org,
+                    employee__branch__in=authorized_branches
+                )
+                if emp_id:
+                    qs = qs.filter(employee_id=emp_id)
+                if leave_type_id:
+                    qs = qs.filter(leave_type_id=leave_type_id)
+                return qs.select_related('employee__user', 'leave_type', 'branch', 'leave_cycle')
+            return LeaveBalance.objects.none()
 
         if (can_manage or can_view) and emp_id and str(emp_id) != str(caller_emp.id):
             authorized_branches = AuthorizationService.get_authorized_branches(user, 'leave_type.manage' if can_manage else 'leave.view')
@@ -162,12 +156,12 @@ class LeaveBalanceViewSet(viewsets.ReadOnlyModelViewSet):
         balance = self.get_object()
 
         from apps.authorization.services import AuthorizationService
-        if not user.is_superuser:
-            if not AuthorizationService.has_permission(user, 'leave_type.manage'):
-                return Response({'detail': 'Permission denied. leave_type.manage required.'}, status=status.HTTP_403_FORBIDDEN)
-            caller_emp = getattr(user, 'employee', None)
-            if not caller_emp or balance.employee.organization_id != caller_emp.organization_id:
-                return Response({'detail': 'Cross-organization modification forbidden.'}, status=status.HTTP_403_FORBIDDEN)
+        if not AuthorizationService.has_permission(user, 'leave_type.manage'):
+            return Response({'detail': 'Permission denied. leave_type.manage required.'}, status=status.HTTP_403_FORBIDDEN)
+        
+        org = AuthorizationService.get_primary_organization(user)
+        if not org or balance.employee.organization_id != org.id:
+            return Response({'detail': 'Cross-organization modification forbidden.'}, status=status.HTTP_403_FORBIDDEN)
 
         amount = request.data.get('amount')
         reason = request.data.get('reason', '')
@@ -254,8 +248,12 @@ class LeaveRequestViewSet(viewsets.ModelViewSet):
         branch_id = self.request.query_params.get('branch_id')
         emp_id = self.request.query_params.get('employee_id') or self.request.query_params.get('employee')
 
+        from apps.authorization.services import AuthorizationService
+        org = AuthorizationService.get_primary_organization(user)
+        if not org:
+            return LeaveRequest.objects.none()
+            
         caller_emp = getattr(user, 'employee', None)
-
         if caller_emp:
             caller_org = caller_emp.organization
 
@@ -298,37 +296,27 @@ class LeaveRequestViewSet(viewsets.ModelViewSet):
                 if branch_id:
                     qs = qs.filter(employee__branch_id=branch_id)
                 return qs
+        else:
+            if org_id and str(org_id) != str(org.id):
+                raise PermissionDenied("You do not have permission to access leaves from another organization.")
 
-        elif user.is_superuser:
-            # Super Admin without employee profile
-            if not org_id:
+            if not AuthorizationService.has_permission(user, 'leave.view'):
                 return LeaveRequest.objects.none()
 
-            try:
-                target_org = Organization.objects.get(id=org_id)
-            except (Organization.DoesNotExist, ValueError):
-                raise PermissionDenied("Specified organization does not exist.")
+            authorized_branches = AuthorizationService.get_authorized_branches(user, 'leave.view')
+            if branch_id:
+                if not _is_branch_authorized(authorized_branches, branch_id):
+                    raise PermissionDenied("You do not have permission to access leaves for this branch.")
 
             base_qs = LeaveRequest.objects.select_related('employee', 'employee__user', 'leave_type', 'reviewed_by')
-            qs = base_qs.filter(employee__organization=target_org)
-
+            qs = base_qs.filter(employee__organization=org, employee__branch__in=authorized_branches)
             if branch_id:
-                if not Branch.objects.filter(id=branch_id, organization=target_org).exists():
-                    raise PermissionDenied("Cross-tenant branch filter is denied.")
                 qs = qs.filter(employee__branch_id=branch_id)
-
             if emp_id:
-                emp_check = Employee.objects.filter(id=emp_id, organization=target_org)
-                if branch_id:
-                    emp_check = emp_check.filter(branch_id=branch_id)
-                if not emp_check.exists():
-                    raise PermissionDenied("Cross-tenant employee filter is denied.")
+                if not _is_employee_authorized(emp_id, org, authorized_branches):
+                    raise PermissionDenied("You do not have permission to access leaves for this employee.")
                 qs = qs.filter(employee_id=emp_id)
-
             return qs
-
-        else:
-            return LeaveRequest.objects.none()
 
     def get_permissions(self):
         permissions = [IsAuthenticated()]
@@ -339,7 +327,7 @@ class LeaveRequestViewSet(viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         from rest_framework.exceptions import ValidationError
-        if self.request.user.is_superuser or not getattr(self.request.user, 'employee', None):
+        if not getattr(self.request.user, 'employee', None):
             raise ValidationError({"detail": "Employee profile not found."})
         employee = self.request.user.employee
 
@@ -363,7 +351,7 @@ class LeaveRequestViewSet(viewsets.ModelViewSet):
         instance = self.get_object()
         if instance.status != 'pending':
             raise ValidationError({"detail": "Only pending requests can be modified."})
-        if not self.request.user.is_superuser and instance.employee != getattr(self.request.user, 'employee', None):
+        if instance.employee != getattr(self.request.user, 'employee', None):
             raise PermissionDenied("You can only modify your own leave requests.")
         super().perform_update(serializer)
 
@@ -371,7 +359,7 @@ class LeaveRequestViewSet(viewsets.ModelViewSet):
         from rest_framework.exceptions import ValidationError, PermissionDenied
         if instance.status != 'pending':
             raise ValidationError({"detail": f"Cannot delete a leave request with status '{instance.status}'. Only pending requests can be deleted."})
-        if not self.request.user.is_superuser and instance.employee != getattr(self.request.user, 'employee', None):
+        if instance.employee != getattr(self.request.user, 'employee', None):
             raise PermissionDenied("You can only delete your own leave requests.")
         super().perform_destroy(instance)
 
@@ -383,12 +371,9 @@ class LeaveRequestViewSet(viewsets.ModelViewSet):
 
         with transaction.atomic():
             leave = LeaveRequest.objects.select_for_update().get(pk=self.get_object().pk)
-            if not request.user.is_superuser:
-                if not hasattr(request.user, 'employee'):
-                    return Response(status=status.HTTP_403_FORBIDDEN)
-                authorized_branches = AuthorizationService.get_authorized_branches(request.user, 'leave.approve')
-                if leave.employee.branch not in authorized_branches:
-                    return Response(status=status.HTTP_403_FORBIDDEN)
+            authorized_branches = AuthorizationService.get_authorized_branches(request.user, 'leave.approve')
+            if leave.employee.branch not in authorized_branches:
+                return Response(status=status.HTTP_403_FORBIDDEN)
 
             if leave.employee == getattr(request.user, 'employee', None):
                 return Response({"detail": "Cannot approve own request."}, status=status.HTTP_403_FORBIDDEN)
@@ -488,12 +473,9 @@ class LeaveRequestViewSet(viewsets.ModelViewSet):
 
         with transaction.atomic():
             leave = LeaveRequest.objects.select_for_update().get(pk=self.get_object().pk)
-            if not request.user.is_superuser:
-                if not hasattr(request.user, 'employee'):
-                    return Response(status=status.HTTP_403_FORBIDDEN)
-                authorized_branches = AuthorizationService.get_authorized_branches(request.user, 'leave.reject')
-                if leave.employee.branch not in authorized_branches:
-                    return Response(status=status.HTTP_403_FORBIDDEN)
+            authorized_branches = AuthorizationService.get_authorized_branches(request.user, 'leave.reject')
+            if leave.employee.branch not in authorized_branches:
+                return Response(status=status.HTTP_403_FORBIDDEN)
 
             if leave.status != 'pending':
                 return Response({"detail": "Only pending requests can be rejected."}, status=status.HTTP_400_BAD_REQUEST)
@@ -529,16 +511,12 @@ class LeaveRequestViewSet(viewsets.ModelViewSet):
         from .models import LeaveCycle, BranchLeavePolicy, LeaveBalanceTransaction
         with transaction.atomic():
             leave = LeaveRequest.objects.select_for_update().get(pk=self.get_object().pk)
-            if not request.user.is_superuser:
-                if not hasattr(request.user, 'employee'):
-                    return Response(status=status.HTTP_403_FORBIDDEN)
-                if leave.employee != request.user.employee:
-                    authorized_branches = AuthorizationService.get_authorized_branches(request.user, 'leave.cancel')
-                    if leave.employee.branch not in authorized_branches:
-                        return Response(status=status.HTTP_403_FORBIDDEN)
-
-            if leave.employee != getattr(request.user, 'employee', None):
+            caller_emp = getattr(request.user, 'employee', None)
+            if not (caller_emp and leave.employee == caller_emp):
                 if not AuthorizationService.has_permission(request.user, 'leave.cancel'):
+                    return Response(status=status.HTTP_403_FORBIDDEN)
+                authorized_branches = AuthorizationService.get_authorized_branches(request.user, 'leave.cancel')
+                if leave.employee.branch not in authorized_branches:
                     return Response(status=status.HTTP_403_FORBIDDEN)
 
             if leave.status not in ['pending', 'approved']:
@@ -715,24 +693,23 @@ class EmployeeCalendarView(APIView):
 
             # Within the same organization, evaluate RBAC
             if target_employee.id != caller_emp.id:
-                if not user.is_superuser:
-                    if not AuthorizationService.has_permission(user, 'leave.view'):
-                        return Response(
-                            {"detail": "You do not have permission to view this employee's calendar."},
-                            status=status.HTTP_403_FORBIDDEN
-                        )
+                if not AuthorizationService.has_permission(user, 'leave.view'):
+                    return Response(
+                        {"detail": "You do not have permission to view this employee's calendar."},
+                        status=status.HTTP_403_FORBIDDEN
+                    )
 
-                    authorized_branches = AuthorizationService.get_authorized_branches(user, 'leave.view')
-                    if target_employee.branch_id and not authorized_branches.filter(id=target_employee.branch_id).exists():
-                        return Response(
-                            {"detail": "You do not have permission to view this employee's calendar."},
-                            status=status.HTTP_403_FORBIDDEN
-                        )
+                authorized_branches = AuthorizationService.get_authorized_branches(user, 'leave.view')
+                if target_employee.branch_id and not authorized_branches.filter(id=target_employee.branch_id).exists():
+                    return Response(
+                        {"detail": "You do not have permission to view this employee's calendar."},
+                        status=status.HTTP_403_FORBIDDEN
+                    )
 
             employee = target_employee
         else:
             # Default: own calendar
-            if user.is_superuser or not caller_emp:
+            if not caller_emp:
                 return Response(
                     {"detail": "Employee profile not found."},
                     status=status.HTTP_404_NOT_FOUND

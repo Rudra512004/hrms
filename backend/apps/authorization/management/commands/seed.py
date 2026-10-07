@@ -58,7 +58,14 @@ class Command(BaseCommand):
             {'codename': 'employee.transfer', 'resource': 'employee', 'action': 'transfer', 'name': 'Transfer Employee'},
             {'codename': 'employee.promote', 'resource': 'employee', 'action': 'promote', 'name': 'Promote Employee'},
             {'codename': 'employee.exit', 'resource': 'employee', 'action': 'exit', 'name': 'Exit Employee'},
+
+            # Data Import
+            {'codename': 'data_import.view', 'resource': 'data_import', 'action': 'view', 'name': 'View Data Imports'},
+            {'codename': 'data_import.execute', 'resource': 'data_import', 'action': 'execute', 'name': 'Execute Data Imports'},
             {'codename': 'employee.lifecycle.view', 'resource': 'employee', 'action': 'lifecycle_view', 'name': 'View Employee Lifecycle History'},
+            {'codename': 'employee.view_statutory', 'resource': 'employee', 'action': 'view_statutory', 'name': 'View Statutory Info'},
+            {'codename': 'employee.manage_statutory', 'resource': 'employee', 'action': 'manage_statutory', 'name': 'Manage Statutory Info'},
+            {'codename': 'bgv.manage', 'resource': 'bgv', 'action': 'manage', 'name': 'Manage Background Verification'},
             
             # WFH
             {'codename': 'wfh.view', 'resource': 'wfh', 'action': 'view', 'name': 'View WFH Requests'},
@@ -78,6 +85,8 @@ class Command(BaseCommand):
             # Organization
             {'codename': 'organization.view', 'resource': 'organization', 'action': 'view', 'name': 'View Organizations'},
             {'codename': 'organization.manage', 'resource': 'organization', 'action': 'manage', 'name': 'Manage Organizations'},
+            {'codename': 'branding.manage', 'resource': 'organization', 'action': 'manage_branding', 'name': 'Manage Tenant Branding'},
+            {'codename': 'custom_fields.manage', 'resource': 'organization', 'action': 'manage_custom_fields', 'name': 'Manage Custom Fields Schema'},
             {'codename': 'department.view', 'resource': 'department', 'action': 'view', 'name': 'View Departments'},
             {'codename': 'department.manage', 'resource': 'department', 'action': 'manage', 'name': 'Manage Departments'},
             {'codename': 'team.view', 'resource': 'team', 'action': 'view', 'name': 'View Teams'},
@@ -125,6 +134,8 @@ class Command(BaseCommand):
             {'codename': 'candidate.onboard',        'resource': 'candidate', 'action': 'onboard',        'name': 'Issue Offer / Start Onboarding'},
             {'codename': 'candidate.verify',         'resource': 'candidate', 'action': 'verify',         'name': 'Verify Candidate Documents'},
             {'codename': 'candidate.convert',        'resource': 'candidate', 'action': 'convert',        'name': 'Convert Candidate to Employee'},
+            {'codename': 'candidate.requisition.manage', 'resource': 'candidate', 'action': 'manage_requisition', 'name': 'Manage Job Requisitions'},
+            {'codename': 'candidate.interview.manage', 'resource': 'candidate', 'action': 'manage_interview', 'name': 'Manage Interview Scorecards'},
 
             # Letters
             {'codename': 'letter.view',  'resource': 'letter', 'action': 'view',  'name': 'View Letter Templates'},

@@ -45,6 +45,8 @@ PERMISSIONS_DATA = [
     {'codename': 'organization.view', 'resource': 'organization', 'action': 'view', 'name': 'View Organizations'},
     {'codename': 'organization.manage', 'resource': 'organization', 'action': 'manage', 'name': 'Manage Organizations'},
     {'codename': 'organization.update', 'resource': 'organization', 'action': 'update', 'name': 'Update Organizations'},
+    {'codename': 'branding.manage', 'resource': 'organization', 'action': 'manage_branding', 'name': 'Manage Tenant Branding'},
+    {'codename': 'custom_fields.manage', 'resource': 'organization', 'action': 'manage_custom_fields', 'name': 'Manage Custom Fields Schema'},
     {'codename': 'branch.view', 'resource': 'branch', 'action': 'view', 'name': 'View Branches'},
     {'codename': 'branch.manage', 'resource': 'branch', 'action': 'manage', 'name': 'Manage Branches'},
     {'codename': 'department.view', 'resource': 'department', 'action': 'view', 'name': 'View Departments'},

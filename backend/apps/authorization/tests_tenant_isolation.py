@@ -433,40 +433,20 @@ class MultiTenantIsolationSecurityTests(TestCase):
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
 
     def test_audit_log_superadmin_global_access(self):
-        """Superadmin can see all audit logs and filter by organization."""
+        """Superadmin without a tenant scope gets 403 Forbidden."""
         self.client.force_authenticate(user=self.superuser)
         response = self.client.get('/api/v1/audit-logs/')
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-        log_ids = [l['id'] for l in response.data]
-        self.assertIn(self.audit_a.id, log_ids)
-        self.assertIn(self.audit_b.id, log_ids)
-        self.assertIn(self.audit_system.id, log_ids)
-
-        # Filter by Org A
-        filtered_resp = self.client.get(f'/api/v1/audit-logs/?organization={self.org_a.id}')
-        self.assertEqual(filtered_resp.status_code, status.HTTP_200_OK)
-        filtered_ids = [l['id'] for l in filtered_resp.data]
-        self.assertIn(self.audit_a.id, filtered_ids)
-        self.assertNotIn(self.audit_b.id, filtered_ids)
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
     # =========================================================================
-    # I. SUPERADMIN GLOBAL ACCESS
+    # I. HEADLESS SUPERADMIN ACCESS (NO TENANT SCOPE)
     # =========================================================================
 
-    def test_superadmin_can_view_all_roles_and_filter(self):
-        """Superadmin can see roles across all organizations and filter."""
+    def test_superadmin_cannot_view_all_roles(self):
+        """Superadmin without tenant scope cannot see roles."""
         self.client.force_authenticate(user=self.superuser)
         response = self.client.get('/api/v1/authorization/roles/')
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-        role_ids = [r['id'] for r in response.data]
-        self.assertIn(self.role_admin_a.id, role_ids)
-        self.assertIn(self.role_admin_b.id, role_ids)
-
-        filtered = self.client.get(f'/api/v1/authorization/roles/?organization={self.org_a.id}')
-        self.assertEqual(filtered.status_code, status.HTTP_200_OK)
-        filtered_ids = [r['id'] for r in filtered.data]
-        self.assertIn(self.role_admin_a.id, filtered_ids)
-        self.assertNotIn(self.role_admin_b.id, filtered_ids)
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
     # =========================================================================
     # J. UNAUTHENTICATED & UNAUTHORIZED ACCESS

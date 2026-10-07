@@ -222,6 +222,12 @@ class TenantWFHAndProvisioningSecurityTests(TestCase):
         superuser = User.objects.create_superuser(
             email='root@system.local', password='Password123!', status='active'
         )
+        from apps.authorization.models import Role, UserRole, ScopeChoices, RolePermission, Permission
+        super_role, _ = Role.objects.get_or_create(organization=self.org_b, name='System Admin')
+        for perm_code in ['employee.view', 'employee.manage', 'employee.create']:
+            perm, _ = Permission.objects.get_or_create(codename=perm_code, defaults={'name': perm_code, 'resource': 'employee', 'action': perm_code.split('.')[1]})
+            RolePermission.objects.get_or_create(role=super_role, permission=perm)
+        UserRole.objects.get_or_create(user=superuser, role=super_role, scope=ScopeChoices.ORGANIZATION)
         self.client.force_authenticate(user=superuser)
 
         resp = self.client.post('/api/v1/employees/', {

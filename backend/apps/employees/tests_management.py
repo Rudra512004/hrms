@@ -12,11 +12,26 @@ User = get_user_model()
 
 class EmployeeManagementAPITests(TestCase):
     def setUp(self):
+        self.patcher = patch('apps.authorization.permissions.IsNetworkAllowed.has_permission', return_value=True)
+        self.patcher.start()
         self.client = APIClient()
         self.org = Organization.objects.create(name='Test Org')
 
         # Superadmin
         self.super_user = User.objects.create_user(email='super@example.com', password='Password123!', status='active', is_superuser=True)
+        from apps.authorization.models import Role, UserRole, ScopeChoices, RolePermission, Permission
+        from apps.organization.models import Organization as _PatchOrg
+        _test_org = getattr(self, 'org', getattr(self, 'organization', getattr(self, 'org1', None)))
+        if not _test_org:
+            _test_org = Organization.objects.first()
+        if _test_org:
+            _role, _ = Role.objects.get_or_create(organization=_test_org, name='System Admin')
+            for perm_code in ['employee.view', 'employee.manage', 'employee.create', 'employee.update', 'employee.status', 'employee.transfer', 'employee.promote', 'role.assign']:
+                action = perm_code.split('.')[1]
+                resource = perm_code.split('.')[0]
+                perm, _ = Permission.objects.get_or_create(codename=perm_code, defaults={'name': perm_code, 'resource': resource, 'action': action})
+                RolePermission.objects.get_or_create(role=_role, permission=perm)
+            UserRole.objects.get_or_create(user=self.super_user, role=_role, scope=ScopeChoices.ORGANIZATION)
         self.super_employee = Employee.objects.create(user=self.super_user, employee_code='EMP_SUPER', organization=self.org)
 
         # Normal Employee (No management permissions)
@@ -26,6 +41,9 @@ class EmployeeManagementAPITests(TestCase):
         # Another employee to manipulate
         self.target_user = User.objects.create_user(email='target@example.com', password='Password123!', status='active')
         self.target_employee = Employee.objects.create(user=self.target_user, employee_code='EMP_TARGET', organization=self.org)
+
+    def tearDown(self):
+        self.patcher.stop()
 
     def test_employee_creation_superadmin(self):
         self.client.force_authenticate(user=self.super_user)
@@ -147,7 +165,15 @@ class EmployeeManagementAPITests(TestCase):
         # Let's create a second superadmin, make them inactive, and try to deactivate the first one.
 
         super2 = User.objects.create_user(email='super2@example.com', password='Password123!', status='inactive', is_superuser=True)
-        Employee.objects.create(user=super2, employee_code='EMP_SUPER2')
+        from apps.authorization.models import Role, UserRole, ScopeChoices
+        from apps.organization.models import Organization as _PatchOrg
+        _test_org = getattr(self, 'org', getattr(self, 'organization', getattr(self, 'org1', None)))
+        if not _test_org:
+            _test_org = Organization.objects.first()
+        if _test_org:
+            _role, _ = Role.objects.get_or_create(organization=_test_org, name='System Admin')
+            UserRole.objects.get_or_create(user=super2, role=_role, scope=ScopeChoices.ORGANIZATION)
+        Employee.objects.create(user=super2, employee_code='EMP_SUPER2', organization=_test_org)
         # We need a normal user with employee.status permission to try to deactivate superadmin? No, only superadmin can deactivate superadmin.
         # So we must test Case A and Case C.
 
@@ -160,7 +186,15 @@ class EmployeeManagementAPITests(TestCase):
 
         # Now there is 1 active superuser left (super2). Let's create a third superadmin to try to deactivate super2.
         super3 = User.objects.create_user(email='super3@example.com', password='Password123!', status='active', is_superuser=True)
-        Employee.objects.create(user=super3, employee_code='EMP_SUPER3')
+        from apps.authorization.models import Role, UserRole, ScopeChoices
+        from apps.organization.models import Organization as _PatchOrg
+        _test_org = getattr(self, 'org', getattr(self, 'organization', getattr(self, 'org1', None)))
+        if not _test_org:
+            _test_org = Organization.objects.first()
+        if _test_org:
+            _role, _ = Role.objects.get_or_create(organization=_test_org, name='System Admin')
+            UserRole.objects.get_or_create(user=super3, role=_role, scope=ScopeChoices.ORGANIZATION)
+        Employee.objects.create(user=super3, employee_code='EMP_SUPER3', organization=_test_org)
 
         # super3 deactivates super2 (2 active superusers now: super2 and super3)
         self.client.force_authenticate(user=super3)
@@ -170,7 +204,15 @@ class EmployeeManagementAPITests(TestCase):
         # Now super3 is the LAST active superadmin.
         # We create a new superadmin who is INACTIVE (Case C).
         super4 = User.objects.create_user(email='super4@example.com', password='Password123!', status='inactive', is_superuser=True)
-        Employee.objects.create(user=super4, employee_code='EMP_SUPER4')
+        from apps.authorization.models import Role, UserRole, ScopeChoices
+        from apps.organization.models import Organization as _PatchOrg
+        _test_org = getattr(self, 'org', getattr(self, 'organization', getattr(self, 'org1', None)))
+        if not _test_org:
+            _test_org = Organization.objects.first()
+        if _test_org:
+            _role, _ = Role.objects.get_or_create(organization=_test_org, name='System Admin')
+            UserRole.objects.get_or_create(user=super4, role=_role, scope=ScopeChoices.ORGANIZATION)
+        Employee.objects.create(user=super4, employee_code='EMP_SUPER4', organization=_test_org)
 
         # To test deactivation of super3, we need someone else who is a superadmin and active to make the request...
         # But wait! If super3 is the last active superadmin, no other active superadmin exists to make the request!
@@ -237,7 +279,7 @@ class EmployeeManagementAPITests(TestCase):
 
     def test_cross_org_reporting_manager_fails(self):
         self.client.force_authenticate(user=self.super_user)
-        from apps.organization.models import Organization
+        from apps.organization.models import Organization as _PatchOrg
         other_org = Organization.objects.create(name='Other Org')
         other_org_manager_user = User.objects.create_user(email='otherorgmgr@example.com', status='active')
         other_org_manager = Employee.objects.create(user=other_org_manager_user, employee_code='MGR_OTHER', organization=other_org, employment_status='active')
@@ -257,6 +299,14 @@ class EmployeeIDGenerationTests(TestCase):
 
         self.client = APIClient()
         self.super_user = User.objects.create_user(email='super@example.com', is_superuser=True, status='active')
+        from apps.authorization.models import Role, UserRole, ScopeChoices
+        from apps.organization.models import Organization as _PatchOrg
+        _test_org = getattr(self, 'org', getattr(self, 'organization', getattr(self, 'org1', None)))
+        if not _test_org:
+            _test_org = Organization.objects.first()
+        if _test_org:
+            _role, _ = Role.objects.get_or_create(organization=_test_org, name='System Admin')
+            UserRole.objects.get_or_create(user=self.super_user, role=_role, scope=ScopeChoices.ORGANIZATION)
         self.super_employee = Employee.objects.create(user=self.super_user, employee_code='EMPBS000')
         self.client.force_authenticate(user=self.super_user)
 
@@ -307,12 +357,28 @@ class EmployeeTeamProvisioningTests(TestCase):
         self.team_inactive = Team.objects.create(department=self.dept1, name='Team Inactive', is_active=False)
 
         self.super_user = User.objects.create_user(email='super@org1.com', is_superuser=True, status='active')
+        from apps.authorization.models import Role, UserRole, ScopeChoices, RolePermission, Permission
+        from apps.organization.models import Organization as _PatchOrg
+        _test_org = getattr(self, 'org', getattr(self, 'organization', getattr(self, 'org1', None)))
+        if not _test_org:
+            _test_org = Organization.objects.first()
+        if _test_org:
+            _role, _ = Role.objects.get_or_create(organization=_test_org, name='System Admin')
+            for perm_code in ['employee.view', 'employee.manage', 'employee.create', 'employee.update', 'role.assign']:
+                action = perm_code.split('.')[1]
+                resource = perm_code.split('.')[0]
+                perm, _ = Permission.objects.get_or_create(codename=perm_code, defaults={'name': perm_code, 'resource': resource, 'action': action})
+                RolePermission.objects.get_or_create(role=_role, permission=perm)
+            UserRole.objects.get_or_create(user=self.super_user, role=_role, scope=ScopeChoices.ORGANIZATION)
         self.super_employee = Employee.objects.create(user=self.super_user, employee_code='SUP01', organization=self.org1)
 
         self.hr_role = Role.objects.create(name='HR', organization=self.org1)
         self.super_admin_role = Role.objects.create(name='Super Admin', organization=self.org1)
 
         self.client.force_authenticate(user=self.super_user)
+
+    def tearDown(self):
+        self.patcher.stop()
 
     def test_provision_with_team(self):
         response = self.client.post(reverse('employee-management-list'), {
@@ -362,7 +428,7 @@ class EmployeeTeamProvisioningTests(TestCase):
     def test_provision_prevent_superadmin_role_assignment(self):
         normal_user = User.objects.create_user(email='normal@org1.com', status='active')
         Employee.objects.create(user=normal_user, employee_code='NORM01', organization=self.org1)
-        perm = Permission.objects.create(codename='employee.create', resource='employee', action='create')
+        perm, _ = Permission.objects.get_or_create(codename='employee.create', resource='employee', action='create')
         hr_role = Role.objects.create(name='HR2', organization=self.org1)
         RolePermission.objects.create(role=hr_role, permission=perm)
         UserRole.objects.create(user=normal_user, role=hr_role)
@@ -398,7 +464,7 @@ class EmployeeTeamProvisioningTests(TestCase):
         branch_admin = User.objects.create_user(email='badmin@org1.com', status='active')
         Employee.objects.create(user=branch_admin, employee_code='BADMIN', organization=self.org1)
 
-        perm = Permission.objects.create(codename='employee.create', resource='employee', action='create')
+        perm, _ = Permission.objects.get_or_create(codename='employee.create', resource='employee', action='create')
         badmin_role = Role.objects.create(name='BAdmin Role', organization=self.org1)
         RolePermission.objects.create(role=badmin_role, permission=perm)
         UserRole.objects.create(user=branch_admin, role=badmin_role, scope='branch', branch=self.branch1)
@@ -445,7 +511,7 @@ class EmployeeTeamProvisioningTests(TestCase):
         team_admin = User.objects.create_user(email='tadmin_allow@org1.com', status='active')
         Employee.objects.create(user=team_admin, employee_code='TADMIN1', organization=self.org1)
 
-        perm = Permission.objects.create(codename='employee.create', resource='employee', action='create')
+        perm, _ = Permission.objects.get_or_create(codename='employee.create', resource='employee', action='create')
         role = Role.objects.create(name='Team Admin Role', organization=self.org1)
         RolePermission.objects.create(role=role, permission=perm)
         UserRole.objects.create(user=team_admin, role=role, scope='team', team=self.team1)
@@ -465,7 +531,7 @@ class EmployeeTeamProvisioningTests(TestCase):
 
         perm = Permission.objects.filter(codename='employee.create').first()
         if not perm:
-            perm = Permission.objects.create(codename='employee.create', resource='employee', action='create')
+            perm, _ = Permission.objects.get_or_create(codename='employee.create', resource='employee', action='create')
         role = Role.objects.create(name='Team Admin Role 2', organization=self.org1)
         RolePermission.objects.create(role=role, permission=perm)
         UserRole.objects.create(user=team_admin, role=role, scope='team', team=self.team1)
@@ -486,7 +552,7 @@ class EmployeeTeamProvisioningTests(TestCase):
 
         perm = Permission.objects.filter(codename='employee.create').first()
         if not perm:
-            perm = Permission.objects.create(codename='employee.create', resource='employee', action='create')
+            perm, _ = Permission.objects.get_or_create(codename='employee.create', resource='employee', action='create')
         role = Role.objects.create(name='Team Admin Role 3', organization=self.org1)
         RolePermission.objects.create(role=role, permission=perm)
         UserRole.objects.create(user=team_admin, role=role, scope='team', team=self.team1)
@@ -511,7 +577,7 @@ class EmployeeTeamProvisioningTests(TestCase):
 
         perm = Permission.objects.filter(codename='employee.create').first()
         if not perm:
-            perm = Permission.objects.create(codename='employee.create', resource='employee', action='create')
+            perm, _ = Permission.objects.get_or_create(codename='employee.create', resource='employee', action='create')
         role = Role.objects.create(name='Branch Admin Role 1', organization=self.org1)
         RolePermission.objects.create(role=role, permission=perm)
         UserRole.objects.create(user=branch_admin, role=role, scope='branch', branch=self.branch1)
@@ -532,7 +598,7 @@ class EmployeeTeamProvisioningTests(TestCase):
 
         perm = Permission.objects.filter(codename='employee.create').first()
         if not perm:
-            perm = Permission.objects.create(codename='employee.create', resource='employee', action='create')
+            perm, _ = Permission.objects.get_or_create(codename='employee.create', resource='employee', action='create')
         role = Role.objects.create(name='Branch Admin Role 2', organization=self.org1)
         RolePermission.objects.create(role=role, permission=perm)
         UserRole.objects.create(user=branch_admin, role=role, scope='branch', branch=self.branch1)
@@ -554,7 +620,7 @@ class EmployeeTeamProvisioningTests(TestCase):
 
         perm = Permission.objects.filter(codename='employee.create').first()
         if not perm:
-            perm = Permission.objects.create(codename='employee.create', resource='employee', action='create')
+            perm, _ = Permission.objects.get_or_create(codename='employee.create', resource='employee', action='create')
         role = Role.objects.create(name='Org Admin Role 1', organization=self.org1)
         RolePermission.objects.create(role=role, permission=perm)
         UserRole.objects.create(user=org_admin, role=role, scope='organization')
@@ -572,17 +638,33 @@ class EmployeeTeamProvisioningTests(TestCase):
 
 class EmployeeIDGenerationTests(TestCase):
     def setUp(self):
+        from unittest.mock import patch
+        self.patcher = patch('apps.authorization.permissions.IsNetworkAllowed.has_permission', return_value=True)
+        self.patcher.start()
         from apps.employees.models import EmployeeIDSequence
         EmployeeIDSequence.objects.all().delete()
         Employee.objects.all().delete()
         User.objects.all().delete()
 
         self.client = APIClient()
-        from apps.organization.models import Organization
+        from apps.organization.models import Organization as _PatchOrg
         self.org = Organization.objects.create(name='Test Org')
         self.super_user = User.objects.create_user(email='super@example.com', is_superuser=True, status='active')
+        from apps.authorization.models import Role, UserRole, ScopeChoices, Permission, RolePermission
+        from apps.organization.models import Organization as _PatchOrg
+        _test_org = getattr(self, 'org', getattr(self, 'organization', getattr(self, 'org1', None)))
+        if not _test_org:
+            _test_org = Organization.objects.first()
+        if _test_org:
+            _role, _ = Role.objects.get_or_create(organization=_test_org, name='System Admin')
+            UserRole.objects.get_or_create(user=self.super_user, role=_role, scope=ScopeChoices.ORGANIZATION)
+            perm, _ = Permission.objects.get_or_create(codename='employee.create', defaults={'name': 'employee.create', 'resource': 'employee', 'action': 'create'})
+            RolePermission.objects.get_or_create(role=_role, permission=perm)
         self.super_employee = Employee.objects.create(user=self.super_user, employee_code='EMPBS000', organization=self.org)
         self.client.force_authenticate(user=self.super_user)
+
+    def tearDown(self):
+        self.patcher.stop()
 
     def test_first_employee_generation(self):
         response = self.client.post(reverse('employee-management-list'), {

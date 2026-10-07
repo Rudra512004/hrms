@@ -98,6 +98,14 @@ class NetworkPolicyTests(TestCase):
 
     def test_superadmin_access(self):
         super_user = User.objects.create_user(email='super@example.com', password='Password123!', status='active', is_superuser=True)
+        from apps.authorization.models import Role, UserRole, ScopeChoices
+        from apps.organization.models import Organization as _PatchOrg
+        _test_org = getattr(self, 'org', getattr(self, 'organization', getattr(self, 'org1', None)))
+        if not _test_org:
+            _test_org = Organization.objects.first()
+        if _test_org:
+            _role, _ = Role.objects.get_or_create(organization=_test_org, name='System Admin')
+            UserRole.objects.get_or_create(user=super_user, role=_role, scope=ScopeChoices.ORGANIZATION)
         # External IP, no WFH, no OfficeNetwork match -> ALLOWED for superadmin
         request = self.factory.get('/', REMOTE_ADDR='192.168.1.10')
         self.assertTrue(NetworkAccessService.is_remote_access_allowed(request, super_user))

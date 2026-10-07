@@ -12,7 +12,7 @@ class AuthorizationService:
         owners are headless accounts, so their context comes from an active
         organization-scoped role rather than an Employee record.
         """
-        if not user or not user.is_authenticated or user.is_superuser:
+        if not user or not user.is_authenticated:
             return None
         if hasattr(user, 'employee') and user.employee and user.employee.organization_id:
             return user.employee.organization
@@ -27,9 +27,7 @@ class AuthorizationService:
         if not user.is_authenticated or not user.is_active:
             return set()
 
-        if user.is_superuser:
-            # Superusers have all active permissions
-            return set(Permission.objects.filter(is_active=True).values_list('codename', flat=True))
+
 
         now = timezone.now()
 
@@ -86,8 +84,7 @@ class AuthorizationService:
     def has_permission(user, permission_codename, branch_id=None, team_id=None, global_only=False):
         if not user.is_authenticated or not user.is_active:
             return False
-        if user.is_superuser:
-            return True
+
         return permission_codename in AuthorizationService.get_effective_permissions(user, branch_id=branch_id, team_id=team_id, global_only=global_only)
 
     @staticmethod
@@ -95,9 +92,6 @@ class AuthorizationService:
         """Returns a QuerySet of branches the user has the given permission for."""
         if not user.is_authenticated or not user.is_active:
             return Branch.objects.none()
-
-        if user.is_superuser:
-            return Branch.objects.filter(is_active=True)
 
         now = timezone.now()
 
@@ -165,8 +159,7 @@ class AuthorizationService:
         if not user.is_authenticated or not user.is_active:
             return Team.objects.none()
 
-        if user.is_superuser:
-            return Team.objects.filter(is_active=True)
+
 
         now = timezone.now()
 

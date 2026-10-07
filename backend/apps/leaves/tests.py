@@ -151,6 +151,19 @@ class AdminLeaveTypeAPITests(TestCase):
 
 
         self.superadmin = User.objects.create_user(email='super@example.com', password='Password123!', status='active', is_superuser=True)
+        from apps.authorization.models import Role, UserRole, ScopeChoices, RolePermission, Permission
+        from apps.organization.models import Organization as _PatchOrg
+        _test_org = getattr(self, 'org', getattr(self, 'organization', getattr(self, 'org1', None)))
+        if not _test_org:
+            _test_org = Organization.objects.first()
+        if _test_org:
+            _role, _ = Role.objects.get_or_create(organization=_test_org, name='System Admin')
+            for perm_code in ['attendance.view', 'attendance.manage', 'attendance.view_all', 'leave.view', 'leave.manage', 'leave.view_all', 'leave.verify', 'leave_type.manage', 'payroll.generate', 'payroll.approve', 'payroll.view', 'payroll.manage_compensation', 'payslip.view', 'payroll.view_sensitive']:
+                action = perm_code.split('.')[1]
+                resource = perm_code.split('.')[0]
+                perm, _ = Permission.objects.get_or_create(codename=perm_code, defaults={'name': perm_code, 'resource': resource, 'action': action})
+                RolePermission.objects.get_or_create(role=_role, permission=perm)
+            UserRole.objects.get_or_create(user=self.superadmin, role=_role, scope=ScopeChoices.ORGANIZATION)
         self.admin = User.objects.create_user(email='admin@example.com', password='Password123!', status='active')
         self.admin_employee = Employee.objects.create(user=self.admin, employee_code='ADM01', organization=self.org, branch=self.branch)
 
@@ -480,6 +493,14 @@ class AdminLeaveTypeAPITests(TestCase):
 
     def test_adjust_leave_balance_success(self):
         admin_user = User.objects.create_superuser(email='superadmin@example.com', password='Password123!')
+        from apps.authorization.models import Role, UserRole, ScopeChoices, RolePermission, Permission
+        role, _ = Role.objects.get_or_create(organization=self.org, name='System Admin')
+        for perm_code in ['attendance.view', 'attendance.manage', 'attendance.view_all', 'leave.view', 'leave.manage', 'leave.view_all', 'leave.verify', 'leave_type.manage', 'payroll.generate', 'payroll.approve', 'payroll.view', 'payroll.manage_compensation', 'payslip.view', 'payroll.view_sensitive']:
+            action = perm_code.split('.')[1]
+            resource = perm_code.split('.')[0]
+            perm, _ = Permission.objects.get_or_create(codename=perm_code, defaults={'name': perm_code, 'resource': resource, 'action': action})
+            RolePermission.objects.get_or_create(role=role, permission=perm)
+        UserRole.objects.create(user=admin_user, role=role, scope=ScopeChoices.ORGANIZATION)
         self.client.force_authenticate(user=admin_user)
         url = reverse('leave-balances-adjust', kwargs={'pk': self.balance.id})
         res = self.client.post(url, {'amount': '2.5', 'reason': 'Compensatory off'})

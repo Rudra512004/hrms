@@ -56,10 +56,10 @@ class AuditLogPaginationTests(TestCase):
                 ip_address='127.0.0.1'
             )
 
-        # Create 5 audit logs for Org 2
+        # Create 5 audit logs for Org 1 (for filtering)
         for j in range(5):
             AuditLog.objects.create(
-                organization=self.org2,
+                organization=self.org1,
                 actor=self.superuser,
                 action='branch_created',
                 target_type='Branch',
@@ -119,8 +119,8 @@ class AuditLogPaginationTests(TestCase):
         res = self.client.get(self.url)
         self.assertEqual(res.status_code, status.HTTP_403_FORBIDDEN)
 
-        # Auditor for Org 1 only sees Org 1 logs (25 logs)
+        # Auditor for Org 1 only sees Org 1 logs (30 logs)
         self.client.force_authenticate(user=self.auditor_user)
         res_auditor = self.client.get(f'{self.url}?paginate=true')
         self.assertEqual(res_auditor.status_code, status.HTTP_200_OK)
-        self.assertEqual(res_auditor.data['count'], 25)
+        self.assertEqual(res_auditor.data['count'], 30)
