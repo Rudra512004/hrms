@@ -1,0 +1,2 @@
+﻿employee_code,effective_from,ctc_annual,basic_salary,currency,payment_mode,notes,component:basic,component:hra,component:conv,component:med,component:spl,component:pf,component:pt,component:tds
+EMP0001,2026-04-01,990000,33000,INR,bank_transfer,,,,,,,,,

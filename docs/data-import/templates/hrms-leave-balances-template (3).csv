@@ -1,0 +1,2 @@
+﻿employee_code,leave_type_code,year,allocated_days,carried_forward_days,used_days,encashed_days,notes
+EMP0001,CL,2026,12,2,5,0,"Migrated from the old system"

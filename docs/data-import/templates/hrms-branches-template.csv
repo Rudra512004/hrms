@@ -1,0 +1,2 @@
+﻿code,name,email,phone,address_line1,address_line2,city,state,country,postal_code,latitude,longitude,geofence_radius_metres,timezone,work_start_time,work_end_time,working_days,saturday_offs,is_head_office,status
+BLR,"Bengaluru Head Office",blr@example.com,"+91 80 4000 1200","Level 6, Prestige Tower","Outer Ring Road",Bengaluru,Karnataka,India,560103,12.9591,77.6974,200,Asia/Kolkata,09:30,18:30,Mon-Fri,"1,3",yes,active

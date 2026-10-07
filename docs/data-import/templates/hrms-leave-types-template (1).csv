@@ -1,0 +1,2 @@
+﻿code,name,days_per_year,accrual,days_per_month,probation_days_per_month,accrue_in_advance,accrual_starts_on,is_paid,requires_approval,allow_half_day,carry_forward,max_carry_forward_days,max_consecutive_days,min_notice_days,applicable_gender,applicable_after_months,requires_attachment,color,description,status
+CL,"Casual Leave",6,yearly,,,no,,yes,yes,yes,no,0,3,1,any,0,no,#2563eb,,active

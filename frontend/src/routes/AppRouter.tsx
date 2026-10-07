@@ -63,6 +63,7 @@ import { LetterTemplatesPage } from '../pages/admin/LetterTemplatesPage';
 import { OrgChartPage } from '../pages/OrgChartPage';
 import { ApprovalDelegationPage } from '../pages/ApprovalDelegationPage';
 import { AdminLetterRequestsPage } from '../pages/admin/AdminLetterRequestsPage';
+import { DataImportPage } from '../pages/admin/DataImportPage';
 import { ProtectedRoute } from '../components/ProtectedRoute';
 import { OnboardingRoute } from '../components/OnboardingRoute';
 import { OnboardingLayout } from '../layouts/OnboardingLayout';
@@ -163,6 +164,11 @@ export const AppRouter: React.FC = () => {
             <Route path="/admin/control-center" element={<OrganizationControlCenterPage />} />
             <Route path="/admin/org-chart" element={<OrgChartPage />} />
           </Route>
+          
+          <Route element={<ProtectedRoute requiredPermission="data_import.view" />}>
+            <Route path="/admin/data-import" element={<DataImportPage />} />
+          </Route>
+          
           <Route element={<ProtectedRoute requiredPermission="announcement.view" />}><Route path="/admin/announcements" element={<AnnouncementsPage />} /></Route>
 
 

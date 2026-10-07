@@ -122,6 +122,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, isMobile, onNavigate }
         { path: '/admin/announcements', label: 'Announcements', icon: Bell, permission: 'announcement.view' },
         { path: '/admin/roles',          label: 'Roles & Permissions', icon: ShieldAlert, permission: 'role.view' },
         { path: '/admin/audit-logs',     label: 'Audit Logs',          icon: Settings,    permission: 'audit.view' },
+        { path: '/admin/data-import',    label: 'Data Import',         icon: FileText,    permission: 'data_import.view' },
         { path: '/admin/office-networks',label: 'Office Networks',     icon: Network,     permission: 'office_network.view' },
       ],
     },
