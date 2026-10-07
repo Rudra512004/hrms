@@ -60,21 +60,27 @@ class AnnouncementViewSet(viewsets.ModelViewSet):
     serializer_class = AnnouncementSerializer
 
     def get_permissions(self):
+        if self.action == 'acknowledge':
+            return [IsAuthenticated()]
         permission = 'announcement.view' if self.action in ['list', 'retrieve'] else 'announcement.manage'
         return [IsAuthenticated(), require_permission(permission)()]
 
     def get_queryset(self):
         user = self.request.user
-        if user.is_superuser:
-            return Announcement.objects.all()
-        employee = getattr(user, 'employee', None)
-        if not employee or not employee.organization_id:
+        from apps.authorization.services import AuthorizationService
+        org = AuthorizationService.get_primary_organization(user)
+        if not org:
             return Announcement.objects.none()
-        queryset = Announcement.objects.filter(organization_id=employee.organization_id)
-        if not self.request.user or not self.request.user.is_superuser:
+            
+        queryset = Announcement.objects.filter(organization_id=org.id)
+        
+        # If they don't have manage permissions, they only see published announcements
+        # that are applicable to their branch.
+        if not AuthorizationService.has_permission(user, 'announcement.manage'):
             now = timezone.now()
             queryset = queryset.filter(Q(is_published=True), Q(expires_at__isnull=True) | Q(expires_at__gt=now))
-            if employee.branch_id:
+            employee = getattr(user, 'employee', None)
+            if employee and employee.branch_id:
                 queryset = queryset.filter(Q(branch__isnull=True) | Q(branch_id=employee.branch_id))
             else:
                 queryset = queryset.filter(branch__isnull=True)
@@ -82,8 +88,8 @@ class AnnouncementViewSet(viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         user = self.request.user
-        employee = getattr(user, 'employee', None)
-        organization = serializer.validated_data.get('organization') if user.is_superuser else getattr(employee, 'organization', None)
+        from apps.authorization.services import AuthorizationService
+        organization = AuthorizationService.get_primary_organization(user)
         if not organization:
             from rest_framework.exceptions import ValidationError
             raise ValidationError({'organization': 'Organization context is required.'})
@@ -99,3 +105,21 @@ class AnnouncementViewSet(viewsets.ModelViewSet):
         becomes_published = serializer.validated_data.get('is_published', was_published)
         instance = serializer.save(published_at=timezone.now() if becomes_published and not was_published else serializer.instance.published_at)
         AuditService.log('announcement_updated', self.request.user, 'announcement', instance.id, {'published': instance.is_published}, self.request, instance.organization)
+
+    @action(detail=True, methods=['post'])
+    def acknowledge(self, request, pk=None):
+        from .models import AnnouncementAcknowledgement
+        announcement = self.get_object()
+        employee = getattr(request.user, 'employee', None)
+        if not employee:
+            return Response({'detail': 'Only employees can acknowledge announcements.'}, status=status.HTTP_400_BAD_REQUEST)
+            
+        if not announcement.requires_acknowledgement:
+            return Response({'detail': 'This announcement does not require acknowledgement.'}, status=status.HTTP_400_BAD_REQUEST)
+            
+        _, created = AnnouncementAcknowledgement.objects.get_or_create(
+            announcement=announcement,
+            employee=employee
+        )
+        
+        return Response({'detail': 'Announcement acknowledged.', 'created': created})

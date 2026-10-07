@@ -68,6 +68,8 @@ class Announcement(models.Model):
     published_at = models.DateTimeField(null=True, blank=True)
     expires_at = models.DateTimeField(null=True, blank=True)
     created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, related_name='+')
+    requires_acknowledgement = models.BooleanField(default=False)
+    policy_pdf_url = models.URLField(max_length=500, blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -84,4 +86,10 @@ class Announcement(models.Model):
         self.full_clean()
         super().save(*args, **kwargs)
 
+class AnnouncementAcknowledgement(models.Model):
+    announcement = models.ForeignKey(Announcement, on_delete=models.CASCADE, related_name='acknowledgements')
+    employee = models.ForeignKey('employees.Employee', on_delete=models.CASCADE, related_name='announcement_acknowledgements')
+    acknowledged_at = models.DateTimeField(auto_now_add=True)
 
+    class Meta:
+        unique_together = ('announcement', 'employee')
