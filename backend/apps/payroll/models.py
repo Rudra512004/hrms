@@ -17,6 +17,14 @@ class CompensationHistory(models.Model):
         on_delete=models.CASCADE,
         related_name='compensation_history',
     )
+    salary_structure = models.ForeignKey(
+        'SalaryStructure',
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name='employee_assignments',
+        help_text="The salary structure governing this employee's compensation."
+    )
     effective_from = models.DateField()
     effective_to = models.DateField(null=True, blank=True)
     basic_salary = models.DecimalField(
@@ -42,6 +50,12 @@ class CompensationHistory(models.Model):
 
     class Meta:
         ordering = ['-effective_from']
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(effective_to__gte=models.F('effective_from')) | models.Q(effective_to__isnull=True),
+                name='compensation_history_effective_dates_valid'
+            )
+        ]
 
     def __str__(self):
         return (
@@ -240,19 +254,80 @@ class Payslip(models.Model):
         return f"{self.payslip_number} — {self.payroll_record.employee.employee_code}"
 
 class SalaryComponent(models.Model):
-    KIND=[('earning','Earning'),('deduction','Deduction')]
-    organization=models.ForeignKey(Organization,on_delete=models.CASCADE,related_name='salary_components')
-    name=models.CharField(max_length=120); code=models.CharField(max_length=32); kind=models.CharField(max_length=12,choices=KIND)
-    is_taxable=models.BooleanField(default=False); is_active=models.BooleanField(default=True)
-    class Meta: unique_together=('organization','code')
+    KIND_CHOICES = [
+        ('earning', 'Earning'),
+        ('deduction', 'Employee Deduction'),
+        ('employer_contribution', 'Employer Contribution'),
+        ('informational', 'Informational / Non-Payable'),
+    ]
+
+    CALCULATION_CHOICES = [
+        ('flat', 'Flat Amount'),
+        ('percentage', 'Percentage'),
+        ('formula', 'Formula'),
+    ]
+
+    organization = models.ForeignKey(Organization, on_delete=models.CASCADE, related_name='salary_components')
+    name = models.CharField(max_length=120)
+    code = models.CharField(max_length=32)
+    kind = models.CharField(max_length=25, choices=KIND_CHOICES)
+    
+    # Calculation Logic
+    calculation_type = models.CharField(max_length=20, choices=CALCULATION_CHOICES, default='flat')
+    formula_expression = models.CharField(
+        max_length=500, 
+        blank=True, 
+        help_text="e.g. 5000 for flat, 40% of BASIC, or a formula like (BASIC * 0.4)"
+    )
+
+    # Flags
+    is_taxable = models.BooleanField(default=False)
+    is_prorated = models.BooleanField(default=True, help_text="Does this component scale with attendance?")
+    is_epf_applicable = models.BooleanField(default=False)
+    is_esic_applicable = models.BooleanField(default=False)
+    is_pt_applicable = models.BooleanField(default=False)
+    is_active = models.BooleanField(default=True)
+
+    class Meta: 
+        unique_together = ('organization', 'code')
+
+    def __str__(self):
+        return f"{self.name} ({self.code})"
 
 class SalaryStructure(models.Model):
-    organization=models.ForeignKey(Organization,on_delete=models.CASCADE,related_name='salary_structures')
-    name=models.CharField(max_length=120); is_active=models.BooleanField(default=True)
-    class Meta: unique_together=('organization','name')
+    organization = models.ForeignKey(Organization, on_delete=models.CASCADE, related_name='salary_structures')
+    name = models.CharField(max_length=120)
+    is_active = models.BooleanField(default=True)
+
+    class Meta: 
+        unique_together = ('organization', 'name')
+
+    def __str__(self):
+        return f"{self.name} - {self.organization.name}"
 
 class SalaryStructureComponent(models.Model):
-    structure=models.ForeignKey(SalaryStructure,on_delete=models.CASCADE,related_name='components')
-    component=models.ForeignKey(SalaryComponent,on_delete=models.PROTECT)
-    amount=models.DecimalField(max_digits=12,decimal_places=2,default=0)
-    class Meta: unique_together=('structure','component')
+    structure = models.ForeignKey(SalaryStructure, on_delete=models.CASCADE, related_name='components')
+    component = models.ForeignKey(SalaryComponent, on_delete=models.PROTECT)
+    
+    # Ordering within the structure, useful for evaluating formula dependencies
+    order = models.PositiveIntegerField(default=0)
+
+    # Optional overrides. If blank/null, falls back to the component's defaults.
+    override_calculation_type = models.CharField(max_length=20, choices=SalaryComponent.CALCULATION_CHOICES, null=True, blank=True)
+    override_formula_expression = models.CharField(max_length=500, blank=True)
+
+    amount = models.DecimalField(max_digits=12, decimal_places=2, default=0, help_text="Legacy/Fallback fixed amount if needed.")
+    
+    class Meta: 
+        unique_together = ('structure', 'component')
+        ordering = ['order']
+
+    def __str__(self):
+        return f"{self.structure.name} -> {self.component.code}"
+
+    def clean(self):
+        super().clean()
+        from django.core.exceptions import ValidationError
+        if self.component.organization_id != self.structure.organization_id:
+            raise ValidationError("Component must belong to the same organization as the Salary Structure.")
+
