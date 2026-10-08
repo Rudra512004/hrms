@@ -344,7 +344,11 @@ class AdminLeaveTypeAPITests(TestCase):
 
     def test_overlapping_pending_leave_request_rejected(self):
         self.client.force_authenticate(user=self.employee)
-        base_date = timezone.now().date() + timedelta(days=20)
+        # Find next Monday to avoid weekend failures
+        d = timezone.now().date() + timedelta(days=20)
+        while d.weekday() != 0:
+            d += timedelta(days=1)
+        base_date = d
         LeaveRequest.objects.create(
             employee=self.emp_profile, leave_type=self.leave_type,
             start_date=base_date, end_date=base_date + timedelta(days=3),
@@ -364,7 +368,11 @@ class AdminLeaveTypeAPITests(TestCase):
 
     def test_overlapping_approved_leave_request_rejected(self):
         self.client.force_authenticate(user=self.employee)
-        base_date = timezone.now().date() + timedelta(days=30)
+        # Find next Monday to avoid weekend failures
+        d = timezone.now().date() + timedelta(days=30)
+        while d.weekday() != 0:
+            d += timedelta(days=1)
+        base_date = d
         LeaveRequest.objects.create(
             employee=self.emp_profile, leave_type=self.leave_type,
             start_date=base_date, end_date=base_date + timedelta(days=3),

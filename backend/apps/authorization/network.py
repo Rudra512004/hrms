@@ -51,7 +51,9 @@ class NetworkAccessService:
             return True
 
         ip = NetworkAccessService.get_client_ip(request)
-        employee = getattr(user, 'employee', None)
+        # Employee.user is a ForeignKey (related_name='employee_profiles'), not OneToOne.
+        # getattr(user, 'employee', None) always returns None; use the queryset instead.
+        employee = user.employee_profiles.select_related('organization').first()
         if not employee:
             # Tenant owners are headless administration accounts, not employees.
             # They must be able to configure their own organization remotely;

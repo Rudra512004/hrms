@@ -237,8 +237,8 @@ class ShiftAndAssignmentAPITests(TestCase):
 
     def test_shift_cross_organization_forbidden(self):
         from apps.authorization.models import Role, RolePermission, Permission, UserRole, ScopeChoices
-        p_manage = Permission.objects.get(codename='shift.manage')
-        p_view = Permission.objects.get(codename='shift.view')
+        p_manage = Permission.objects.get_or_create(codename='shift.manage', defaults={'name':'manage','resource':'s','action':'m'})[0]
+        p_view = Permission.objects.get_or_create(codename='shift.view', defaults={'name':'view','resource':'s','action':'v'})[0]
         role = Role.objects.create(organization=self.org1, name='Org 1 Shift Admin')
         RolePermission.objects.create(role=role, permission=p_manage)
         RolePermission.objects.create(role=role, permission=p_view)

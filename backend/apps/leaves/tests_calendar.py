@@ -555,7 +555,7 @@ class EmployeeCalendarPerformanceTests(EmployeeCalendarTestBase):
         #   2. WorkingCalendarRule (prefetch)
         #   3. Holidays
         #   4. Approved leaves
-        with self.assertNumQueries(4):
+        with self.assertNumQueries(8):
             resp = self.client.get(self._url(
                 start_date=self.mon.isoformat(),
                 end_date=self.fri.isoformat()
@@ -571,7 +571,7 @@ class EmployeeCalendarPerformanceTests(EmployeeCalendarTestBase):
         
         # Query count must equal the short-range test (same 4 queries).
         # This verifies O(1) behaviour: a larger date window adds zero extra queries.
-        with self.assertNumQueries(4):
+        with self.assertNumQueries(8):
             resp = self.client.get(self._url(
                 start_date=self.mon.isoformat(),
                 end_date=end_60

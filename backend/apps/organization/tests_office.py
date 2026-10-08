@@ -9,7 +9,10 @@ class OfficeNetworkTests(APITestCase):
     def setUp(self):
         self.user = User.objects.create_user(email='admin@example.com', password='Password123!', status='active')
         self.org = Organization.objects.create(name='Test Org')
-        from apps.organization.models import Branch
+        
+        from apps.organization.models import Branch, OrganizationMembership
+        OrganizationMembership.objects.create(user=self.user, organization=self.org, status='active')
+        
         self.branch = Branch.objects.create(organization=self.org, name='HQ Branch')
 
         self.perm_view = Permission.objects.create(name='View Net', codename='office_network.view', resource='office_network', action='view')
@@ -20,6 +23,7 @@ class OfficeNetworkTests(APITestCase):
         RolePermission.objects.create(role=self.role, permission=self.perm_create)
         UserRole.objects.create(user=self.user, role=self.role)
 
+        self.client.credentials(HTTP_X_ORGANIZATION_ID=str(self.org.id))
         self.client.force_authenticate(user=self.user)
 
     def test_create_office_network(self):

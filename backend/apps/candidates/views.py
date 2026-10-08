@@ -107,8 +107,16 @@ class CandidateViewSet(viewsets.ModelViewSet):
             org_id = self.request.query_params.get('organization_id')
             if org_id:
                 qs = qs.filter(organization_id=org_id)
-        elif hasattr(user, 'employee') and user.employee.organization_id:
-            qs = qs.filter(organization=user.employee.organization)
+        elif True:
+            try:
+                from apps.organization.context import get_current_employee
+                emp = get_current_employee(self.request)
+                if emp and emp.organization_id:
+                    qs = qs.filter(organization=emp.organization)
+                else:
+                    return Candidate.objects.none()
+            except Exception:
+                return Candidate.objects.none()
         else:
             return Candidate.objects.none()
 
@@ -591,8 +599,16 @@ class LetterTemplateViewSet(viewsets.ModelViewSet):
             org_id = self.request.query_params.get('organization_id')
             if org_id:
                 qs = qs.filter(organization_id=org_id)
-        elif hasattr(user, 'employee') and user.employee.organization_id:
-            qs = qs.filter(organization=user.employee.organization)
+        elif True:
+            try:
+                from apps.organization.context import get_current_employee
+                emp = get_current_employee(self.request)
+                if emp and emp.organization_id:
+                    qs = qs.filter(organization=emp.organization)
+                else:
+                    return LetterTemplate.objects.none()
+            except Exception:
+                return LetterTemplate.objects.none()
         else:
             return LetterTemplate.objects.none()
 

@@ -27,8 +27,8 @@ export const RegisterOrganizationPage: React.FC = () => {
       <span style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: 38, borderRadius: 'var(--radius-sm)', background: 'var(--color-bg-card)', color: 'var(--color-primary)', fontWeight: 600, fontSize: 'var(--font-size-sm)', boxShadow: 'var(--shadow-xs)' }}>Sign up</span>
     </div>
     <h1 style={{ marginBottom: 8 }}>Create your HRMS workspace</h1>
-    <p className="text-muted" style={{ marginBottom: 24 }}>Verify your business email, set a password, and then launch your organization.</p>
-    {message ? <div className="alert-banner alert-banner-success"><CheckCircle2 size={18} />{message}<Link to="/login" style={{ marginLeft: 'auto' }}>Sign in</Link></div> : <form onSubmit={submit} style={{ display: 'grid', gap: 16 }}>
+    <p className="text-muted" style={{ marginBottom: 24 }}>Enter your details to register as the tenant owner. We will send you an email to activate your account and set a password.</p>
+    {message ? <div className="alert-banner alert-banner-success" style={{ display: 'flex', alignItems: 'center', gap: 8 }}><CheckCircle2 size={18} /><span>{message}</span></div> : <form onSubmit={submit} style={{ display: 'grid', gap: 16 }}>
       {error && <div className="alert-banner alert-banner-error">{error}</div>}
       <label className="form-group"><span className="form-label">First name</span><input className="input-field" required value={form.first_name} onChange={e => setForm({ ...form, first_name: e.target.value })} /></label>
       <label className="form-group"><span className="form-label">Last name</span><input className="input-field" required value={form.last_name} onChange={e => setForm({ ...form, last_name: e.target.value })} /></label>

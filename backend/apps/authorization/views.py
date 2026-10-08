@@ -17,15 +17,19 @@ from rest_framework.views import APIView
 User = get_user_model()
 
 
-def _get_user_organization(user):
-    """Resolve a tenant-admin's role-scoped organization without granting global access."""
-    return AuthorizationService.get_primary_organization(user)
+from apps.organization.context import get_current_organization, get_current_employee
+from apps.organization.models import OrganizationMembership
 
+def _get_user_organization(request):
+    """Resolve the current organization context from the request."""
+    try:
+        return get_current_organization(request)
+    except Exception:
+        return None
 
-def _user_org_id(user):
-    """Safely return the organization_id of a user's primary employee profile, or None."""
-    emp = user.employee_profiles.select_related('organization').first()
-    return emp.organization_id if (emp and emp.organization_id) else None
+def _user_in_org(user, org_id):
+    """Check if a target user has an active membership in the organization."""
+    return OrganizationMembership.objects.filter(user=user, organization_id=org_id, status='active').exists()
 
 class CurrentUserPermissionsView(APIView):
     permission_classes = [IsAuthenticated]
@@ -45,10 +49,10 @@ class CurrentUserPermissionsView(APIView):
         ).values_list('name', flat=True)
 
         _emp = None
-        if not user.is_superuser and hasattr(user, 'employee'):
+        if not user.is_superuser:
             try:
-                _emp = user.employee
-            except AttributeError:
+                _emp = get_current_employee(request)
+            except Exception:
                 pass
         
         has_employee = _emp is not None
@@ -89,7 +93,7 @@ class RoleViewSet(viewsets.ModelViewSet):
             if org_id:
                 qs = qs.filter(organization_id=org_id)
             return qs
-        organization = _get_user_organization(user)
+        organization = _get_user_organization(self.request)
         if organization:
             return Role.objects.filter(organization=organization)
         return Role.objects.none()
@@ -103,13 +107,13 @@ class RoleViewSet(viewsets.ModelViewSet):
                     org = Organization.objects.get(id=org_id)
                 except Organization.DoesNotExist:
                     raise ValidationError({'organization': 'Specified organization does not exist.'})
-            elif _get_user_organization(user):
-                org = _get_user_organization(user)
+            if _get_user_organization(self.request):
+                org = _get_user_organization(self.request)
             else:
                 raise ValidationError({'organization': 'Organization context is required.'})
         else:
-            if _get_user_organization(user):
-                org = _get_user_organization(user)
+            if _get_user_organization(self.request):
+                org = _get_user_organization(self.request)
             else:
                 raise ValidationError({'organization': 'User does not belong to an organization.'})
 
@@ -154,7 +158,7 @@ class UserRoleViewSet(viewsets.ModelViewSet):
             if org_id:
                 qs = qs.filter(role__organization_id=org_id)
             return qs
-        org = _get_user_organization(user)
+        org = _get_user_organization(self.request)
         if org:
             return UserRole.objects.filter(is_revoked=False, role__organization=org)
         return UserRole.objects.none()
@@ -165,13 +169,13 @@ class UserRoleViewSet(viewsets.ModelViewSet):
         target_user = serializer.validated_data.get('user')
 
         if not user.is_superuser:
-            user_org = _get_user_organization(user)
+            user_org = _get_user_organization(self.request)
             if not user_org:
                 raise ValidationError({'detail': 'User does not belong to an organization.'})
             if role.organization_id != user_org.id:
                 raise ValidationError({'role': 'Role does not belong to your organization.'})
 
-            if _user_org_id(target_user) != user_org.id:
+            if not _user_in_org(target_user, user_org.id):
                 raise ValidationError({'user': 'Target user does not belong to your organization.'})
                 
             # Prevent Privilege Escalation
@@ -189,10 +193,8 @@ class UserRoleViewSet(viewsets.ModelViewSet):
                 if not AuthorizationService.has_permission(user, 'role.assign', branch_id=None, team_id=team.id if team else None):
                     raise ValidationError({'scope': 'You do not have permission to grant roles for this team.'})
         else:
-            target_org_id = _user_org_id(target_user)
-            if target_org_id:
-                if role.organization_id != target_org_id:
-                    raise ValidationError({'detail': 'Role organization must match target user organization.'})
+            if not _user_in_org(target_user, role.organization_id):
+                raise ValidationError({'detail': 'Role organization must match target user organization.'})
 
         user_role = serializer.save(assigned_by=self.request.user)
         AuditService.log(
@@ -210,10 +212,10 @@ class UserRoleViewSet(viewsets.ModelViewSet):
         role = serializer.validated_data.get('role', serializer.instance.role)
 
         if not user.is_superuser:
-            user_org = _get_user_organization(user)
+            user_org = _get_user_organization(self.request)
             if not user_org:
                 raise ValidationError({'detail': 'User does not belong to an organization.'})
-            if _user_org_id(target_user) != user_org.id:
+            if not _user_in_org(target_user, user_org.id):
                 raise ValidationError({'user': 'Target user does not belong to your organization.'})
                 
             # Prevent Privilege Escalation
@@ -280,13 +282,14 @@ class UserPermissionGrantViewSet(viewsets.ModelViewSet):
             qs = UserPermissionGrant.objects.filter(is_revoked=False)
             org_id = self.request.query_params.get('organization')
             if org_id:
-                qs = qs.filter(user__employee_profiles__organization_id=org_id).distinct()
+                qs = qs.filter(user__organization_memberships__organization_id=org_id, user__organization_memberships__status='active').distinct()
             return qs
-        org = _get_user_organization(user)
+        org = _get_user_organization(self.request)
         if org:
             return UserPermissionGrant.objects.filter(
                 is_revoked=False,
-                user__employee_profiles__organization=org
+                user__organization_memberships__organization=org,
+                user__organization_memberships__status='active'
             ).distinct()
         return UserPermissionGrant.objects.none()
 
@@ -295,10 +298,10 @@ class UserPermissionGrantViewSet(viewsets.ModelViewSet):
         target_user = serializer.validated_data.get('user')
 
         if not user.is_superuser:
-            user_org = _get_user_organization(user)
+            user_org = _get_user_organization(self.request)
             if not user_org:
                 raise ValidationError({'detail': 'User does not belong to an organization.'})
-            if _user_org_id(target_user) != user_org.id:
+            if not _user_in_org(target_user, user_org.id):
                 raise ValidationError({'user': 'Target user does not belong to your organization.'})
                 
             # Prevent Privilege Escalation
@@ -331,10 +334,10 @@ class UserPermissionGrantViewSet(viewsets.ModelViewSet):
         target_user = serializer.validated_data.get('user')
 
         if target_user and not user.is_superuser:
-            user_org = _get_user_organization(user)
+            user_org = _get_user_organization(self.request)
             if not user_org:
                 raise ValidationError({'detail': 'User does not belong to an organization.'})
-            if _user_org_id(target_user) != user_org.id:
+            if not _user_in_org(target_user, user_org.id):
                 raise ValidationError({'user': 'Target user does not belong to your organization.'})
 
             # Prevent Privilege Escalation
@@ -395,8 +398,8 @@ class RolePermissionViewSet(viewsets.ModelViewSet):
         user = self.request.user
         if user.is_superuser:
             queryset = RolePermission.objects.all()
-        elif _get_user_organization(user):
-            queryset = RolePermission.objects.filter(role__organization=_get_user_organization(user))
+        elif _get_user_organization(self.request):
+            queryset = RolePermission.objects.filter(role__organization=_get_user_organization(self.request))
         else:
             return RolePermission.objects.none()
 
@@ -409,7 +412,7 @@ class RolePermissionViewSet(viewsets.ModelViewSet):
         user = self.request.user
         role = serializer.validated_data.get('role')
         if not user.is_superuser:
-            user_org = _get_user_organization(user)
+            user_org = _get_user_organization(self.request)
             if not user_org:
                 raise ValidationError({'detail': 'User does not belong to an organization.'})
             if role.organization_id != user_org.id:

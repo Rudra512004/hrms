@@ -205,8 +205,14 @@ class PayslipDetailSerializer(serializers.ModelSerializer):
         r = obj.payroll_record
         request = self.context.get('request')
         is_owner = False
-        if request and hasattr(request.user, 'employee'):
-            is_owner = (request.user.employee.id == r.employee_id)
+        if request:
+            try:
+                from apps.organization.context import get_current_employee
+                employee = get_current_employee(request)
+                if employee:
+                    is_owner = (employee.id == r.employee_id)
+            except Exception:
+                pass
 
         has_sensitive_perm = False
         if request:

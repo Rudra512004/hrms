@@ -189,7 +189,7 @@ class Command(BaseCommand):
             ))
 
         # Explicit safety check: Ensure Super Admin does NOT have an Employee record
-        if hasattr(user, 'employee') and user.employee:
+        if user.employee_profiles.exists():
             self.stdout.write(self.style.WARNING(
                 'Warning: Super Admin unexpectedly has an Employee profile attached.'
             ))

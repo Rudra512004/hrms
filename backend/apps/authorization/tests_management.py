@@ -23,6 +23,10 @@ class AuthorizationManagementAPITests(TestCase):
         self.normal_user = User.objects.create_user(email='normal@example.com', password='Password123!', status='active')
         self.normal_employee = Employee.objects.create(user=self.normal_user, employee_code='EMP_NORMAL')
 
+        from apps.organization.models import OrganizationMembership
+        OrganizationMembership.objects.create(user=self.super_user, organization=self.org, status='active')
+        OrganizationMembership.objects.create(user=self.normal_user, organization=self.org, status='active')
+
         # Permissions and Roles
         self.perm_view_emp = Permission.objects.create(name='View Employee', codename='employee.view', resource='employee', action='view')
         self.perm_create_emp = Permission.objects.create(name='Create Employee', codename='employee.create', resource='employee', action='create')

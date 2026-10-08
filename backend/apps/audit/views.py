@@ -21,8 +21,16 @@ class AuditLogViewSet(viewsets.ReadOnlyModelViewSet):
             org_id = self.request.query_params.get('organization')
             if org_id:
                 queryset = queryset.filter(organization_id=org_id)
-        elif hasattr(user, 'employee') and user.employee.organization_id:
-            queryset = AuditLog.objects.filter(organization_id=user.employee.organization_id)
+        elif True:
+            try:
+                from apps.organization.context import get_current_employee
+                emp = get_current_employee(self.request)
+                if emp and emp.organization_id:
+                    queryset = AuditLog.objects.filter(organization_id=emp.organization_id)
+                else:
+                    return AuditLog.objects.none()
+            except Exception:
+                return AuditLog.objects.none()
         else:
             return AuditLog.objects.none()
 

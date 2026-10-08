@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { DollarSign, PlusCircle, Loader2, Play, CheckCircle, FileText, Lock } from 'lucide-react';
+import { DollarSign, PlusCircle, Loader2, Play, CheckCircle, FileText, Lock, Download, Check } from 'lucide-react';
 import { Card } from '../components/Card';
 import { Table } from '../components/Table';
 import { StatusBadge } from '../components/StatusBadge';
@@ -38,8 +38,11 @@ function monthStartEnd(year: number, month: number): { start: string; end: strin
 
 // ─── Status-badge shim (draft isn't a known status) ───────────────────────────
 
-function PeriodStatusBadge({ status }: { status: 'draft' | 'approved' }) {
-  return <StatusBadge status={status} label={status === 'draft' ? 'Draft' : 'Approved'} />;
+function PeriodStatusBadge({ status }: { status: 'draft' | 'approved' | 'finalized' }) {
+  if (status === 'draft') return <StatusBadge status="draft" label="Draft" />;
+  if (status === 'approved') return <StatusBadge status="approved" label="Approved" />;
+  if (status === 'finalized') return <StatusBadge status="approved" label="Finalized" />;
+  return null;
 }
 
 
@@ -460,6 +463,13 @@ export function PayrollPage() {
   const [approving, setApproving] = useState(false);
   const [approveError, setApproveError] = useState<string | null>(null);
 
+  // Finalize confirmation
+  const [finalizeTarget, setFinalizeTarget] = useState<PayrollPeriod | null>(null);
+  const [finalizing, setFinalizing] = useState(false);
+  const [finalizeError, setFinalizeError] = useState<string | null>(null);
+
+  const [exporting, setExporting] = useState<number | null>(null);
+
   // Action feedback banner
   const [actionBanner, setActionBanner] = useState<{ type: 'success' | 'error' | 'warning'; msg: string } | null>(null);
 
@@ -514,7 +524,6 @@ export function PayrollPage() {
     }
   };
 
-  // ── Approve ──
   const handleApprove = async () => {
     if (!approveTarget) return;
     setApproving(true);
@@ -528,6 +537,45 @@ export function PayrollPage() {
       setApproveError(extractApiError(err));
     } finally {
       setApproving(false);
+    }
+  };
+
+  // ── Finalize ──
+  const handleFinalize = async () => {
+    if (!finalizeTarget) return;
+    setFinalizing(true);
+    setFinalizeError(null);
+    try {
+      await payrollService.finalizePeriod(finalizeTarget.id);
+      setFinalizeTarget(null);
+      setActionBanner({ type: 'success', msg: `Payroll for ${MONTH_NAMES[finalizeTarget.month]} ${finalizeTarget.year} has been finalized.` });
+      await loadPeriods();
+    } catch (err) {
+      setFinalizeError(extractApiError(err));
+    } finally {
+      setFinalizing(false);
+    }
+  };
+
+  const handleExportCsv = async (p: PayrollPeriod) => {
+    setExporting(p.id);
+    try {
+      await payrollService.exportCsv(p.id, p.organization, p.year, p.month);
+    } catch (err) {
+      setActionBanner({ type: 'error', msg: extractApiError(err) });
+    } finally {
+      setExporting(null);
+    }
+  };
+
+  const handleExportPdf = async (p: PayrollPeriod) => {
+    setExporting(p.id);
+    try {
+      await payrollService.exportPdf(p.id, p.organization, p.year, p.month);
+    } catch (err) {
+      setActionBanner({ type: 'error', msg: extractApiError(err) });
+    } finally {
+      setExporting(null);
     }
   };
 
@@ -604,16 +652,71 @@ export function PayrollPage() {
             </button>
           )}
 
-          {/* Approved lock indicator */}
+          {/* Finalize */}
+          {canApprove && p.status === 'approved' && (
+            <button
+              className="btn btn-primary"
+              style={{ padding: '4px 10px', fontSize: 'var(--font-size-sm)' }}
+              onClick={() => { setFinalizeError(null); setFinalizeTarget(p); }}
+              title="Finalize this payroll period"
+              type="button"
+            >
+              <Check size={13} style={{ marginRight: 4 }} />
+              Finalize
+            </button>
+          )}
+
+          {/* Export CSV */}
+          {canView && (p.status === 'approved' || p.status === 'finalized' || p.status === 'draft') && (
+            <button
+              className="btn btn-secondary"
+              style={{ padding: '4px 10px', fontSize: 'var(--font-size-sm)' }}
+              onClick={() => handleExportCsv(p)}
+              disabled={exporting === p.id}
+              title="Export as CSV"
+              type="button"
+            >
+              <Download size={13} style={{ marginRight: 4 }} />
+              CSV
+            </button>
+          )}
+
+          {/* Export PDF */}
+          {canView && (p.status === 'approved' || p.status === 'finalized' || p.status === 'draft') && (
+            <button
+              className="btn btn-secondary"
+              style={{ padding: '4px 10px', fontSize: 'var(--font-size-sm)' }}
+              onClick={() => handleExportPdf(p)}
+              disabled={exporting === p.id}
+              title="Export as PDF"
+              type="button"
+            >
+              <FileText size={13} style={{ marginRight: 4 }} />
+              PDF
+            </button>
+          )}
+
+          {/* Locked indicators */}
           {p.status === 'approved' && (
             <span
               style={{
                 display: 'flex', alignItems: 'center', gap: 4,
-                fontSize: 'var(--font-size-sm)', color: 'var(--color-text-muted)',
+                fontSize: 'var(--font-size-sm)', color: 'var(--color-status-warning)',
                 padding: '4px 8px',
               }}
             >
-              <Lock size={13} /> Locked
+              <Lock size={13} /> Approved
+            </span>
+          )}
+          {(p.status as any) === 'finalized' && (
+            <span
+              style={{
+                display: 'flex', alignItems: 'center', gap: 4,
+                fontSize: 'var(--font-size-sm)', color: 'var(--color-status-success)',
+                padding: '4px 8px',
+              }}
+            >
+              <Lock size={13} /> Finalized
             </span>
           )}
         </div>
@@ -786,6 +889,34 @@ export function PayrollPage() {
               This action cannot be undone.
             </p>
             <AlertBanner type="warning" message="Once approved, payroll records cannot be modified or re-generated." />
+          </div>
+        </Modal>
+      )}
+
+      {/* Finalize confirmation */}
+      {finalizeTarget && (
+        <Modal
+          title={`Finalize Payroll — ${MONTH_NAMES[finalizeTarget.month]} ${finalizeTarget.year}`}
+          onClose={() => !finalizing && setFinalizeTarget(null)}
+          size="sm"
+          footer={
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+              <button className="btn btn-secondary" onClick={() => setFinalizeTarget(null)} disabled={finalizing} type="button">Cancel</button>
+              <button className="btn btn-primary" onClick={handleFinalize} disabled={finalizing} type="button">
+                {finalizing ? <Loader2 size={14} className="spin" style={{ marginRight: 6 }} /> : <Check size={14} style={{ marginRight: 6 }} />}
+                Finalize
+              </button>
+            </div>
+          }
+        >
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            {finalizeError && <AlertBanner type="error" message={finalizeError} />}
+            <p style={{ margin: 0, color: 'var(--color-text-main)', lineHeight: 1.6 }}>
+              Finalizing will officially close the payroll for{' '}
+              <strong>{MONTH_NAMES[finalizeTarget.month]} {finalizeTarget.year}</strong>. 
+              This generates payslips for all {finalizeTarget.record_count} employees and allows for reports generation.
+            </p>
+            <AlertBanner type="warning" message="This action is final and cannot be reversed." />
           </div>
         </Modal>
       )}

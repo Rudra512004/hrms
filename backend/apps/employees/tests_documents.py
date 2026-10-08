@@ -65,7 +65,7 @@ def grant_permission(user, codename):
         )
     role, _ = Role.objects.get_or_create(
         name=f'role_{codename}',
-        organization=user.employee.organization,
+        organization=user.employee_profiles.first().organization if getattr(user, 'employee_profiles', None) and user.employee_profiles.exists() else None,
         defaults={'description': ''}
     )
     RolePermission.objects.get_or_create(role=role, permission=perm)

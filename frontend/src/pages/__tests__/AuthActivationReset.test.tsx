@@ -92,15 +92,13 @@ describe('Authentication Activation and Password Reset Routes & Flows', () => {
       );
 
       fireEvent.change(screen.getByPlaceholderText('Enter your password'), {
-        target: { value: 'PasswordA' },
+        target: { value: 'ValidPass1' },
       });
       fireEvent.change(screen.getByPlaceholderText('Confirm your password'), {
-        target: { value: 'PasswordB' },
+        target: { value: 'ValidPass2' },
       });
 
-      fireEvent.click(screen.getByRole('button', { name: /activate account/i }));
-
-      expect(screen.getByText(/passwords do not match/i)).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /activate account/i })).toBeDisabled();
       expect(activateSpy).not.toHaveBeenCalled();
     });
   });

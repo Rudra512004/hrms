@@ -4,29 +4,34 @@ from apps.employees.models import Employee
 def get_current_organization(request):
     """
     Safely retrieves the active organization context for the current request.
-    This acts as a compatibility layer and migration tool.
-    
-    If the context was successfully resolved by TenantContextMiddleware, it is returned.
-    If not, it falls back to the legacy `request.user.employee.organization` behavior temporarily,
-    but emits a warning (or will eventually be strictly removed).
-    
     Raises exceptions if the context cannot be resolved.
     """
     if hasattr(request, 'organization_context') and request.organization_context:
         return request.organization_context
         
-    # Legacy fallback for transition phase
-    if hasattr(request.user, 'employee'):
-        try:
-            return request.user.employee.organization
-        except AttributeError:
-            pass
-        
-    # If the middleware could not resolve it and there's no legacy employee fallback:
-    if not request.headers.get('X-Organization-Id'):
-        raise ValidationError("Missing X-Organization-Id header. Tenant context could not be determined.")
-    
-    raise PermissionDenied("You do not have an active membership for the requested organization.")
+    org_id = request.headers.get('X-Organization-Id')
+    if org_id:
+        from apps.organization.models import OrganizationMembership
+        membership = OrganizationMembership.objects.filter(
+            user=request.user,
+            organization_id=org_id,
+            status='active'
+        ).select_related('organization').first()
+        if membership:
+            return membership.organization
+        raise PermissionDenied("You do not have an active membership for the requested organization.")
+
+    if hasattr(request, 'user') and request.user and request.user.is_authenticated:
+        from apps.organization.models import OrganizationMembership
+        memberships = OrganizationMembership.objects.filter(user=request.user, status='active').select_related('organization')
+        count = memberships.count()
+        if count == 1:
+            return memberships.first().organization
+        else:
+            print(f"DEBUG: memberships.count() is {count} for user {request.user}")
+
+    print(f"DEBUG: Failing context resolution. Org ID: {org_id}, User: {getattr(request, 'user', None)}")
+    raise ValidationError("Missing X-Organization-Id header. Tenant context could not be determined.")
 
 def get_current_employee(request):
     """
@@ -34,14 +39,6 @@ def get_current_employee(request):
     Raises an error if the user has no Employee profile in this specific organization.
     """
     org = get_current_organization(request)
-    
-    # Correct multi-tenant lookup: find the employee profile in this specific org
-    if hasattr(request.user, 'employee'):
-        try:
-            if request.user.employee.organization_id == org.id:
-                return request.user.employee
-        except AttributeError:
-            pass
             
     emp = Employee.objects.filter(user=request.user, organization=org).first()
     if not emp:

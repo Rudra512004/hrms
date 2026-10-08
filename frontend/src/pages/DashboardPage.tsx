@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Navigate } from 'react-router-dom';
 import {
   Users,
   Clock,
@@ -199,6 +199,11 @@ export const DashboardPage: React.FC = () => {
         <Loader2 size={28} className="animate-spin" style={{ color: 'var(--color-primary)' }} />
       </div>
     );
+  }
+
+  // Redirect newly activated tenant owners to the onboarding launchpad
+  if (user.canCreateOrganization) {
+    return <Navigate to="/admin/organization-launchpad" replace />;
   }
 
   const personal = dashboardData?.personal;

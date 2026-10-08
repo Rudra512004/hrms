@@ -22,7 +22,11 @@ class AssetCategorySerializer(serializers.ModelSerializer):
 
     def validate(self, attrs):
         request = self.context.get('request')
-        org = getattr(request.user.employee, 'organization', None) if hasattr(request.user, 'employee') else None
+        try:
+            from apps.organization.context import get_current_organization
+            org = get_current_organization(request)
+        except Exception:
+            org = None
         if not org and not request.user.is_superuser:
             raise serializers.ValidationError("User has no associated organization.")
 
@@ -129,9 +133,14 @@ class AssetCreateUpdateSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("Asset tag cannot be blank.")
         request = self.context.get('request')
         org_id = None
-        if hasattr(request.user, 'employee') and request.user.employee.organization_id:
-            org_id = request.user.employee.organization_id
-        elif self.instance:
+        try:
+            from apps.organization.context import get_current_organization
+            org = get_current_organization(request)
+            if org:
+                org_id = org.id
+        except Exception:
+            pass
+        if not org_id and self.instance:
             org_id = self.instance.organization_id
 
         if org_id:
@@ -144,8 +153,14 @@ class AssetCreateUpdateSerializer(serializers.ModelSerializer):
 
     def validate_category(self, value):
         request = self.context.get('request')
-        if not request.user.is_superuser and hasattr(request.user, 'employee'):
-            if value.organization_id != request.user.employee.organization_id:
+        if not request.user.is_superuser:
+            try:
+                from apps.organization.context import get_current_organization
+                org = get_current_organization(request)
+                if org and value.organization_id != org.id:
+                    raise serializers.ValidationError("Category does not belong to your organization.")
+            except Exception:
+                pass
                 raise serializers.ValidationError("Category does not belong to your organization.")
         return value
 
@@ -153,9 +168,14 @@ class AssetCreateUpdateSerializer(serializers.ModelSerializer):
         if value is None:
             return value
         request = self.context.get('request')
-        if not request.user.is_superuser and hasattr(request.user, 'employee'):
-            if value.organization_id != request.user.employee.organization_id:
-                raise serializers.ValidationError("Branch does not belong to your organization.")
+        if not request.user.is_superuser:
+            try:
+                from apps.organization.context import get_current_organization
+                org = get_current_organization(request)
+                if org and value.organization_id != org.id:
+                    raise serializers.ValidationError("Branch does not belong to your organization.")
+            except Exception:
+                pass
         return value
 
 

@@ -24,7 +24,7 @@ class DashboardOverviewView(APIView):
 
     def get(self, request, *args, **kwargs):
         branch_id = request.query_params.get("branch_id")
-        overview_data = DashboardAggregationService.get_dashboard_overview(request.user, branch_id)
+        overview_data = DashboardAggregationService.get_dashboard_overview(request, branch_id)
         return Response(overview_data, status=status.HTTP_200_OK)
 
 
@@ -48,6 +48,6 @@ class DashboardTrendsView(APIView):
             )
 
         branch_id = request.query_params.get("branch_id")
-        trends_data = DashboardTrendsService.get_trends(request.user, window, branch_id)
+        trends_data = DashboardTrendsService.get_trends(request, window, branch_id)
         return Response(trends_data, status=status.HTTP_200_OK)
 

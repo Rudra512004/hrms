@@ -273,3 +273,16 @@ class PerformanceReview(models.Model):
     def clean(self):
         if self.rating is not None and not 1<=self.rating<=5:raise ValidationError({'rating':'Rating must be between 1 and 5.'})
         if self.reviewer_id and self.reviewer.organization_id!=self.employee.organization_id:raise ValidationError({'reviewer':'Reviewer must be in the same organization.'})
+
+from django.db.models.signals import post_save
+from django.dispatch import receiver
+from apps.organization.models import OrganizationMembership
+
+@receiver(post_save, sender=Employee)
+def auto_provision_organization_membership(sender, instance, created, **kwargs):
+    if instance.user and instance.organization_id:
+        OrganizationMembership.objects.get_or_create(
+            user=instance.user,
+            organization_id=instance.organization_id,
+            defaults={'status': 'active'}
+        )

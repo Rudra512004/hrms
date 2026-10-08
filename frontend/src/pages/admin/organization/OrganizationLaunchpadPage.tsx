@@ -114,10 +114,15 @@ export const OrganizationLaunchpadPage: React.FC = () => {
           wfh_bypasses_office_restrictions: true,
         },
       };
-      if (user?.isSuperuser) await organizationService.createOrganizationSetup(payload);
-      else await organizationService.createTenantOrganizationSetup(payload);
-      await refreshAuth();
-      navigate('/admin/organizations');
+      if (user?.isSuperuser) {
+        await organizationService.createOrganizationSetup(payload);
+        await refreshAuth();
+        navigate('/admin/organizations');
+      } else {
+        await organizationService.createTenantOrganizationSetup(payload);
+        await refreshAuth();
+        navigate('/dashboard');
+      }
     } catch (requestError: any) {
       const data = requestError?.errorData;
       if (data && typeof data === 'object') {
@@ -144,7 +149,7 @@ export const OrganizationLaunchpadPage: React.FC = () => {
       <div style={styles.header}>
         <div>
           <h1 style={styles.title}>Organization Launchpad</h1>
-          <p style={styles.subtitle}>Create a company and its first location in one protected transaction. Existing organization and branch screens remain available for ongoing administration.</p>
+          <p style={styles.subtitle}>Welcome! To complete your onboarding and start using HRMS, you must set up your organization profile and primary location. Once submitted, your workspace will be securely provisioned.</p>
         </div>
         <Link to="/admin/organizations" className="btn btn-secondary">View organizations</Link>
       </div>
@@ -202,7 +207,7 @@ export const OrganizationLaunchpadPage: React.FC = () => {
             {configurationShortcuts.map(([label, path, Icon]) => <Link key={path} to={path} style={styles.shortcut}><span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}><Icon size={17} color="var(--color-primary)" />{label}</span><ChevronRight size={17} color="var(--color-text-muted)" /></Link>)}
           </Card>
           <Card title="What happens next">
-            <p className="text-muted" style={{ fontSize: 'var(--font-size-sm)' }}>After launch, create your organization structure, assign access, configure shifts and holidays, then provision employees. Nothing is hidden or replaced—this page only makes the safe order visible.</p>
+            <p className="text-muted" style={{ fontSize: 'var(--font-size-sm)' }}>After launch, your organization profile and owner account will be fully provisioned. You will be redirected to your dashboard, where you can continue configuring departments, shifts, and inviting employees.</p>
           </Card>
         </div>
       </div>

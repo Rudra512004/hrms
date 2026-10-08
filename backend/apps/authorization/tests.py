@@ -13,6 +13,8 @@ class AuthorizationAPITests(TestCase):
         self.client = APIClient()
         self.user = User.objects.create_user(email='test@example.com', password='password123', status='active')
         self.org = Organization.objects.create(name='Test Org')
+        from apps.organization.models import OrganizationMembership
+        OrganizationMembership.objects.create(user=self.user, organization=self.org, status='active')
         self.role = Role.objects.create(organization=self.org, name='TestRole')
         self.permission = Permission.objects.create(codename='test.perm', name='Test Perm', resource='test', action='perm')
 

@@ -138,11 +138,13 @@ class TenantOwnerIsolationTests(TestCase):
         self.assertFalse(registration.can_launch_organization)
         self.assertIsNotNone(registration.organization_id)
         self.assertFalse(user.is_superuser)
-        self.assertFalse(Employee.objects.filter(user=user).exists())
+        self.assertTrue(Employee.objects.filter(user=user).exists())
         self.client.force_authenticate(user=None)
         return user, registration.organization
 
     def test_verified_client_owners_are_isolated_and_can_invite_employees(self):
+        from apps.authorization.models import Permission
+        Permission.objects.get_or_create(codename='employee.create', defaults={'name':'Create Employee', 'resource':'employee', 'action':'create'})
         owner_a, organization_a = self._register_verify_and_launch('owner-a@example.com', 'Client Alpha')
         owner_b, organization_b = self._register_verify_and_launch('owner-b@example.com', 'Client Beta')
         branch_a = organization_a.branches.get()
@@ -159,6 +161,9 @@ class TenantOwnerIsolationTests(TestCase):
         self.assertEqual(self.client.post('/api/v1/organization/branches/', {
             'organization': organization_b.id, 'name': 'Unauthorized branch',
         }).status_code, status.HTTP_400_BAD_REQUEST)
+
+        from apps.organization.models import OfficeNetwork
+        OfficeNetwork.objects.create(branch=branch_a, network='127.0.0.1/32', is_active=True)
 
         with patch('apps.employees.views.NotificationService.send_employee_onboarding_email', return_value=True) as send_invite:
             invite = self.client.post('/api/v1/employees/management/', {

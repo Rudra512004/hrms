@@ -125,10 +125,12 @@ class UserPermissionGrant(models.Model):
             if self.branch_id is not None and self.team.department.branch_id != self.branch_id:
                 raise ValidationError({'team': 'Team must belong to the specified branch.'})
 
-            # Verify team organization matches target user's organization
-            if hasattr(self, 'user') and hasattr(self.user, 'employee') and getattr(self.user.employee, 'organization_id', None):
-                if self.team.department.branch.organization_id != self.user.employee.organization_id:
-                    raise ValidationError({'team': 'Team must belong to the target user\'s organization.'})
+            # Verify team organization matches target user's active membership
+            if hasattr(self, 'user') and self.user_id:
+                from apps.organization.models import OrganizationMembership
+                org_id = self.team.department.branch.organization_id
+                if not OrganizationMembership.objects.filter(user=self.user, organization_id=org_id, status='active').exists():
+                    raise ValidationError({'team': 'Team must belong to an organization where the target user has an active membership.'})
 
     def save(self, *args, **kwargs):
         self.clean()

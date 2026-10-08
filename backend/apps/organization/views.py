@@ -111,6 +111,25 @@ class TenantOrganizationSetupView(APIView):
                 assigned_by=request.user,
                 scope=ScopeChoices.ORGANIZATION,
             )
+
+            # Phase 10: Create OrganizationMembership and Employee profile for the owner
+            from apps.organization.models import OrganizationMembership
+            OrganizationMembership.objects.create(
+                user=request.user,
+                organization=organization,
+                status='active'
+            )
+            from apps.employees.models import Employee, EmploymentStatus
+            from django.utils import timezone
+            Employee.objects.create(
+                user=request.user,
+                organization=organization,
+                employee_code='OWNER-001',
+                employment_status=EmploymentStatus.ACTIVE,
+                joining_date=timezone.now().date(),
+                personal_email=request.user.email
+            )
+
             registration.organization = organization
             registration.save(update_fields=['organization'])
 

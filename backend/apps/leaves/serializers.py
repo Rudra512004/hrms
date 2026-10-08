@@ -68,8 +68,12 @@ class LeaveRequestSerializer(serializers.ModelSerializer):
         employee = None
         if self.instance:
             employee = self.instance.employee
-        elif request and hasattr(request.user, 'employee'):
-            employee = request.user.employee
+        elif request:
+            try:
+                from apps.organization.context import get_current_employee
+                employee = get_current_employee(request)
+            except Exception:
+                employee = None
         elif 'employee' in data:
             employee = data['employee']
 

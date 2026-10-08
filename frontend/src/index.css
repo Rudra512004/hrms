@@ -2,28 +2,28 @@
 
 :root {
   /* ── BeyondSure Brand Identity ── */
-  --color-primary: #3B82F6;
-  --color-primary-hover: #2563EB;
-  --color-primary-light: #EAF2FF;
-  --color-primary-border: #93C5FD;
-  --color-primary-glow: rgba(59, 130, 246, 0.2);
+  --color-primary: #1F5D36;
+  --color-primary-hover: #173F28;
+  --color-primary-light: #EAF5EE;
+  --color-primary-border: #DDE5DF;
+  --color-primary-glow: rgba(31, 93, 54, 0.2);
 
-  --color-secondary: #235E3A;
-  --color-secondary-hover: #143521;
-  --color-secondary-light: #E9FFF7;
-  --color-secondary-border: #3F8358;
+  --color-secondary: #2E7D4F;
+  --color-secondary-hover: #1F5D36;
+  --color-secondary-light: #EAF5EE;
+  --color-secondary-border: #1F5D36;
 
   --color-accent: #47bfff;
   --color-accent-soft: #f0f9ff;
 
   /* ── Surfaces & Backgrounds ── */
-  --color-bg-page: #F3F6FB;
-  --color-bg-body: #F3F6FB;
+  --color-bg-page: #F5F7F6;
+  --color-bg-body: #F5F7F6;
   --color-bg-card: #FFFFFF;
   --color-bg-surface: #FFFFFF;
   --color-bg-surface-elevated: #FFFFFF;
   --color-bg-main: #F3F6FB;
-  --color-bg-sidebar: #F3F6FB;
+  --color-bg-sidebar: #FFFFFF;
   --color-bg-sidebar-hover: #EEF2F8;
   --color-bg-sidebar-active: #E3EEFF;
   --color-border-sidebar: #DCE3EE;
@@ -32,32 +32,32 @@
   --color-bg-subtle: #F9FAFB;
 
   /* ── Text ── */
-  --color-text-main: #172033;
-  --color-text-sub: #5F6B7A;
+  --color-text-main: #17221B;
+  --color-text-sub: #66736B;
   --color-text-muted: #8994A5;
   --color-text-inverse: #ffffff;
   --color-text-sidebar: #5F6B7A;
   --color-text-sidebar-active: #2563EB;
 
   /* ── Borders & Dividers ── */
-  --color-border: #DCE3EE;
+  --color-border: #DDE5DF;
   --color-border-subtle: #E5EAF2;
   --color-border-strong: #C4CDDD;
 
   /* ── Semantic Status Colors ── */
-  --color-status-success: #16A34A;
+  --color-status-success: #2E7D4F;
   --color-status-success-bg: #ECFDF3;
   --color-status-success-border: #a7f3d0;
 
-  --color-status-danger: #dc2626;
+  --color-status-danger: #C74343;
   --color-status-danger-bg: #fef2f2;
   --color-status-danger-border: #fecaca;
 
-  --color-status-warning: #d97706;
+  --color-status-warning: #C68A1B;
   --color-status-warning-bg: #fffbeb;
   --color-status-warning-border: #fde68a;
 
-  --color-status-info: #0284c7;
+  --color-status-info: #3578B5;
   --color-status-info-bg: #f0f9ff;
   --color-status-info-border: #bae6fd;
 
@@ -130,46 +130,46 @@
 }
 
 [data-theme="dark"] {
-  --color-bg-page: #0F141B;
-  --color-bg-body: #0F141B;
-  --color-bg-card: #161D27;
-  --color-bg-surface: #161D27;
-  --color-bg-surface-elevated: #1D2633;
-  --color-bg-main: #0F141B;
-  --color-bg-secondary: #161D27;
-  --color-bg-subtle: #111821;
+  --color-bg-page: #0F1712;
+  --color-bg-body: #0F1712;
+  --color-bg-card: #1B2B20;
+  --color-bg-surface: #16231A;
+  --color-bg-surface-elevated: #22362A;
+  --color-bg-main: #0F1712;
+  --color-bg-secondary: #16231A;
+  --color-bg-subtle: #0F1712;
   
-  --color-text-main: #E7EDF5;
-  --color-text-sub: #A8B3C2;
+  --color-text-main: #F1F5F2;
+  --color-text-sub: #AAB8AE;
   --color-text-muted: #748293;
-  --color-text-inverse: #FFFFFF;
-  --color-text-sidebar: #A8B3C2;
-  --color-text-sidebar-active: #60A5FA;
+  --color-text-inverse: #F1F5F2;
+  --color-text-sidebar: #AAB8AE;
+  --color-text-sidebar-active: #4CAF72;
 
-  --color-border: #283342;
-  --color-border-subtle: #1E2734;
-  --color-border-strong: #364558;
+  --color-border: #304238;
+  --color-border-subtle: #2A3B31;
+  --color-border-strong: #3D5447;
 
-  --color-bg-sidebar: #0F141B;
-  --color-bg-sidebar-hover: #161D27;
-  --color-bg-sidebar-active: #1C2E4A;
-  --color-border-sidebar: #283342;
+  --color-bg-sidebar: #0F1712;
+  --color-bg-sidebar-hover: #16231A;
+  --color-bg-sidebar-active: #1B2B20;
+  --color-border-sidebar: #304238;
 
-  --color-bg-header: #111827;
-  --color-text-header: #FFFFFF;
+  --color-bg-header: #0F1712;
+  --color-text-header: #F1F5F2;
 
   /* ── Watermark Branding (Dark Mode) ── */
   /* Static glow only — no animation, no breathing */
   --watermark-opacity: 0.18;
-  --watermark-glow: drop-shadow(0 0 20px rgba(63, 131, 88, 0.38)) drop-shadow(0 0 44px rgba(63, 131, 88, 0.22)) drop-shadow(0 0 8px rgba(96, 165, 250, 0.14));
-  --watermark-aura: radial-gradient(circle at 50% 50%, rgba(63, 131, 88, 0.08) 0%, rgba(96, 165, 250, 0.05) 42%, transparent 70%);
+  --watermark-glow: drop-shadow(0 0 20px rgba(76, 175, 114, 0.38)) drop-shadow(0 0 44px rgba(76, 175, 114, 0.22)) drop-shadow(0 0 8px rgba(76, 175, 114, 0.14));
+  --watermark-aura: radial-gradient(circle at 50% 50%, rgba(76, 175, 114, 0.08) 0%, rgba(46, 111, 72, 0.05) 42%, transparent 70%);
 
   /* ── Matte Glass Surface System (Dark Mode) ── */
-  --surface-matte-bg: rgba(22, 29, 39, 0.76);
+  --surface-matte-bg: rgba(22, 35, 26, 0.76);
   --surface-matte-blur: 18px;
-  --surface-matte-border: rgba(40, 51, 66, 0.70);
+  --surface-matte-border: rgba(48, 66, 56, 0.70);
   --surface-matte-shadow: 0 2px 20px -4px rgba(0, 0, 0, 0.28), 0 1px 6px rgba(0, 0, 0, 0.16);
-  --surface-control-bg: #161D27;
+  --surface-control-bg: #16231A;
 }
 
 /* ═══════════════════════════════════════════

@@ -148,7 +148,7 @@ class EndToEndHRMSWorkflowTests(TestCase):
         stack = ExitStack()
         stack.enter_context(patch(
             'apps.authorization.services.AuthorizationService.has_permission',
-            side_effect=lambda u, p: (p in perms) if u == user else False
+            side_effect=lambda u, p, **kw: (p in perms) if getattr(u, 'user', u) == user else False
         ))
         # When the user is the test subject with any permissions, expose all org branches
         all_branches = list(Branch.objects.filter(organization=self.org))

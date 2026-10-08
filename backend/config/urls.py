@@ -2,8 +2,15 @@ from django.contrib import admin
 from django.urls import path, include
 from django.http import JsonResponse
 
+from django.db import connection
+from django.db.utils import OperationalError
+
 def health_check(request):
-    return JsonResponse({'status': 'ok', 'service': 'beyondsure-hrms'})
+    try:
+        connection.ensure_connection()
+        return JsonResponse({'status': 'ok', 'service': 'beyondsure-hrms', 'database': 'ok'})
+    except OperationalError:
+        return JsonResponse({'status': 'error', 'service': 'beyondsure-hrms', 'database': 'unavailable'}, status=503)
 
 urlpatterns = [
     path('health/', health_check, name='health-check'),
@@ -21,4 +28,5 @@ urlpatterns = [
     path('api/v1/', include('apps.notifications.urls')),
     path('api/v1/dashboard/', include('apps.dashboard.urls')),
     path('api/v1/candidates/', include('apps.candidates.urls')),
+    path('api/v1/allowances/', include('apps.allowances.urls')),
 ]

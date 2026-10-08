@@ -8,6 +8,7 @@ from .models import Notification, Announcement
 from .serializers import NotificationSerializer, AnnouncementSerializer
 from apps.authorization.permissions import require_permission
 from apps.audit.services import AuditService
+from apps.organization.context import get_current_employee, get_current_organization
 
 class NotificationViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewsets.GenericViewSet):
     """
@@ -17,15 +18,18 @@ class NotificationViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, view
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
-        user = self.request.user
+        try:
+            employee = get_current_employee(self.request)
+        except Exception:
+            employee = None
         
         # Follow existing project behavior: if user has no org context, return none.
-        if not hasattr(user, 'employee') or not user.employee.organization_id:
+        if not employee or not employee.organization_id:
             return Notification.objects.none()
             
         return Notification.objects.filter(
-            recipient=user,
-            organization_id=user.employee.organization_id
+            recipient=self.request.user,
+            organization_id=employee.organization_id
         )
 
     @action(detail=True, methods=['post'], url_path='read')
@@ -67,7 +71,10 @@ class AnnouncementViewSet(viewsets.ModelViewSet):
         user = self.request.user
         if user.is_superuser:
             return Announcement.objects.all()
-        employee = getattr(user, 'employee', None)
+        try:
+            employee = get_current_employee(self.request)
+        except Exception:
+            employee = None
         if not employee or not employee.organization_id:
             return Announcement.objects.none()
         queryset = Announcement.objects.filter(organization_id=employee.organization_id)
@@ -82,7 +89,10 @@ class AnnouncementViewSet(viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         user = self.request.user
-        employee = getattr(user, 'employee', None)
+        try:
+            employee = get_current_employee(self.request)
+        except Exception:
+            employee = None
         organization = serializer.validated_data.get('organization') if user.is_superuser else getattr(employee, 'organization', None)
         if not organization:
             from rest_framework.exceptions import ValidationError

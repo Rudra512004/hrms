@@ -32,8 +32,13 @@ class AssetCategoryViewSet(viewsets.ModelViewSet):
     def _get_org_id(self, user):
         if user.is_superuser:
             return None
-        if hasattr(user, 'employee') and user.employee.organization_id:
-            return user.employee.organization_id
+        try:
+            from apps.organization.context import get_current_organization
+            org = get_current_organization(self.request)
+            if org:
+                return org.id
+        except Exception:
+            pass
         return -1
 
     def get_queryset(self):
@@ -93,8 +98,13 @@ class AssetViewSet(viewsets.ModelViewSet):
     def _get_org_id(self, user):
         if user.is_superuser:
             return None
-        if hasattr(user, 'employee') and user.employee.organization_id:
-            return user.employee.organization_id
+        try:
+            from apps.organization.context import get_current_organization
+            org = get_current_organization(self.request)
+            if org:
+                return org.id
+        except Exception:
+            pass
         return -1
 
     def get_queryset(self):
@@ -152,10 +162,14 @@ class AssetViewSet(viewsets.ModelViewSet):
     def retrieve(self, request, *args, **kwargs):
         # Allow retrieve if user has asset.view or is assigned to this asset
         instance = self.get_object()
-        is_assigned = (
-            hasattr(request.user, 'employee') and
-            instance.assignments.filter(employee=request.user.employee, is_active=True).exists()
-        )
+        is_assigned = False
+        try:
+            from apps.organization.context import get_current_employee
+            emp = get_current_employee(request)
+            if emp:
+                is_assigned = instance.assignments.filter(employee=emp, is_active=True).exists()
+        except Exception:
+            pass
         if not (is_assigned or AuthorizationService.has_permission(request.user, 'asset.view') or request.user.is_superuser):
             return Response({'detail': 'Permission denied: asset.view required.'}, status=status.HTTP_403_FORBIDDEN)
 
@@ -390,11 +404,16 @@ class AssetViewSet(viewsets.ModelViewSet):
         Employee self-service: View assets currently assigned to the authenticated user.
         No administrative permissions required.
         """
-        if not hasattr(request.user, 'employee'):
+        try:
+            from apps.organization.context import get_current_employee
+            emp = get_current_employee(request)
+            if not emp:
+                return Response([])
+        except Exception:
             return Response([])
 
         assignments = AssetAssignment.objects.filter(
-            employee=request.user.employee,
+            employee=emp,
             is_active=True,
         ).select_related('asset__category', 'asset__branch', 'employee__user')
 

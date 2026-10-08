@@ -14,6 +14,11 @@ class OrganizationAPITests(TestCase):
         self.user = User.objects.create_user(email='admin@example.com', password='password123', status='active')
 
         self.org = Organization.objects.create(name='Test Org')
+        self.client.credentials(HTTP_X_ORGANIZATION_ID=str(self.org.id))
+        
+        from apps.organization.models import OrganizationMembership
+        OrganizationMembership.objects.create(user=self.user, organization=self.org, status='active')
+        
         self.role = Role.objects.create(organization=self.org, name='AdminRole')
         UserRole.objects.create(user=self.user, role=self.role)
 
@@ -21,6 +26,7 @@ class OrganizationAPITests(TestCase):
             resource = codename.split('.')[0]
             perm, _ = Permission.objects.get_or_create(codename=codename, defaults={'name': codename, 'resource': resource, 'action': 'manage'})
             RolePermission.objects.create(role=self.role, permission=perm)
+
 
     def test_create_organization(self):
         self.client.force_authenticate(user=self.user)

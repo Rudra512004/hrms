@@ -45,7 +45,7 @@ export interface PayrollPeriod {
   month: number;                 // 1–12
   start_date: string;
   end_date: string;
-  status: 'draft' | 'approved';
+  status: 'draft' | 'approved' | 'finalized';
   generated_at: string | null;
   approved_by: number | null;
   approved_by_email: string | null;
@@ -196,6 +196,39 @@ export const payrollService = {
       body: JSON.stringify({}),
     });
     return handleResponse<PayrollPeriod>(res);
+  },
+
+  finalizePeriod: async (periodId: number): Promise<PayrollPeriod> => {
+    const res = await fetch(`${BASE}/periods/${periodId}/finalize/`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify({}),
+    });
+    return handleResponse<PayrollPeriod>(res);
+  },
+
+  exportCsv: async (periodId: number, orgId: number, year: number, month: number): Promise<void> => {
+    const res = await fetch(`${BASE}/periods/${periodId}/export_csv/`, { headers: getHeaders() });
+    if (!res.ok) throw new Error("Failed to export CSV");
+    const blob = await res.blob();
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `payroll_${orgId}_${year}_${month.toString().padStart(2, '0')}.csv`;
+    a.click();
+    window.URL.revokeObjectURL(url);
+  },
+
+  exportPdf: async (periodId: number, orgId: number, year: number, month: number): Promise<void> => {
+    const res = await fetch(`${BASE}/periods/${periodId}/export_pdf/`, { headers: getHeaders() });
+    if (!res.ok) throw new Error("Failed to export PDF");
+    const blob = await res.blob();
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `payroll_${orgId}_${year}_${month.toString().padStart(2, '0')}.pdf`;
+    a.click();
+    window.URL.revokeObjectURL(url);
   },
 
   // Payroll Records

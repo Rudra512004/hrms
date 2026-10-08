@@ -60,6 +60,35 @@ class EmployeeSerializer(serializers.ModelSerializer):
     designation_name = serializers.CharField(source='designation.name', read_only=True)
     statutory_info = EmployeeStatutoryInfoSerializer(required=False, allow_null=True)
 
+    def to_representation(self, instance):
+        ret = super().to_representation(instance)
+        request = self.context.get('request')
+        if not request or not hasattr(request, 'user'):
+            ret['statutory_info'] = None
+            return ret
+            
+        user = request.user
+        if getattr(user, 'is_superuser', False):
+            return ret
+            
+        # Check if the user is the employee themselves
+        try:
+            from apps.organization.context import get_current_employee
+            caller_emp = get_current_employee(request)
+            if caller_emp and caller_emp.id == instance.id:
+                return ret
+        except Exception:
+            pass
+            
+        # Check if user has permission to manage employees
+        from apps.authorization.services import AuthorizationService
+        if AuthorizationService.has_permission(user, 'employee.update'):
+            return ret
+            
+        # Mask sensitive info
+        ret['statutory_info'] = None
+        return ret
+
     class Meta:
         model = Employee
         fields = (
@@ -226,16 +255,17 @@ class ProvisionEmployeeSerializer(serializers.Serializer):
         request = self.context.get('request')
         org = None
         if request and request.user.is_authenticated:
-            if hasattr(request.user, 'employee'):
-                try:
-                    if request.user.employee.organization_id:
-                        org = request.user.employee.organization
-                except AttributeError:
-                    pass
-            elif not request.user.is_superuser:
+            try:
+                from apps.organization.context import get_current_employee
+                employee = get_current_employee(request)
+                if employee and employee.organization_id:
+                    org = employee.organization
+            except Exception:
+                pass
+            if not org and not request.user.is_superuser:
                 from apps.authorization.services import AuthorizationService
                 org = AuthorizationService.get_primary_organization(request.user)
-            elif request.user.is_superuser:
+            if not org and request.user.is_superuser:
                 org_id = self.initial_data.get('organization') if hasattr(self, 'initial_data') else None
                 if org_id:
                     org = Organization.objects.filter(id=org_id).first()

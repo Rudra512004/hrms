@@ -23,6 +23,11 @@ jobs:
         run: |
           cd backend
           python manage.py check
+          python manage.py check --deploy || true
+      - name: Run Tests
+        run: |
+          cd backend
+          python manage.py test
   frontend:
     runs-on: ubuntu-latest
     steps:
@@ -35,6 +40,14 @@ jobs:
         run: |
           cd frontend
           npm ci
+      - name: Run Tests
+        run: |
+          cd frontend
+          npm run test
+      - name: Type Check
+        run: |
+          cd frontend
+          npx tsc --noEmit
       - name: Build frontend
         run: |
           cd frontend

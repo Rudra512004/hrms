@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useParams, useSearchParams, Link } from 'react-router-dom';
 import { authService } from '../services/auth';
-import { Eye, EyeOff, AlertCircle, CheckCircle, Loader2 } from 'lucide-react';
+import { Eye, EyeOff, AlertCircle, CheckCircle, Loader2, Check, X } from 'lucide-react';
 
 const styles = {
   container: {
@@ -107,6 +107,19 @@ const styles = {
     display: 'flex',
     alignItems: 'center',
     gap: '8px',
+  },
+  validationList: {
+    listStyle: 'none',
+    padding: 0,
+    margin: '8px 0',
+    fontSize: '0.85rem',
+    color: 'var(--color-text-muted)',
+  },
+  validationItem: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '6px',
+    marginBottom: '4px',
   }
 };
 
@@ -124,12 +137,17 @@ export const ActivateAccountPage: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
 
+  const isLengthValid = password.length >= 8;
+  const hasLetter = /[a-zA-Z]/.test(password);
+  const hasNumber = /[0-9]/.test(password);
+  const passwordsMatch = password.length > 0 && password === confirmPassword;
+  
+  const isFormValid = isLengthValid && hasLetter && hasNumber && passwordsMatch;
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!password || !confirmPassword) return;
-
-    if (password !== confirmPassword) {
-      setError('Passwords do not match');
+    if (!isFormValid) {
+      setError('Please meet all password requirements.');
       return;
     }
 
@@ -222,14 +240,26 @@ export const ActivateAccountPage: React.FC = () => {
               </div>
             </div>
 
+            <ul style={styles.validationList}>
+              <li style={{ ...styles.validationItem, color: isLengthValid ? 'var(--color-status-success)' : 'inherit' }}>
+                {isLengthValid ? <Check size={14} /> : <X size={14} />} Minimum 8 characters
+              </li>
+              <li style={{ ...styles.validationItem, color: hasLetter && hasNumber ? 'var(--color-status-success)' : 'inherit' }}>
+                {hasLetter && hasNumber ? <Check size={14} /> : <X size={14} />} Contains letters and numbers
+              </li>
+              <li style={{ ...styles.validationItem, color: passwordsMatch ? 'var(--color-status-success)' : 'inherit' }}>
+                {passwordsMatch ? <Check size={14} /> : <X size={14} />} Passwords match
+              </li>
+            </ul>
+
             <button
               type="submit"
               style={{
                 ...styles.button,
-                opacity: submitting ? 0.7 : 1,
-                cursor: submitting ? 'not-allowed' : 'pointer'
+                opacity: (!isFormValid || submitting) ? 0.7 : 1,
+                cursor: (!isFormValid || submitting) ? 'not-allowed' : 'pointer'
               }}
-              disabled={submitting}
+              disabled={!isFormValid || submitting}
             >
               {submitting ? (
                 <>

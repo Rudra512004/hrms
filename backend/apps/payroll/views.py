@@ -8,6 +8,7 @@ from django.utils import timezone
 from apps.authorization.services import AuthorizationService
 from apps.audit.services import AuditService
 
+from apps.organization.context import get_current_employee, get_current_organization
 from .models import CompensationHistory, PayrollRun, PayrollRecord, Payslip
 from .serializers import (
     CompensationHistorySerializer,
@@ -21,9 +22,9 @@ from .validation import PayrollValidator, PayrollValidationIssue
 from .variance import PayrollVarianceEngine
 
 
-def _require(user, codename):
+def _require(request, codename):
     """Returns None if permitted, else a 403 Response."""
-    if not AuthorizationService.has_permission(user, codename):
+    if not AuthorizationService.has_permission(request, codename):
         return Response({'detail': 'Permission denied.'}, status=status.HTTP_403_FORBIDDEN)
     return None
 
@@ -31,8 +32,12 @@ def _require(user, codename):
 def _employee_org(request):
     """Return the organization of the requesting user's employee profile or fallback for superadmin."""
     try:
-        if hasattr(request.user, 'employee') and request.user.employee and request.user.employee.organization:
-            return request.user.employee.organization
+        try:
+            org = get_current_organization(request)
+            if org:
+                return org
+        except Exception:
+            pass
     except Exception:
         pass
 
@@ -78,13 +83,13 @@ class CompensationHistoryViewSet(viewsets.ReadOnlyModelViewSet):
         return qs
 
     def list(self, request, *args, **kwargs):
-        err = _require(request.user, 'payroll.view_sensitive')
+        err = _require(request, 'payroll.view_sensitive')
         if err:
             return err
         return super().list(request, *args, **kwargs)
 
     def retrieve(self, request, *args, **kwargs):
-        err = _require(request.user, 'payroll.view_sensitive')
+        err = _require(request, 'payroll.view_sensitive')
         if err:
             return err
         return super().retrieve(request, *args, **kwargs)
@@ -92,7 +97,7 @@ class CompensationHistoryViewSet(viewsets.ReadOnlyModelViewSet):
     @action(detail=False, methods=['post'], url_path='set')
     def set_compensation(self, request):
         """Create or update salary. Closes the current open record first."""
-        err = _require(request.user, 'payroll.manage_compensation')
+        err = _require(request, 'payroll.manage_compensation')
         if err:
             return err
 
@@ -152,19 +157,19 @@ class PayrollRunViewSet(viewsets.ModelViewSet):
         )
 
     def list(self, request, *args, **kwargs):
-        err = _require(request.user, 'payroll.view')
+        err = _require(request, 'payroll.view')
         if err:
             return err
         return super().list(request, *args, **kwargs)
 
     def retrieve(self, request, *args, **kwargs):
-        err = _require(request.user, 'payroll.view')
+        err = _require(request, 'payroll.view')
         if err:
             return err
         return super().retrieve(request, *args, **kwargs)
 
     def create(self, request, *args, **kwargs):
-        err = _require(request.user, 'payroll.generate')
+        err = _require(request, 'payroll.generate')
         if err:
             return err
 
@@ -200,7 +205,7 @@ class PayrollRunViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=['post'])
     def generate(self, request, pk=None):
-        err = _require(request.user, 'payroll.generate')
+        err = _require(request, 'payroll.generate')
         if err:
             return err
 
@@ -242,9 +247,53 @@ class PayrollRunViewSet(viewsets.ModelViewSet):
 
         return Response(response_data, status=status.HTTP_200_OK)
 
+    @action(detail=True, methods=['get'])
+    def export_csv(self, request, pk=None):
+        err = _require(request, 'payroll.view')
+        if err: return err
+
+        period = self.get_object()
+        from .exports import generate_payroll_csv
+        csv_data = generate_payroll_csv(period)
+        
+        from django.http import HttpResponse
+        response = HttpResponse(csv_data, content_type='text/csv')
+        response['Content-Disposition'] = f'attachment; filename="payroll_{period.organization.id}_{period.year}_{period.month:02d}.csv"'
+        
+        AuditService.log(
+            action='payroll_exported_csv',
+            actor=request.user,
+            target_type='payroll_period',
+            target_id=period.id,
+            request=request,
+        )
+        return response
+
+    @action(detail=True, methods=['get'])
+    def export_pdf(self, request, pk=None):
+        err = _require(request, 'payroll.view')
+        if err: return err
+
+        period = self.get_object()
+        from .exports import generate_payroll_pdf
+        pdf_bytes = generate_payroll_pdf(period)
+        
+        from django.http import HttpResponse
+        response = HttpResponse(pdf_bytes, content_type='application/pdf')
+        response['Content-Disposition'] = f'attachment; filename="payroll_{period.organization.id}_{period.year}_{period.month:02d}.pdf"'
+        
+        AuditService.log(
+            action='payroll_exported_pdf',
+            actor=request.user,
+            target_type='payroll_period',
+            target_id=period.id,
+            request=request,
+        )
+        return response
+
     @action(detail=True, methods=['post'])
     def approve(self, request, pk=None):
-        err = _require(request.user, 'payroll.approve')
+        err = _require(request, 'payroll.approve')
         if err:
             return err
 
@@ -311,9 +360,41 @@ class PayrollRunViewSet(viewsets.ModelViewSet):
         )
         return Response(self.get_serializer(period).data, status=status.HTTP_200_OK)
 
+    @action(detail=True, methods=['post'])
+    def finalize(self, request, pk=None):
+        err = _require(request, 'payroll.approve')
+        if err:
+            return err
+            
+        period = self.get_object()
+        
+        # Only APPROVED payroll can be finalized
+        if period.status != 'approved':
+            return Response(
+                {'detail': 'Only approved payroll runs can be finalized.'}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+            
+        try:
+            with transaction.atomic():
+                period = finalize_payroll_run(period, requested_by=request.user)
+                
+            AuditService.log(
+                action='payroll_finalized',
+                actor=request.user,
+                target_type='payroll_period',
+                target_id=period.id,
+                request=request,
+            )
+            return Response(self.get_serializer(period).data, status=status.HTTP_200_OK)
+        except PayrollImmutableError as e:
+            return Response({'detail': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        except Exception as e:
+            return Response({'detail': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
     @action(detail=True, methods=['get'])
     def validation(self, request, pk=None):
-        err = _require(request.user, 'payroll.view')
+        err = _require(request, 'payroll.view')
         if err:
             return err
             
@@ -325,7 +406,7 @@ class PayrollRunViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=['get'])
     def variance(self, request, pk=None):
-        err = _require(request.user, 'payroll.view')
+        err = _require(request, 'payroll.view')
         if err:
             return err
             
@@ -360,13 +441,13 @@ class PayrollRecordViewSet(viewsets.ReadOnlyModelViewSet):
         return qs
 
     def list(self, request, *args, **kwargs):
-        err = _require(request.user, 'payroll.view')
+        err = _require(request, 'payroll.view')
         if err:
             return err
         return super().list(request, *args, **kwargs)
 
     def retrieve(self, request, *args, **kwargs):
-        err = _require(request.user, 'payroll.view')
+        err = _require(request, 'payroll.view')
         if err:
             return err
         return super().retrieve(request, *args, **kwargs)
@@ -407,8 +488,12 @@ class PayslipViewSet(viewsets.ReadOnlyModelViewSet):
         )
 
         if self.action == 'my':
-            if hasattr(user, 'employee') and user.employee:
-                return base_qs.filter(payroll_record__employee=user.employee)
+            try:
+                emp = get_current_employee(self.request)
+                if emp:
+                    return base_qs.filter(payroll_record__employee=emp)
+            except Exception:
+                pass
             return base_qs.filter(payroll_record__employee__user=user)
 
         if self.action == 'retrieve':
@@ -417,8 +502,12 @@ class PayslipViewSet(viewsets.ReadOnlyModelViewSet):
                 or AuthorizationService.has_permission(user, 'payroll.view')
             ):
                 return base_qs
-            if hasattr(user, 'employee'):
-                return base_qs.filter(payroll_record__employee=user.employee)
+            try:
+                emp = get_current_employee(self.request)
+                if emp:
+                    return base_qs.filter(payroll_record__employee=emp)
+            except Exception:
+                pass
             return Payslip.objects.none()
 
         # For list (/), requires payslip.view or payroll.view

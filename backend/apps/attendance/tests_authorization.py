@@ -22,6 +22,20 @@ User = get_user_model()
 class AttendanceAuthorizationTestSuite(TestCase):
     def setUp(self):
         self.client = APIClient()
+        # Seed permissions that might be missing in test db
+        for codename, name in [
+            ('attendance.view_all', 'View All Attendance'),
+            ('holiday.view', 'View Holiday'),
+            ('holiday.manage', 'Manage Holiday'),
+            ('shift.view', 'View Shift'),
+            ('shift.manage', 'Manage Shift'),
+            ('shift_assignment.view', 'View Shift Assignment'),
+            ('shift_assignment.manage', 'Manage Shift Assignment'),
+        ]:
+            Permission.objects.get_or_create(
+                codename=codename,
+                defaults={'name': name, 'resource': codename.split('.')[0], 'action': codename.split('.')[1]}
+            )
 
         # Organization 1
         self.org1 = Organization.objects.create(name='Org Alpha')

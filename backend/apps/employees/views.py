@@ -12,6 +12,7 @@ from django.conf import settings
 from django.db import transaction
 from django.db.models import Q
 from django.utils import timezone
+from apps.organization.context import get_current_employee, get_current_organization
 from apps.authorization.permissions import HasRequiredPermission, IsNetworkAllowed, require_permission
 from apps.authorization.services import AuthorizationService
 from apps.audit.services import AuditService
@@ -35,18 +36,18 @@ class EmployeeSelfServiceView(APIView):
 
     def get(self, request, *args, **kwargs):
         try:
-            employee = request.user.employee
-        except AttributeError:
-            return Response({'detail': 'Employee profile not found.'}, status=status.HTTP_404_NOT_FOUND)
+            employee = get_current_employee(request)
+        except Exception:
+            return Response({'detail': 'Employee profile not found in current organization context.'}, status=status.HTTP_404_NOT_FOUND)
 
         serializer = EmployeeSerializer(employee)
         return Response(serializer.data, status=status.HTTP_200_OK)
 
     def patch(self, request, *args, **kwargs):
         try:
-            employee = request.user.employee
-        except AttributeError:
-            return Response({'detail': 'Employee profile not found.'}, status=status.HTTP_404_NOT_FOUND)
+            employee = get_current_employee(request)
+        except Exception:
+            return Response({'detail': 'Employee profile not found in current organization context.'}, status=status.HTTP_404_NOT_FOUND)
 
         serializer = EmployeeSelfServiceSerializer(employee, data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
@@ -77,7 +78,10 @@ class EmployeeHolidaysView(APIView):
     def get(self, request, *args, **kwargs):
         from apps.attendance.models import Holiday
         from apps.attendance.serializers import HolidaySerializer
-        employee = getattr(request.user, 'employee', None)
+        try:
+            employee = get_current_employee(request)
+        except Exception:
+            employee = None
         queryset = Holiday.objects.filter(branch=employee.branch, is_active=True).order_by('date') if employee and employee.branch_id else []
         return Response(HolidaySerializer(queryset, many=True).data)
 
@@ -88,7 +92,10 @@ class EmployeeAnnouncementsView(APIView):
     def get(self, request, *args, **kwargs):
         from apps.notifications.models import Announcement
         from apps.notifications.serializers import AnnouncementSerializer
-        employee = getattr(request.user, 'employee', None)
+        try:
+            employee = get_current_employee(request)
+        except Exception:
+            employee = None
         if not employee or not employee.organization_id:
             return Response([])
         queryset = Announcement.objects.filter(organization=employee.organization, is_published=True).filter(
@@ -176,23 +183,22 @@ class EmployeeManagementViewSet(viewsets.ModelViewSet):
             org_id = self.request.query_params.get('organization_id')
             if org_id:
                 qs = qs.filter(organization_id=org_id)
-        elif hasattr(user, 'employee'):
-            authorized_branches = AuthorizationService.get_authorized_branches(user, 'employee.view')
-            authorized_teams = AuthorizationService.get_authorized_teams(user, 'employee.view')
-            if AuthorizationService.has_permission(user, 'employee.view', branch_id=None, global_only=True):
+        elif not user.is_superuser:
+            try:
+                employee = get_current_employee(self.request)
+            except Exception:
+                return Employee.objects.none()
+            
+            authorized_branches = AuthorizationService.get_authorized_branches(self.request, 'employee.view')
+            authorized_teams = AuthorizationService.get_authorized_teams(self.request, 'employee.view')
+            if AuthorizationService.has_permission(self.request, 'employee.view', branch_id=None, global_only=True):
                 qs = qs.filter(
                     Q(branch__in=authorized_branches) |
-                    Q(branch__isnull=True, organization=user.employee.organization) |
+                    Q(branch__isnull=True, organization=employee.organization) |
                     Q(team__in=authorized_teams)
                 )
             else:
                 qs = qs.filter(Q(branch__in=authorized_branches) | Q(team__in=authorized_teams))
-        else:
-            organization = AuthorizationService.get_primary_organization(user)
-            if not organization:
-                return Employee.objects.none()
-            qs = qs.filter(organization=organization)
-
         return qs
 
     def create(self, request, *args, **kwargs):
@@ -698,16 +704,21 @@ class WFHRequestViewSet(viewsets.ModelViewSet):
             org_id = self.request.query_params.get('organization')
             if org_id:
                 qs = qs.filter(employee__organization_id=org_id)
-        elif AuthorizationService.has_permission(user, 'wfh.view'):
-            emp = getattr(user, 'employee', None)
+        elif AuthorizationService.has_permission(self.request, 'wfh.view'):
+            try:
+                emp = get_current_employee(self.request)
+            except Exception:
+                emp = None
             if emp and emp.organization_id:
                 qs = WFHRequest.objects.filter(employee__organization=emp.organization)
             else:
                 return WFHRequest.objects.none()
-        elif hasattr(user, 'employee'):
-            qs = WFHRequest.objects.filter(employee=user.employee)
         else:
-            return WFHRequest.objects.none()
+            try:
+                emp = get_current_employee(self.request)
+                qs = WFHRequest.objects.filter(employee=emp)
+            except Exception:
+                return WFHRequest.objects.none()
 
         status_param = self.request.query_params.get('status')
         if status_param and status_param != 'all':
@@ -723,9 +734,11 @@ class WFHRequestViewSet(viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         from rest_framework.exceptions import ValidationError
-        if not hasattr(self.request.user, 'employee'):
-            raise ValidationError({"detail": "Employee profile not found."})
-        wfh = serializer.save(employee=self.request.user.employee)
+        try:
+            employee = get_current_employee(self.request)
+        except Exception:
+            raise ValidationError({"detail": "Employee profile not found in current organization context."})
+        wfh = serializer.save(employee=employee)
         AuditService.log(
             action='wfh_request_created',
             actor=self.request.user,
@@ -819,21 +832,26 @@ class EmployeeDocumentViewSet(viewsets.GenericViewSet):
 
         if user.is_superuser:
             pass
-        elif hasattr(user, 'employee'):
+        elif True:
+            try:
+                emp = get_current_employee(self.request)
+                if not emp:
+                    return EmployeeDocument.objects.none()
+            except Exception:
+                return EmployeeDocument.objects.none()
+
             from django.db.models import Q
             authorized_branches = AuthorizationService.get_authorized_branches(user, 'employee.document.view')
             authorized_teams = AuthorizationService.get_authorized_teams(user, 'employee.document.view')
             if AuthorizationService.has_permission(user, 'employee.document.view', branch_id=None, global_only=True):
                 qs = qs.filter(
-                    Q(employee=user.employee) |
+                    Q(employee=emp) |
                     Q(employee__branch__in=authorized_branches) |
-                    Q(employee__branch__isnull=True, employee__organization=user.employee.organization) |
+                    Q(employee__branch__isnull=True, employee__organization=emp.organization) |
                     Q(employee__team__in=authorized_teams)
                 )
             else:
-                qs = qs.filter(Q(employee=user.employee) | Q(employee__branch__in=authorized_branches) | Q(employee__team__in=authorized_teams))
-        else:
-            return EmployeeDocument.objects.none()
+                qs = qs.filter(Q(employee=emp) | Q(employee__branch__in=authorized_branches) | Q(employee__team__in=authorized_teams))
 
         employee_id = self.request.query_params.get('employee')
         if employee_id:
@@ -861,7 +879,10 @@ class EmployeeDocumentViewSet(viewsets.GenericViewSet):
             return Response(status=status.HTTP_404_NOT_FOUND)
 
         # Employees may view their own documents
-        emp = getattr(request.user, 'employee', None)
+        try:
+            emp = get_current_employee(request)
+        except Exception:
+            emp = None
         is_own = (emp is not None and doc.employee_id == emp.id)
         if not is_own and not (
             AuthorizationService.has_permission(request.user, 'employee.document.view') or
@@ -887,7 +908,11 @@ class EmployeeDocumentViewSet(viewsets.GenericViewSet):
         target_employee = serializer.validated_data['employee']
 
         if not request.user.is_superuser:
-            if not hasattr(request.user, 'employee'):
+            try:
+                emp = get_current_employee(request)
+                if not emp:
+                    return Response(status=status.HTTP_403_FORBIDDEN)
+            except Exception:
                 return Response(status=status.HTTP_403_FORBIDDEN)
 
             authorized_branches = AuthorizationService.get_authorized_branches(request.user, 'employee.document.upload')
@@ -895,7 +920,7 @@ class EmployeeDocumentViewSet(viewsets.GenericViewSet):
             can_upload = False
             if target_employee.branch in authorized_branches:
                 can_upload = True
-            elif target_employee.branch is None and target_employee.organization == request.user.employee.organization:
+            elif target_employee.branch is None and target_employee.organization == emp.organization:
                 if AuthorizationService.has_permission(request.user, 'employee.document.upload', branch_id=None):
                     can_upload = True
 

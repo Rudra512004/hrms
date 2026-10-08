@@ -23,6 +23,11 @@ import { PayrollPage } from '../pages/PayrollPage';
 import { PayrollReportsPage } from '../pages/PayrollReportsPage';
 import { SalaryConfigurationPage } from '../pages/admin/SalaryConfigurationPage';
 import { MyPayslipsPage } from '../pages/MyPayslipsPage';
+import { MyAllowancesPage } from '../pages/finance/MyAllowancesPage';
+import { MyReimbursementsPage } from '../pages/finance/MyReimbursementsPage';
+import { AllowanceTypesPage } from '../pages/admin/finance/AllowanceTypesPage';
+import { EmployeeAllowancesPage } from '../pages/admin/finance/EmployeeAllowancesPage';
+import { ReimbursementsApprovalPage } from '../pages/admin/finance/ReimbursementsApprovalPage';
 
 // Admin Pages
 import { AdminLeavePage } from '../pages/admin/AdminLeavePage';
@@ -97,6 +102,8 @@ export const AppRouter: React.FC = () => {
             <Route path="/leaves" element={<LeavePage />} />
             <Route path="/calendar" element={<CalendarPage />} />
             <Route path="/payslips" element={<MyPayslipsPage />} />
+            <Route path="/my-allowances" element={<MyAllowancesPage />} />
+            <Route path="/reimbursements" element={<MyReimbursementsPage />} />
             <Route path="/timesheets" element={<TimesheetsPage />} />
             <Route path="/reviews" element={<ReviewsPage />} />
             <Route path="/my-assets" element={<MyAssetsPage />} />
@@ -117,6 +124,18 @@ export const AppRouter: React.FC = () => {
 
           <Route element={<ProtectedRoute requiredPermission="payroll.manage_compensation" />}>
             <Route path="/admin/salary-configuration" element={<SalaryConfigurationPage />} />
+          </Route>
+
+          <Route element={<ProtectedRoute requiredPermission="allowance.manage" />}>
+            <Route path="/admin/allowance-types" element={<AllowanceTypesPage />} />
+          </Route>
+
+          <Route element={<ProtectedRoute requiredPermission="allowance.assign" />}>
+            <Route path="/admin/employee-allowances" element={<EmployeeAllowancesPage />} />
+          </Route>
+
+          <Route element={<ProtectedRoute requiredPermission="reimbursement.approve" />}>
+            <Route path="/admin/reimbursements" element={<ReimbursementsApprovalPage />} />
           </Route>
 
           {/* Admin Routes */}

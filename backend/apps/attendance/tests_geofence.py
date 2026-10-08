@@ -51,12 +51,15 @@ class GeofenceTests(TestCase):
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
 
     def test_inside_geofence(self):
+        from apps.organization.models import OrganizationMembership
+        print("Memberships for user1:", OrganizationMembership.objects.filter(user=self.user1).count())
         self.client.force_authenticate(user=self.user1)
         response = self.client.post(reverse('attendance-check-in'), {
             'latitude': 19.0760,
             'longitude': 72.8777,
             'accuracy': 10.0
         })
+        print("Response data:", response.data)
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         attendance = Attendance.objects.get(employee=self.emp1, date=timezone.now().date())
         self.assertEqual(float(attendance.check_in_latitude), 19.0760)

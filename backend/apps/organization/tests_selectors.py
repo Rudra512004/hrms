@@ -10,6 +10,7 @@ User = get_user_model()
 class OrganizationSelectorTests(APITestCase):
     def setUp(self):
         self.org1 = Organization.objects.create(name='Org 1', status='active')
+        self.client.credentials(HTTP_X_ORGANIZATION_ID=str(self.org1.id))
         self.branch1 = Branch.objects.create(organization=self.org1, name='B1', radius=100)
         self.branch2 = Branch.objects.create(organization=self.org1, name='B2', radius=100)
         self.dept1 = Department.objects.create(branch=self.branch1, name='D1')
@@ -18,6 +19,9 @@ class OrganizationSelectorTests(APITestCase):
         self.team2 = Team.objects.create(department=self.dept2, name='T2')
 
         self.user = User.objects.create_user(email='sel@test.com', status='active')
+
+        from apps.organization.models import OrganizationMembership
+        OrganizationMembership.objects.create(user=self.user, organization=self.org1, status='active')
 
         # Give user branch.view and department.view at branch1 scope
         self.role = Role.objects.create(name='B1 Admin', organization=self.org1)
@@ -34,6 +38,8 @@ class OrganizationSelectorTests(APITestCase):
         with patch('apps.authorization.permissions.IsNetworkAllowed.has_permission', return_value=True):
             self.client.force_authenticate(user=self.user)
             res = self.client.get(reverse('branch-list'))
+            if res.status_code != status.HTTP_200_OK:
+                print("TEST SELECTOR FAILED. RESPONSE:", res.data)
             self.assertEqual(res.status_code, status.HTTP_200_OK)
             self.assertEqual(len(res.data), 1)
             self.assertEqual(res.data[0]['id'], self.branch1.id)

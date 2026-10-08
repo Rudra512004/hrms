@@ -104,8 +104,13 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, isMobile, onNavigate }
     {
       title: 'Finance',
       items: [
+        { path: '/my-allowances', label: 'My Allowances', icon: DollarSign, requiresEmployee: true },
+        { path: '/reimbursements', label: 'My Reimbursements', icon: FileText, requiresEmployee: true },
         { path: '/payslips', label: 'My Payslips', icon: FileText, requiresEmployee: true },
         { path: '/payroll', label: 'Payroll', icon: DollarSign, permission: 'payroll.view' },
+        { path: '/admin/allowance-types', label: 'Allowance Types', icon: Settings, permission: 'allowance.manage' },
+        { path: '/admin/employee-allowances', label: 'Employee Allowances', icon: Settings, permission: 'allowance.assign' },
+        { path: '/admin/reimbursements', label: 'Reimbursement Claims', icon: FileText, permission: 'reimbursement.approve' },
         { path: '/admin/salary-configuration', label: 'Salary Configuration', icon: Settings, permission: 'payroll.manage_compensation' },
         { path: '/payroll/reports', label: 'Reports', icon: BarChart2, permission: 'payroll.view_reports' },
       ],

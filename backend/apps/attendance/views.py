@@ -10,6 +10,7 @@ from datetime import timedelta
 from apps.authorization.permissions import IsNetworkAllowed, require_permission
 from .models import Attendance, AttendanceBreak, Holiday, Shift, BreakType
 from .serializers import AttendanceSerializer, HolidaySerializer, ShiftSerializer, BreakTypeSerializer
+from apps.organization.context import get_current_employee, get_current_organization
 
 from .utils import calculate_haversine_distance
 
@@ -81,8 +82,12 @@ class AttendanceViewSet(viewsets.GenericViewSet):
 
     def get_queryset(self):
         user = self.request.user
-        if not user.is_superuser and hasattr(user, 'employee'):
-            return Attendance.objects.filter(employee=user.employee)
+        try:
+            emp = get_current_employee(self.request)
+            if not user.is_superuser and emp:
+                return Attendance.objects.filter(employee=emp)
+        except Exception:
+            pass
         return Attendance.objects.none()
 
     def list(self, request):
@@ -92,10 +97,13 @@ class AttendanceViewSet(viewsets.GenericViewSet):
 
     @action(detail=False, methods=['post'], url_path='check-in')
     def check_in(self, request):
-        if request.user.is_superuser or not hasattr(request.user, 'employee'):
+        try:
+            employee = get_current_employee(request)
+            if request.user.is_superuser or not employee:
+                return Response({'detail': 'Employee profile not found.'}, status=status.HTTP_404_NOT_FOUND)
+        except Exception as e:
+            print("CHECK IN EXCEPTION:", e)
             return Response({'detail': 'Employee profile not found.'}, status=status.HTTP_404_NOT_FOUND)
-
-        employee = request.user.employee
         if getattr(employee, 'employment_status', None) == 'exited':
             return Response({'detail': 'Exited employees cannot record attendance.'}, status=status.HTTP_400_BAD_REQUEST)
 
@@ -140,10 +148,12 @@ class AttendanceViewSet(viewsets.GenericViewSet):
 
     @action(detail=False, methods=['post'], url_path='check-out')
     def check_out(self, request):
-        if request.user.is_superuser or not hasattr(request.user, 'employee'):
+        try:
+            employee = get_current_employee(request)
+            if request.user.is_superuser or not employee:
+                return Response({'detail': 'Employee profile not found.'}, status=status.HTTP_404_NOT_FOUND)
+        except Exception:
             return Response({'detail': 'Employee profile not found.'}, status=status.HTTP_404_NOT_FOUND)
-
-        employee = request.user.employee
         if getattr(employee, 'employment_status', None) == 'exited':
             return Response({'detail': 'Exited employees cannot record attendance.'}, status=status.HTTP_400_BAD_REQUEST)
 
@@ -200,10 +210,12 @@ class AttendanceViewSet(viewsets.GenericViewSet):
 
     @action(detail=False, methods=['post'], url_path='start-break')
     def start_break(self, request):
-        if request.user.is_superuser or not hasattr(request.user, 'employee'):
+        try:
+            employee = get_current_employee(request)
+            if request.user.is_superuser or not employee:
+                return Response({'detail': 'Employee profile not found.'}, status=status.HTTP_404_NOT_FOUND)
+        except Exception:
             return Response({'detail': 'Employee profile not found.'}, status=status.HTTP_404_NOT_FOUND)
-
-        employee = request.user.employee
         today = timezone.now().date()
 
         loc = self._validate_location(request, employee)
@@ -254,10 +266,12 @@ class AttendanceViewSet(viewsets.GenericViewSet):
 
     @action(detail=False, methods=['post'], url_path='end-break')
     def end_break(self, request):
-        if request.user.is_superuser or not hasattr(request.user, 'employee'):
+        try:
+            employee = get_current_employee(request)
+            if request.user.is_superuser or not employee:
+                return Response({'detail': 'Employee profile not found.'}, status=status.HTTP_404_NOT_FOUND)
+        except Exception:
             return Response({'detail': 'Employee profile not found.'}, status=status.HTTP_404_NOT_FOUND)
-
-        employee = request.user.employee
         today = timezone.now().date()
 
         loc = self._validate_location(request, employee)
@@ -310,7 +324,13 @@ class AttendanceManagementViewSet(viewsets.GenericViewSet):
         qs = Attendance.objects.all()
         if user.is_superuser:
             pass
-        elif hasattr(user, 'employee') and user.employee:
+        elif True:
+            try:
+                emp = get_current_employee(self.request)
+                if not emp:
+                    return Attendance.objects.none()
+            except Exception:
+                return Attendance.objects.none()
             from apps.authorization.services import AuthorizationService
             authorized_branches = AuthorizationService.get_authorized_branches(user, 'attendance.view_all')
             authorized_teams = AuthorizationService.get_authorized_teams(user, 'attendance.view_all')
@@ -486,7 +506,13 @@ class HolidayViewSet(viewsets.ModelViewSet):
         qs = Holiday.objects.all()
         if user.is_superuser:
             pass
-        elif hasattr(user, 'employee') and user.employee:
+        elif True:
+            try:
+                emp = get_current_employee(self.request)
+                if not emp:
+                    return Holiday.objects.none()
+            except Exception:
+                return Holiday.objects.none()
             from apps.authorization.services import AuthorizationService
             perm = 'holiday.view' if self.action in ['list', 'retrieve'] else 'holiday.manage'
             authorized_branches = AuthorizationService.get_authorized_branches(user, perm)
@@ -513,7 +539,11 @@ class HolidayViewSet(viewsets.ModelViewSet):
             raise ValidationError({"branch": "Branch is required."})
         user = self.request.user
         if not user.is_superuser:
-            if hasattr(user, 'employee') and user.employee and branch.organization_id != user.employee.organization_id:
+            try:
+                emp = get_current_employee(request)
+            except Exception:
+                emp = None
+            if emp and branch.organization_id != emp.organization_id:
                 raise ValidationError({"branch": "Cannot create holiday for another organization."})
             from apps.authorization.services import AuthorizationService
             if not AuthorizationService.has_permission(user, 'holiday.manage', branch.id):
@@ -530,7 +560,11 @@ class HolidayViewSet(viewsets.ModelViewSet):
                 raise ValidationError({"branch": "You do not have permission to manage holidays for this branch."})
             target_branch = serializer.validated_data.get('branch')
             if target_branch and target_branch != instance.branch:
-                if hasattr(user, 'employee') and user.employee and target_branch.organization_id != user.employee.organization_id:
+                try:
+                    emp = get_current_employee(request)
+                except Exception:
+                    emp = None
+                if emp and target_branch.organization_id != emp.organization_id:
                     raise ValidationError({"branch": "Cannot move holiday to another organization."})
                 if not AuthorizationService.has_permission(user, 'holiday.manage', target_branch.id):
                     raise ValidationError({"branch": "You do not have permission to manage holidays for the target branch."})
@@ -553,7 +587,13 @@ class ShiftViewSet(viewsets.ModelViewSet):
         qs = Shift.objects.all()
         if user.is_superuser:
             pass
-        elif hasattr(user, 'employee') and user.employee:
+        elif True:
+            try:
+                emp = get_current_employee(self.request)
+                if not emp:
+                    return Shift.objects.none()
+            except Exception:
+                return Shift.objects.none()
             from apps.authorization.services import AuthorizationService
             perm = 'shift.view' if self.action in ['list', 'retrieve'] else 'shift.manage'
             authorized_branches = AuthorizationService.get_authorized_branches(user, perm)
@@ -580,7 +620,11 @@ class ShiftViewSet(viewsets.ModelViewSet):
             raise ValidationError({"branch": "Branch is required."})
         user = self.request.user
         if not user.is_superuser:
-            if hasattr(user, 'employee') and user.employee and branch.organization_id != user.employee.organization_id:
+            try:
+                emp = get_current_employee(request)
+            except Exception:
+                emp = None
+            if emp and branch.organization_id != emp.organization_id:
                 raise ValidationError({"branch": "Cannot create shift for another organization."})
             from apps.authorization.services import AuthorizationService
             if not AuthorizationService.has_permission(user, 'shift.manage', branch.id):
@@ -597,7 +641,11 @@ class ShiftViewSet(viewsets.ModelViewSet):
                 raise ValidationError({"branch": "You do not have permission to manage shifts for this branch."})
             target_branch = serializer.validated_data.get('branch')
             if target_branch and target_branch != instance.branch:
-                if hasattr(user, 'employee') and user.employee and target_branch.organization_id != user.employee.organization_id:
+                try:
+                    emp = get_current_employee(request)
+                except Exception:
+                    emp = None
+                if emp and target_branch.organization_id != emp.organization_id:
                     raise ValidationError({"branch": "Cannot move shift to another organization."})
                 if not AuthorizationService.has_permission(user, 'shift.manage', target_branch.id):
                     raise ValidationError({"branch": "You do not have permission to manage shifts for the target branch."})

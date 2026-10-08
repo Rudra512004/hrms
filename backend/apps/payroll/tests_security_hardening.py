@@ -135,7 +135,7 @@ class PayrollSecurityAndCorrectnessTests(TestCase):
             end_date=completed_end,
             status=PayrollRun.STATUS_DRAFT
         )
-        PayrollRecord.objects.create(
+        record = PayrollRecord.objects.create(
             period=period,
             employee=self.emp,
             working_days=20,
@@ -150,9 +150,17 @@ class PayrollSecurityAndCorrectnessTests(TestCase):
             status=PayrollRecord.STATUS_DRAFT
         )
 
+        from apps.payroll.models import PayrollLineItem
+        PayrollLineItem.objects.create(
+            payroll_record=record,
+            category='EARNING',
+            amount=Decimal('50000.00'),
+        )
+
         self.client.force_authenticate(user=self.admin_user)
         # 1. Initial approval of completed period succeeds
         resp = self.client.post(f'/api/v1/payroll/periods/{period.id}/approve/')
+        print('APPROVAL RESPONSE:', resp.data)
         self.assertEqual(resp.status_code, status.HTTP_200_OK)
         self.assertEqual(resp.data['status'], 'approved')
         period.refresh_from_db()

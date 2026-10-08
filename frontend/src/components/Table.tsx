@@ -2,7 +2,7 @@ import React from 'react';
 import { FileText, ChevronLeft, ChevronRight, Loader2 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 
-interface Column<T> {
+export interface Column<T> {
   key: string | keyof T;
   title: string;
   render?: (item: T) => React.ReactNode;
