@@ -58,6 +58,7 @@ INSTALLED_APPS = [
     'apps.candidates',
     'apps.data_import',
     'apps.documents',
+    'apps.alerts',
     'django_filters',
 ]
 

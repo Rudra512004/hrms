@@ -75,6 +75,8 @@ import { OnboardingOverviewPage } from '../pages/onboarding/OnboardingOverviewPa
 import { OnboardingProfilePage } from '../pages/onboarding/OnboardingProfilePage';
 import { OnboardingDocumentsPage } from '../pages/onboarding/OnboardingDocumentsPage';
 import { OnboardingLettersPage } from '../pages/onboarding/OnboardingLettersPage';
+import { WorkHealthAlertsPage } from '../pages/admin/WorkHealthAlertsPage';
+import { MyAlertPreferencesPage } from '../pages/employee/MyAlertPreferencesPage';
 
 export const AppRouter: React.FC = () => {
   return (
@@ -110,6 +112,7 @@ export const AppRouter: React.FC = () => {
             <Route path="/my-letters" element={<EmployeeInformationPage mode="letters" />} />
             <Route path="/holidays" element={<EmployeeInformationPage mode="holidays" />} />
             <Route path="/announcements" element={<EmployeeInformationPage mode="announcements" />} />
+            <Route path="/my-health-alerts" element={<MyAlertPreferencesPage />} />
           </Route>
           <Route path="/profile" element={<ProfilePage />} />
 
@@ -247,6 +250,10 @@ export const AppRouter: React.FC = () => {
           <Route element={<ProtectedRoute requiredPermission="candidate.view" />}>
             <Route path="/admin/candidates" element={<CandidatesPage />} />
             <Route path="/admin/candidates/:id" element={<CandidateDetailPage />} />
+          </Route>
+
+          <Route element={<ProtectedRoute requiredPermission="work_health_alert.view_rules" />}>
+            <Route path="/admin/work-health-alerts" element={<WorkHealthAlertsPage />} />
           </Route>
         </Route>
 

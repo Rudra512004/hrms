@@ -194,6 +194,12 @@ class AttendanceViewSet(viewsets.GenericViewSet):
                 request=request
             )
 
+        try:
+            from apps.alerts.services import AlertEvaluationService
+            AlertEvaluationService.evaluate_employee_event(employee, today)
+        except Exception:
+            pass
+
         serializer = self.get_serializer(attendance)
         return Response(serializer.data, status=status.HTTP_200_OK)
 

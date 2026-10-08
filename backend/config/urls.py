@@ -23,4 +23,5 @@ urlpatterns = [
     path('api/v1/data-import/', include('apps.data_import.urls')),
     path('api/v1/candidates/', include('apps.candidates.urls')),
     path('api/v1/documents/', include('apps.documents.urls')),
+    path('api/v1/work-health-alerts/', include('apps.alerts.urls')),
 ]
