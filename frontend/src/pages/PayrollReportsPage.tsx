@@ -415,8 +415,8 @@ export const PayrollReportsPage: React.FC = () => {
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
               <span style={{ fontSize: '0.85rem', color: 'var(--color-text-secondary)' }}>Status:</span>
               <StatusBadge
-                status={selectedPeriod.status === 'approved' ? 'approved' : 'pending'}
-                label={selectedPeriod.status === 'approved' ? 'Approved & Locked' : 'Draft Pending Approval'}
+                status={selectedPeriod.status === 'finalized' || selectedPeriod.status === 'disbursed' ? 'approved' : 'pending'}
+                label={selectedPeriod.status === 'finalized' || selectedPeriod.status === 'disbursed' ? 'Approved & Locked' : (selectedPeriod.status.charAt(0).toUpperCase() + selectedPeriod.status.slice(1))}
               />
             </div>
           </div>

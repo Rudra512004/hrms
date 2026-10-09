@@ -77,6 +77,16 @@ export interface PayrollRecord {
   generated_at: string;
 }
 
+export interface PayslipLine {
+  id: number;
+  category: 'earning' | 'deduction';
+  component_code: string;
+  name: string;
+  amount: string;
+  order: number;
+  metadata?: Record<string, any>;
+}
+
 export interface PayslipSummary {
   id: number;
   payslip_number: string;
@@ -90,6 +100,10 @@ export interface PayslipSummary {
   net_salary: string;
   employee_code: string;
   employee_name: string;
+  verification_token?: string;
+  gross_earnings?: string;
+  total_deductions?: string;
+  net_pay?: string;
 }
 
 export interface PayslipDetail {
@@ -98,6 +112,16 @@ export interface PayslipDetail {
   status: 'issued' | 'revoked';
   issued_at: string;
   period_label: string;
+  verification_token?: string;
+  integrity_hash?: string;
+  net_pay_in_words?: string;
+  organization: {
+    name: string;
+    legal_name?: string;
+    address?: string | null;
+    cin?: string | null;
+    branch?: string | null;
+  };
   employee: {
     id: number;
     code: string;
@@ -105,6 +129,14 @@ export interface PayslipDetail {
     email: string;
     department: string | null;
     designation: string | null;
+    joining_date?: string | null;
+    bank_name?: string | null;
+    masked_bank_account?: string | null;
+    bank_ifsc?: string | null;
+    payment_mode?: string | null;
+    masked_pan?: string | null;
+    uan?: string | null;
+    esic_number?: string | null;
   };
   period: {
     id: number;
@@ -115,19 +147,53 @@ export interface PayslipDetail {
     end_date: string;
   };
   attendance: {
+    calendar_days?: number;
     working_days: number;
-    present_days: number;
+    present_days: string | number;
     half_days: number;
-    leave_days: number;
+    leave_days: string | number;
     absent_days: number;
-    effective_days: string;
+    effective_days: string | number;
+    lop_days?: string | number;
   };
   financials: {
     basic_salary: string | null;
     gross_salary: string | null;
     deductions: string | null;
     net_salary: string | null;
+    net_pay_in_words?: string | null;
   };
+  lines: PayslipLine[];
+}
+
+export interface SettlementLine {
+  id: number;
+  category: 'earning' | 'deduction' | 'recovery';
+  code: string;
+  name: string;
+  amount: string;
+  calculation_basis?: string;
+  source_reference?: string;
+  order: number;
+  metadata?: Record<string, any>;
+}
+
+export interface FinalSettlement {
+  id: number;
+  settlement_number: string;
+  status: 'draft' | 'review' | 'approved' | 'finalized' | 'cancelled';
+  exit_date: string;
+  resignation_date?: string | null;
+  settlement_date: string;
+  total_earnings: string;
+  total_deductions: string;
+  total_recoveries: string;
+  net_settlement_amount: string;
+  currency: string;
+  remarks?: string;
+  cancellation_reason?: string;
+  integrity_hash?: string;
+  lines?: SettlementLine[];
 }
 
 export interface CreatePeriodPayload {
@@ -225,6 +291,43 @@ export const payrollService = {
     const query = params.toString() ? `?${params.toString()}` : '';
     const res = await fetch(`${BASE}/payslips/${query}`, { headers: getHeaders() });
     return handleResponse<PayslipSummary[]>(res);
+  },
+
+  downloadPayslipPdf: async (id: number): Promise<{ blob: Blob; filename: string }> => {
+    const token = localStorage.getItem('auth_token');
+    if (!token) throw new Error('No authentication token');
+    const res = await fetch(`${BASE}/payslips/${id}/pdf/`, {
+      headers: {
+        Authorization: `Token ${token}`,
+      },
+    });
+    if (!res.ok) {
+      const errorData = await res.json().catch(() => ({}));
+      throw { response: res, errorData };
+    }
+    const disposition = res.headers.get('content-disposition');
+    let filename = `Payslip_${id}.pdf`;
+    if (disposition && disposition.includes('filename=')) {
+      const match = disposition.match(/filename="?([^";]+)"?/);
+      if (match && match[1]) filename = match[1];
+    }
+    const blob = await res.blob();
+    return { blob, filename };
+  },
+
+  // FnF Final Settlements
+  getFinalSettlements: async (params?: { employee?: number; status?: string }): Promise<FinalSettlement[]> => {
+    const searchParams = new URLSearchParams();
+    if (params?.employee) searchParams.set('employee', String(params.employee));
+    if (params?.status) searchParams.set('status', params.status);
+    const query = searchParams.toString() ? `?${searchParams.toString()}` : '';
+    const res = await fetch(`${BASE}/fnf/${query}`, { headers: getHeaders() });
+    return handleResponse<FinalSettlement[]>(res);
+  },
+
+  getFinalSettlementDetail: async (id: number): Promise<FinalSettlement> => {
+    const res = await fetch(`${BASE}/fnf/${id}/`, { headers: getHeaders() });
+    return handleResponse<FinalSettlement>(res);
   },
 };
 

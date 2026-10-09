@@ -31,7 +31,9 @@ import {
   PendingApprovalsWidget,
   DashboardTrendsSection,
   CelebrationsWidget,
+  EmployeePayrollWidget,
 } from '../components/dashboard';
+import { payrollService, type PayslipSummary } from '../services/payroll';
 
 export const DashboardPage: React.FC = () => {
   const { user, hasEmployeeProfile } = useAuth();
@@ -43,6 +45,9 @@ export const DashboardPage: React.FC = () => {
 
   const [actionLoading, setActionLoading] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
+
+  const [myPayslips, setMyPayslips] = useState<PayslipSummary[]>([]);
+  const [payslipsLoading, setPayslipsLoading] = useState(false);
 
   const fetchDashboardData = useCallback(async (isSilent = false) => {
     if (!isSilent) {
@@ -71,6 +76,17 @@ export const DashboardPage: React.FC = () => {
   useEffect(() => {
     fetchDashboardData();
   }, [fetchDashboardData]);
+
+  useEffect(() => {
+    if (hasEmployeeProfile) {
+      setPayslipsLoading(true);
+      payrollService
+        .getMyPayslips()
+        .then((data) => setMyPayslips(data || []))
+        .catch((err) => console.error('Failed to load payslips for dashboard:', err))
+        .finally(() => setPayslipsLoading(false));
+    }
+  }, [hasEmployeeProfile]);
 
   const getGeolocation = (): Promise<{ latitude: number; longitude: number; accuracy: number }> => {
     return new Promise((resolve, reject) => {
@@ -515,6 +531,9 @@ export const DashboardPage: React.FC = () => {
 
             {/* Leave Balances with Progress Indicators (Employees Only) */}
             {hasEmployeeProfile && <LeaveBalanceWidget balances={leaveBalances} />}
+
+            {/* Employee Payroll & Payslip Widget */}
+            {hasEmployeeProfile && <EmployeePayrollWidget payslips={myPayslips} loading={payslipsLoading} />}
 
             {/* Upcoming Company Holidays */}
             {personal?.upcoming_holidays && personal.upcoming_holidays.length > 0 && (
