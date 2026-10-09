@@ -211,6 +211,127 @@ export interface SetCompensationPayload {
   effective_to?: string;
 }
 
+// ─── P6.9A Tax Declarations & Investment Proof Types ─────────────────────────
+
+export interface FinancialYear {
+  id: number;
+  name: string;
+  start_date: string;
+  end_date: string;
+  is_active: boolean;
+  is_locked: boolean;
+  created_at: string;
+}
+
+export interface TaxDeclarationCategory {
+  id: number;
+  code: string;
+  name: string;
+  description: string;
+  max_limit: string | null;
+  regime_applicability: 'both' | 'old' | 'new';
+  is_active: boolean;
+}
+
+export interface InvestmentProof {
+  id: number;
+  declaration_item: number;
+  proof_type: string;
+  document_name: string;
+  file_size: number;
+  mime_type: string;
+  status: 'submitted' | 'under_review' | 'verified' | 'rejected';
+  rejection_reason?: string | null;
+  reviewed_by_email?: string | null;
+  reviewed_at?: string | null;
+  submitted_at: string;
+}
+
+export interface InvestmentDeclaration {
+  id: number;
+  declaration: number;
+  category: number;
+  category_code: string;
+  description: string;
+  declared_amount: string;
+  verified_amount: string;
+  status: 'pending' | 'verified' | 'rejected';
+  rejection_reason?: string | null;
+  metadata?: Record<string, any>;
+  proofs: InvestmentProof[];
+  created_at: string;
+  updated_at: string;
+}
+
+export interface TaxDeclarationSummary {
+  id: number;
+  employee: number;
+  employee_code: string;
+  employee_name: string;
+  financial_year: number;
+  financial_year_name: string;
+  financial_year_start: string;
+  financial_year_end: string;
+  tax_regime: 'OLD' | 'NEW';
+  status: 'draft' | 'submitted' | 'under_review' | 'verified' | 'rejected';
+  total_declared_amount: string;
+  total_verified_amount: string;
+  items_count: number;
+  submission_date?: string | null;
+  verification_date?: string | null;
+  created_at: string;
+}
+
+export interface TaxDeclarationDetail {
+  id: number;
+  employee: number;
+  employee_code: string;
+  employee_name: string;
+  financial_year: number;
+  financial_year_name: string;
+  financial_year_start: string;
+  financial_year_end: string;
+  financial_year_locked: boolean;
+  tax_regime: 'OLD' | 'NEW';
+  status: 'draft' | 'submitted' | 'under_review' | 'verified' | 'rejected';
+  total_declared_amount: string;
+  total_verified_amount: string;
+  submission_date?: string | null;
+  verification_date?: string | null;
+  verified_by_email?: string | null;
+  rejection_reason?: string | null;
+  notes?: string;
+  snapshot_data?: Record<string, any>;
+  items: InvestmentDeclaration[];
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CreateTaxDeclarationPayload {
+  financial_year_id?: number;
+  financial_year_name?: string;
+  tax_regime?: 'OLD' | 'NEW';
+  notes?: string;
+}
+
+export interface UpdateTaxDeclarationPayload {
+  tax_regime?: 'OLD' | 'NEW';
+  notes?: string;
+}
+
+export interface CreateInvestmentItemPayload {
+  category_code: string;
+  description: string;
+  declared_amount: string | number;
+  metadata?: Record<string, any>;
+}
+
+export interface UpdateInvestmentItemPayload {
+  description?: string;
+  declared_amount?: string | number;
+  metadata?: Record<string, any>;
+}
+
 // ─── Service ──────────────────────────────────────────────────────────────────
 
 export const payrollService = {
@@ -329,7 +450,118 @@ export const payrollService = {
     const res = await fetch(`${BASE}/fnf/${id}/`, { headers: getHeaders() });
     return handleResponse<FinalSettlement>(res);
   },
+
+  // ─── P6.9A Employee Tax Declarations ─────────────────────────────────────────
+
+  getFinancialYears: async (): Promise<FinancialYear[]> => {
+    const res = await fetch(`${BASE}/tax/financial-years/`, { headers: getHeaders() });
+    return handleResponse<FinancialYear[]>(res);
+  },
+
+  getTaxCategories: async (): Promise<TaxDeclarationCategory[]> => {
+    const res = await fetch(`${BASE}/tax/categories/`, { headers: getHeaders() });
+    return handleResponse<TaxDeclarationCategory[]>(res);
+  },
+
+  getMyTaxDeclarations: async (financialYear?: number | string): Promise<TaxDeclarationSummary[]> => {
+    const query = financialYear ? `?financial_year=${encodeURIComponent(String(financialYear))}` : '';
+    const res = await fetch(`${BASE}/tax/declarations/my/${query}`, { headers: getHeaders() });
+    return handleResponse<TaxDeclarationSummary[]>(res);
+  },
+
+  getTaxDeclarationDetail: async (id: number): Promise<TaxDeclarationDetail> => {
+    const res = await fetch(`${BASE}/tax/declarations/${id}/`, { headers: getHeaders() });
+    return handleResponse<TaxDeclarationDetail>(res);
+  },
+
+  createTaxDeclaration: async (payload: CreateTaxDeclarationPayload): Promise<TaxDeclarationDetail> => {
+    const res = await fetch(`${BASE}/tax/declarations/`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify(payload),
+    });
+    return handleResponse<TaxDeclarationDetail>(res);
+  },
+
+  updateTaxDeclaration: async (id: number, payload: UpdateTaxDeclarationPayload): Promise<TaxDeclarationDetail> => {
+    const res = await fetch(`${BASE}/tax/declarations/${id}/`, {
+      method: 'PATCH',
+      headers: getHeaders(),
+      body: JSON.stringify(payload),
+    });
+    return handleResponse<TaxDeclarationDetail>(res);
+  },
+
+  submitTaxDeclaration: async (id: number): Promise<TaxDeclarationDetail> => {
+    const res = await fetch(`${BASE}/tax/declarations/${id}/submit/`, {
+      method: 'POST',
+      headers: getHeaders(),
+    });
+    return handleResponse<TaxDeclarationDetail>(res);
+  },
+
+  addInvestmentItem: async (declarationId: number, payload: CreateInvestmentItemPayload): Promise<InvestmentDeclaration> => {
+    const res = await fetch(`${BASE}/tax/declarations/${declarationId}/items/`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify(payload),
+    });
+    return handleResponse<InvestmentDeclaration>(res);
+  },
+
+  updateInvestmentItem: async (declarationId: number, itemId: number, payload: UpdateInvestmentItemPayload): Promise<InvestmentDeclaration> => {
+    const res = await fetch(`${BASE}/tax/declarations/${declarationId}/items/${itemId}/`, {
+      method: 'PATCH',
+      headers: getHeaders(),
+      body: JSON.stringify(payload),
+    });
+    return handleResponse<InvestmentDeclaration>(res);
+  },
+
+  deleteInvestmentItem: async (declarationId: number, itemId: number): Promise<void> => {
+    const res = await fetch(`${BASE}/tax/declarations/${declarationId}/items/${itemId}/delete/`, {
+      method: 'DELETE',
+      headers: getHeaders(),
+    });
+    return handleResponse<void>(res);
+  },
+
+  uploadInvestmentProof: async (declarationId: number, itemId: number, formData: FormData): Promise<InvestmentProof> => {
+    const token = localStorage.getItem('auth_token');
+    if (!token) throw new Error('No authentication token');
+    const res = await fetch(`${BASE}/tax/declarations/${declarationId}/items/${itemId}/proofs/`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Token ${token}`,
+      },
+      body: formData,
+    });
+    return handleResponse<InvestmentProof>(res);
+  },
+
+  downloadInvestmentProof: async (declarationId: number, itemId: number, proofId: number): Promise<{ blob: Blob; filename: string }> => {
+    const token = localStorage.getItem('auth_token');
+    if (!token) throw new Error('No authentication token');
+    const res = await fetch(`${BASE}/tax/declarations/${declarationId}/items/${itemId}/proofs/${proofId}/download/`, {
+      headers: {
+        Authorization: `Token ${token}`,
+      },
+    });
+    if (!res.ok) {
+      const errorData = await res.json().catch(() => ({}));
+      throw { response: res, errorData };
+    }
+    const disposition = res.headers.get('content-disposition');
+    let filename = `Proof_${proofId}.pdf`;
+    if (disposition && disposition.includes('filename=')) {
+      const match = disposition.match(/filename="?([^";]+)"?/);
+      if (match && match[1]) filename = match[1];
+    }
+    const blob = await res.blob();
+    return { blob, filename };
+  },
 };
+
 
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -354,8 +586,23 @@ export const extractApiError = (err: unknown): string => {
   if (err && typeof err === 'object' && 'errorData' in err) {
     const data = (err as any).errorData;
     if (data?.detail) return data.detail;
-    const msgs = Object.values(data || {}).flat().join(' ');
-    if (msgs) return msgs;
+    if (data?.message) return data.message;
+    if (typeof data === 'string') return data;
+    if (data && typeof data === 'object') {
+      const msgs = Object.values(data)
+        .map((v) => {
+          if (Array.isArray(v)) return v.join(' ');
+          if (typeof v === 'string') return v;
+          return '';
+        })
+        .filter(Boolean)
+        .join(' ');
+      if (msgs) return msgs;
+    }
+  }
+  if (err instanceof Error) {
+    return err.message;
   }
   return 'An unexpected error occurred.';
 };
+

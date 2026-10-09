@@ -21,6 +21,7 @@ import { PageHeader } from '../components/PageHeader';
 import { Modal } from '../components/Modal';
 import { AlertBanner } from '../components/AlertBanner';
 import { EmptyState } from '../components/EmptyState';
+import { EmployeeTaxDeclarationView } from '../components/tax/EmployeeTaxDeclarationView';
 import {
   payrollService,
   type PayslipSummary,
@@ -577,7 +578,7 @@ export const MyPayslipsPage: React.FC = () => {
                 </h4>
                 <p style={{ margin: '0 0 10px 0', fontSize: '0.875rem', color: 'var(--color-text-secondary)', lineHeight: 1.5 }}>
                   Annual tax declarations (Form 12BB), investment proofs (Section 80C, 80D, HRA receipts), and employee
-                  regime-switching workflows are currently scheduled for Phase 7 (Tax Declaration & Verification Engine).
+                  regime-switching workflows are powered by the authoritative backend payroll tax engine.
                 </p>
                 <div style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)', lineHeight: 1.4 }}>
                   <strong>Authoritative Principle:</strong> The frontend does not fabricate or simulate client-side tax
@@ -587,8 +588,12 @@ export const MyPayslipsPage: React.FC = () => {
               </div>
             </div>
           </div>
+
+          {/* ─── P6.9B Authoritative Tax Declarations & Proofs View ─── */}
+          <EmployeeTaxDeclarationView />
         </div>
       )}
+
 
       {/* ─────────────────── TAB 3: FULL & FINAL SETTLEMENT (FnF) ─────────────────── */}
       {activeTab === 'fnf' && (
