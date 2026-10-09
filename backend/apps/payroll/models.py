@@ -183,10 +183,21 @@ class PayrollRecord(models.Model):
         decimal_places=2,
         help_text="basic_salary × (effective_days / working_days)"
     )
+    tds_amount = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        default=Decimal('0.00'),
+        help_text="Calculated monthly TDS deduction for this payroll period"
+    )
     net_salary = models.DecimalField(
         max_digits=12,
         decimal_places=2,
-        help_text="Equals gross_salary (no statutory deductions in current scope)"
+        help_text="Equals gross_salary minus deductions (TDS, etc.)"
+    )
+    tax_calculation_snapshot = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text="Audit snapshot of tax calculation inputs, slabs, deductions, and projected liability"
     )
 
     status = models.CharField(
@@ -1544,5 +1555,249 @@ class InvestmentProof(models.Model):
 
     def __str__(self):
         return f"Proof for {self.declaration_item} - {self.document_name} ({self.status})"
+
+
+# =============================================================================
+# TAX RULE CONFIGURATION & PROGRESSIVE TDS ENGINE (Phase 6.9C)
+# =============================================================================
+
+class TaxRuleConfiguration(models.Model):
+    """
+    Versioned, effective-dated tax rule configuration for an organization.
+    Governs slabs, standard deductions, Section 87A rebate thresholds, cess, and surcharge
+    for a specific Financial Year and Tax Regime (OLD / NEW).
+    """
+    REGIME_OLD = 'OLD'
+    REGIME_NEW = 'NEW'
+    REGIME_CHOICES = [
+        (REGIME_OLD, 'Old Tax Regime'),
+        (REGIME_NEW, 'New Tax Regime'),
+    ]
+
+    organization = models.ForeignKey(
+        Organization,
+        on_delete=models.CASCADE,
+        related_name='tax_rule_configurations',
+    )
+    financial_year = models.ForeignKey(
+        FinancialYear,
+        on_delete=models.PROTECT,
+        related_name='tax_rule_configurations',
+    )
+    regime = models.CharField(max_length=10, choices=REGIME_CHOICES)
+    version_identifier = models.CharField(
+        max_length=64,
+        help_text="e.g. FY2024-25-NEW-v1.0 or FY2024-25-OLD-v1.0"
+    )
+    effective_from = models.DateField()
+    effective_to = models.DateField(null=True, blank=True)
+    standard_deduction = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        default=Decimal('0.00'),
+        validators=[MinValueValidator(Decimal('0.00'))],
+        help_text="Standard deduction applicable under this rule version."
+    )
+    rebate_income_threshold = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        default=Decimal('0.00'),
+        validators=[MinValueValidator(Decimal('0.00'))],
+        help_text="Max taxable income eligible for Section 87A rebate."
+    )
+    max_rebate_amount = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        default=Decimal('0.00'),
+        validators=[MinValueValidator(Decimal('0.00'))],
+        help_text="Maximum relief amount under Section 87A rebate."
+    )
+    cess_rate = models.DecimalField(
+        max_digits=5,
+        decimal_places=4,
+        default=Decimal('0.0400'),
+        validators=[MinValueValidator(Decimal('0.0000'))],
+        help_text="Health & Education cess rate (e.g. 0.0400 for 4%)."
+    )
+    is_active = models.BooleanField(default=True)
+    description = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = ('organization', 'financial_year', 'regime', 'version_identifier')
+        ordering = ['-effective_from', '-created_at']
+        indexes = [
+            models.Index(fields=['organization', 'financial_year', 'regime', 'is_active']),
+            models.Index(fields=['effective_from', 'effective_to']),
+        ]
+
+    def __str__(self):
+        return f"{self.financial_year.name} [{self.regime}] - {self.version_identifier} ({self.organization.name})"
+
+    def clean(self):
+        super().clean()
+        from django.core.exceptions import ValidationError
+        if self.financial_year_id and self.organization_id:
+            if self.financial_year.organization_id != self.organization_id:
+                raise ValidationError({
+                    'financial_year': "Financial year does not belong to the same organization."
+                })
+        if self.effective_from and self.effective_to and self.effective_to < self.effective_from:
+            raise ValidationError({
+                'effective_to': "Effective to date cannot be earlier than effective from date."
+            })
+
+    def validate_slabs(self):
+        """
+        Validates completeness, continuity, and sanity of slabs:
+        1. Must have at least one slab.
+        2. First slab lower_limit must be 0.00.
+        3. Subsequent slabs must start exactly where previous slab ends.
+        4. Rates must be non-negative and <= 1.0.
+        5. Only the final slab may have upper_limit == None.
+        """
+        from django.core.exceptions import ValidationError
+        slabs = list(self.slabs.order_by('slab_order'))
+        if not slabs:
+            raise ValidationError("Tax rule configuration must define at least one tax slab.")
+
+        for i, slab in enumerate(slabs):
+            if slab.rate < Decimal('0.0000') or slab.rate > Decimal('1.0000'):
+                raise ValidationError(f"Slab {slab.slab_order} has invalid tax rate {slab.rate}.")
+            if i == 0:
+                if slab.lower_limit != Decimal('0.00'):
+                    raise ValidationError(f"First slab must have lower_limit of 0.00, got {slab.lower_limit}.")
+            else:
+                prev = slabs[i - 1]
+                if prev.upper_limit is None:
+                    raise ValidationError(f"Slab {prev.slab_order} is open-ended but followed by slab {slab.slab_order}.")
+                if slab.lower_limit != prev.upper_limit:
+                    raise ValidationError(
+                        f"Discontinuity between slab {prev.slab_order} (upper: {prev.upper_limit}) "
+                        f"and slab {slab.slab_order} (lower: {slab.lower_limit})."
+                    )
+
+            if slab.upper_limit is not None and slab.upper_limit <= slab.lower_limit:
+                raise ValidationError(
+                    f"Slab {slab.slab_order} upper_limit ({slab.upper_limit}) must be greater than lower_limit ({slab.lower_limit})."
+                )
+
+            if i < len(slabs) - 1 and slab.upper_limit is None:
+                raise ValidationError(f"Only the last slab may have an open-ended upper limit.")
+
+
+class TaxSlab(models.Model):
+    """
+    Individual income bracket and rate under a TaxRuleConfiguration.
+    """
+    rule_configuration = models.ForeignKey(
+        TaxRuleConfiguration,
+        on_delete=models.CASCADE,
+        related_name='slabs',
+    )
+    slab_order = models.PositiveSmallIntegerField()
+    lower_limit = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        validators=[MinValueValidator(Decimal('0.00'))],
+    )
+    upper_limit = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        help_text="Null represents infinity / no upper ceiling."
+    )
+    rate = models.DecimalField(
+        max_digits=5,
+        decimal_places=4,
+        validators=[MinValueValidator(Decimal('0.0000'))],
+        help_text="Tax rate as a decimal fraction (e.g. 0.0500 for 5%)."
+    )
+
+    class Meta:
+        ordering = ['slab_order']
+        unique_together = ('rule_configuration', 'slab_order')
+
+    def __str__(self):
+        upper_str = f"₹{self.upper_limit}" if self.upper_limit is not None else "Above"
+        return f"Slab {self.slab_order}: ₹{self.lower_limit} - {upper_str} @ {self.rate * 100}%"
+
+    def clean(self):
+        super().clean()
+        from django.core.exceptions import ValidationError
+        if self.upper_limit is not None and self.upper_limit <= self.lower_limit:
+            raise ValidationError({'upper_limit': "Upper limit must be strictly greater than lower limit."})
+        if self.rate < Decimal('0.0000') or self.rate > Decimal('1.0000'):
+            raise ValidationError({'rate': "Tax rate must be between 0.0000 and 1.0000."})
+
+
+class TaxSurchargeSlab(models.Model):
+    """
+    Surcharge tiers applied to high-income earners.
+    """
+    rule_configuration = models.ForeignKey(
+        TaxRuleConfiguration,
+        on_delete=models.CASCADE,
+        related_name='surcharge_slabs',
+    )
+    slab_order = models.PositiveSmallIntegerField()
+    threshold_amount = models.DecimalField(
+        max_digits=14,
+        decimal_places=2,
+        validators=[MinValueValidator(Decimal('0.00'))],
+        help_text="Taxable income threshold above which this surcharge rate applies."
+    )
+    rate = models.DecimalField(
+        max_digits=5,
+        decimal_places=4,
+        validators=[MinValueValidator(Decimal('0.0000'))],
+        help_text="Surcharge rate (e.g. 0.1000 for 10%)."
+    )
+
+    class Meta:
+        ordering = ['slab_order']
+        unique_together = ('rule_configuration', 'slab_order')
+
+    def __str__(self):
+        return f"Surcharge {self.slab_order}: Above ₹{self.threshold_amount} @ {self.rate * 100}%"
+
+
+class TaxRuleDeductionApplicability(models.Model):
+    """
+    Maps declaration categories (e.g. 80C, 80D, HRA) to a TaxRuleConfiguration,
+    defining whether the deduction is allowed under this regime version and any rule-specific caps.
+    """
+    rule_configuration = models.ForeignKey(
+        TaxRuleConfiguration,
+        on_delete=models.CASCADE,
+        related_name='deduction_rules',
+    )
+    category_code = models.CharField(
+        max_length=32,
+        help_text="Matches TaxDeclarationCategory.code (e.g. 80C, 80D, HRA)."
+    )
+    is_allowed = models.BooleanField(
+        default=True,
+        help_text="If False, deduction is completely disallowed in this regime version."
+    )
+    max_deductible_limit = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        help_text="Ceiling override for this regime. If null, TaxDeclarationCategory.max_limit is used."
+    )
+
+    class Meta:
+        unique_together = ('rule_configuration', 'category_code')
+        ordering = ['category_code']
+
+    def __str__(self):
+        status = "Allowed" if self.is_allowed else "Disallowed"
+        cap = f" (Cap: ₹{self.max_deductible_limit})" if self.max_deductible_limit else ""
+        return f"{self.category_code} in {self.rule_configuration.version_identifier}: {status}{cap}"
+
 
 

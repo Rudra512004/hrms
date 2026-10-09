@@ -19,7 +19,10 @@ from .models import CompensationHistory, PayrollPeriod, PayrollRecord, Payslip, 
 from .currency_utils import amount_to_words_inr
 import hashlib
 import uuid
+import logging
 from apps.audit.services import AuditService
+
+logger = logging.getLogger(__name__)
 
 
 def _working_days_in_period(branch_id: int, start: date, end: date) -> int:
@@ -200,6 +203,26 @@ def generate_payroll_for_period(period: PayrollPeriod, requesting_user=None) -> 
 
         absent_days = max(0, working_days - int(effective_days))
 
+        # P6.9C Authoritative Progressive TDS Calculation
+        tds_amount = Decimal('0.00')
+        tax_snapshot = {}
+        try:
+            from apps.payroll.tax_calculator import TaxCalculationService
+            tax_res = TaxCalculationService.calculate_monthly_tds(
+                employee=emp,
+                period=period,
+                current_gross=gross,
+            )
+            tds_amount = tax_res['monthly_tds']
+            tax_snapshot = tax_res['snapshot']
+        except Exception as e:
+            # If no financial year or tax rule configuration is configured, default safely to 0 TDS
+            logger.info(f"Tax calculation bypassed for employee {emp.employee_code}: {str(e)}")
+            tds_amount = Decimal('0.00')
+            tax_snapshot = {'status': 'bypassed', 'reason': str(e)}
+
+        net = max(Decimal('0.00'), gross - tds_amount)
+
         record = PayrollRecord(
             period=period,
             employee=emp,
@@ -211,7 +234,9 @@ def generate_payroll_for_period(period: PayrollPeriod, requesting_user=None) -> 
             effective_days=effective_days,
             basic_salary=basic_salary,
             gross_salary=gross,
-            net_salary=gross,
+            tds_amount=tds_amount,
+            net_salary=net,
+            tax_calculation_snapshot=tax_snapshot,
             status=PayrollRecord.STATUS_DRAFT,
         )
         records.append(record)
@@ -322,7 +347,7 @@ def issue_payslips_for_period(period: PayrollPeriod, requesting_user=None) -> li
             # Financial snapshot
             basic = record.basic_salary
             gross = record.gross_salary
-            deductions = Decimal('0.00')
+            deductions = record.tds_amount or Decimal('0.00')
             net = record.net_salary
             words = amount_to_words_inr(net)
 
@@ -385,6 +410,18 @@ def issue_payslips_for_period(period: PayrollPeriod, requesting_user=None) -> li
                 order=1,
                 metadata={'basic_rate': str(basic), 'effective_days': str(eff_days)}
             )
+
+            # Normalized deduction line item for TDS
+            if record.tds_amount and record.tds_amount > Decimal('0.00'):
+                PayslipLine.objects.create(
+                    payslip=payslip,
+                    category=PayslipLine.CATEGORY_DEDUCTION,
+                    component_code='TDS',
+                    name='Income Tax (TDS)',
+                    amount=record.tds_amount,
+                    order=10,
+                    metadata=record.tax_calculation_snapshot or {}
+                )
 
             payslips.append(payslip)
 

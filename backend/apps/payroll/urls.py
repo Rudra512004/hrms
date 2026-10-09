@@ -18,6 +18,8 @@ from .views_tax import (
     FinancialYearViewSet,
     TaxDeclarationCategoryViewSet,
     TaxDeclarationViewSet,
+    TaxRuleConfigurationViewSet,
+    TaxCalculationPreviewView,
 )
 
 router = DefaultRouter()
@@ -36,6 +38,8 @@ router.register(r'fnf-policy', FnFPolicyConfigurationViewSet, basename='fnf-poli
 router.register(r'tax/financial-years', FinancialYearViewSet, basename='tax-financial-year')
 router.register(r'tax/categories', TaxDeclarationCategoryViewSet, basename='tax-category')
 router.register(r'tax/declarations', TaxDeclarationViewSet, basename='tax-declaration')
+router.register(r'tax/rules', TaxRuleConfigurationViewSet, basename='tax-rule')
+router.register(r'tax/engine', TaxCalculationPreviewView, basename='tax-engine')
 
 
 urlpatterns = [

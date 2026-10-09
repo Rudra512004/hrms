@@ -31,6 +31,7 @@ from apps.payroll.serializers_tax import (
 )
 from apps.payroll.services_tax import TaxDeclarationService, TaxDeclarationException
 from apps.authorization.services import AuthorizationService
+from apps.audit.services import AuditService
 
 
 def _get_user_org(request):
@@ -484,3 +485,107 @@ class TaxDeclarationViewSet(viewsets.ModelViewSet):
             return Response({'detail': exc.message, 'code': exc.code}, status=status.HTTP_400_BAD_REQUEST)
 
         return Response(InvestmentProofSerializer(rejected_proof).data, status=status.HTTP_200_OK)
+
+
+# =============================================================================
+# TAX RULE & PROGRESSIVE TDS VIEWS (Phase 6.9C)
+# =============================================================================
+
+class TaxRuleConfigurationViewSet(viewsets.ModelViewSet):
+    """
+    CRUD and query endpoint for versioned organization tax rule configurations.
+    """
+    permission_classes = [IsAuthenticated]
+    http_method_names = ['get', 'post', 'patch', 'delete', 'head', 'options']
+
+    def get_serializer_class(self):
+        from apps.payroll.serializers_tax import TaxRuleConfigurationSerializer
+        return TaxRuleConfigurationSerializer
+
+    def get_queryset(self):
+        org = _get_user_org(self.request)
+        if not org:
+            return TaxRuleConfiguration.objects.none()
+        return TaxRuleConfiguration.objects.filter(
+            organization=org
+        ).prefetch_related('slabs', 'surcharge_slabs', 'deduction_rules')
+
+    def perform_create(self, serializer):
+        org = _get_user_org(self.request)
+        if not org:
+            from rest_framework.exceptions import PermissionDenied
+            raise PermissionDenied("No organization context found.")
+        if not AuthorizationService.has_permission(self.request.user, 'payroll.tax_configure'):
+            from rest_framework.exceptions import PermissionDenied
+            raise PermissionDenied("Permission payroll.tax_configure is required to create tax rules.")
+        instance = serializer.save(organization=org)
+        AuditService.log(
+            action='TAX_RULE_CONFIG_CREATED',
+            actor=self.request.user,
+            target_type='TaxRuleConfiguration',
+            target_id=instance.id,
+            organization=org,
+            metadata={'version_identifier': instance.version_identifier, 'regime': instance.regime}
+        )
+
+    def perform_update(self, serializer):
+        if not AuthorizationService.has_permission(self.request.user, 'payroll.tax_configure'):
+            from rest_framework.exceptions import PermissionDenied
+            raise PermissionDenied("Permission payroll.tax_configure is required to update tax rules.")
+        instance = serializer.save()
+        AuditService.log(
+            action='TAX_RULE_CONFIG_UPDATED',
+            actor=self.request.user,
+            target_type='TaxRuleConfiguration',
+            target_id=instance.id,
+            organization=instance.organization,
+            metadata={'version_identifier': instance.version_identifier, 'is_active': instance.is_active}
+        )
+
+
+class TaxCalculationPreviewView(viewsets.GenericViewSet):
+    """
+    Service endpoint for tax projection & monthly TDS calculation preview.
+    Does not mutate or persist payroll records (idempotent preview).
+    """
+    permission_classes = [IsAuthenticated]
+
+    @action(detail=False, methods=['post'], url_path='preview')
+    def preview(self, request):
+        from apps.payroll.serializers_tax import TaxCalculationPreviewRequestSerializer
+        from apps.payroll.tax_calculator import TaxCalculationService, TaxCalculationException
+        from apps.employees.models import Employee
+        from apps.payroll.models import PayrollPeriod
+
+        serializer = TaxCalculationPreviewRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        org = _get_user_org(request)
+        if not org:
+            return Response({'detail': 'No organization context.'}, status=status.HTTP_403_FORBIDDEN)
+
+        if not (
+            AuthorizationService.has_permission(request.user, 'payroll.tax_calculate') or
+            AuthorizationService.has_permission(request.user, 'payroll.tax_view')
+        ):
+            return Response({'detail': 'Permission denied.'}, status=status.HTTP_403_FORBIDDEN)
+
+        emp_id = serializer.validated_data['employee_id']
+        period_id = serializer.validated_data['period_id']
+        current_gross = serializer.validated_data.get('current_gross')
+
+        employee = get_object_or_404(Employee, id=emp_id, organization=org)
+        period = get_object_or_404(PayrollPeriod, id=period_id, organization=org)
+
+        try:
+            result = TaxCalculationService.calculate_monthly_tds(
+                employee=employee,
+                period=period,
+                current_gross=current_gross,
+                preview=True,
+            )
+        except TaxCalculationException as exc:
+            return Response({'detail': exc.message, 'code': exc.code}, status=status.HTTP_400_BAD_REQUEST)
+
+        return Response(result, status=status.HTTP_200_OK)
+

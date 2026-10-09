@@ -6,6 +6,10 @@ from apps.payroll.models import (
     TaxDeclaration,
     InvestmentDeclaration,
     InvestmentProof,
+    TaxRuleConfiguration,
+    TaxSlab,
+    TaxSurchargeSlab,
+    TaxRuleDeductionApplicability,
 )
 
 
@@ -168,3 +172,52 @@ class ItemVerificationEntrySerializer(serializers.Serializer):
 class TaxDeclarationVerificationSerializer(serializers.Serializer):
     notes = serializers.CharField(required=False, allow_blank=True, default='')
     item_verifications = ItemVerificationEntrySerializer(many=True, required=False, default=list)
+
+
+# =============================================================================
+# TAX RULE & TDS CALCULATION SERIALIZERS (Phase 6.9C)
+# =============================================================================
+
+class TaxSlabSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = TaxSlab
+        fields = ['id', 'slab_order', 'lower_limit', 'upper_limit', 'rate']
+        read_only_fields = ['id']
+
+
+class TaxSurchargeSlabSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = TaxSurchargeSlab
+        fields = ['id', 'slab_order', 'threshold_amount', 'rate']
+        read_only_fields = ['id']
+
+
+class TaxRuleDeductionApplicabilitySerializer(serializers.ModelSerializer):
+    class Meta:
+        model = TaxRuleDeductionApplicability
+        fields = ['id', 'category_code', 'is_allowed', 'max_deductible_limit']
+        read_only_fields = ['id']
+
+
+class TaxRuleConfigurationSerializer(serializers.ModelSerializer):
+    financial_year_name = serializers.CharField(source='financial_year.name', read_only=True)
+    slabs = TaxSlabSerializer(many=True, read_only=True)
+    surcharge_slabs = TaxSurchargeSlabSerializer(many=True, read_only=True)
+    deduction_rules = TaxRuleDeductionApplicabilitySerializer(many=True, read_only=True)
+
+    class Meta:
+        model = TaxRuleConfiguration
+        fields = [
+            'id', 'financial_year', 'financial_year_name', 'regime', 'version_identifier',
+            'effective_from', 'effective_to', 'standard_deduction', 'rebate_income_threshold',
+            'max_rebate_amount', 'cess_rate', 'is_active', 'description',
+            'slabs', 'surcharge_slabs', 'deduction_rules', 'created_at', 'updated_at'
+        ]
+        read_only_fields = ['id', 'created_at', 'updated_at']
+
+
+class TaxCalculationPreviewRequestSerializer(serializers.Serializer):
+    employee_id = serializers.IntegerField(required=True)
+    period_id = serializers.IntegerField(required=True)
+    current_gross = serializers.DecimalField(max_digits=12, decimal_places=2, required=False)
+
