@@ -14,6 +14,11 @@ from .views import (
 )
 from .views_reporting import PayrollReportingViewSet
 from .salary_configuration_views import SalaryComponentViewSet, SalaryStructureViewSet
+from .views_tax import (
+    FinancialYearViewSet,
+    TaxDeclarationCategoryViewSet,
+    TaxDeclarationViewSet,
+)
 
 router = DefaultRouter()
 router.register(r'compensation', CompensationHistoryViewSet, basename='compensation')
@@ -28,8 +33,9 @@ router.register(r'routing-configurations', PaymentRoutingConfigurationViewSet, b
 router.register(r'disbursements', DisbursementBatchViewSet, basename='disbursement-batch')
 router.register(r'fnf', FinalSettlementViewSet, basename='final-settlement')
 router.register(r'fnf-policy', FnFPolicyConfigurationViewSet, basename='fnf-policy-config')
-
-
+router.register(r'tax/financial-years', FinancialYearViewSet, basename='tax-financial-year')
+router.register(r'tax/categories', TaxDeclarationCategoryViewSet, basename='tax-category')
+router.register(r'tax/declarations', TaxDeclarationViewSet, basename='tax-declaration')
 
 
 urlpatterns = [

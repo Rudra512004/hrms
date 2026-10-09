@@ -6,6 +6,7 @@ from django.utils import timezone
 
 from apps.employees.models import Employee
 from apps.organization.models import Organization
+from django.conf import settings
 
 
 class CompensationHistory(models.Model):
@@ -1213,5 +1214,335 @@ class SettlementLine(models.Model):
     def save(self, *args, **kwargs):
         self.clean()
         super().save(*args, **kwargs)
+
+
+# =============================================================================
+# TAX DECLARATION & INVESTMENT PROOF FOUNDATION (Phase 6.9A)
+# =============================================================================
+
+class FinancialYear(models.Model):
+    """
+    Authoritative representation of a Financial / Fiscal Year for an organization.
+    e.g. 'FY 2024-25' (start_date: 2024-04-01, end_date: 2025-03-31).
+    """
+    organization = models.ForeignKey(
+        Organization,
+        on_delete=models.CASCADE,
+        related_name='financial_years',
+    )
+    name = models.CharField(max_length=32, help_text="e.g. FY 2024-25 or 2024-2025")
+    start_date = models.DateField()
+    end_date = models.DateField()
+    is_active = models.BooleanField(default=True)
+    is_locked = models.BooleanField(
+        default=False,
+        help_text="Locked financial years prevent new declarations or modifications."
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = ('organization', 'name')
+        ordering = ['-start_date']
+        indexes = [
+            models.Index(fields=['organization', 'is_active']),
+            models.Index(fields=['start_date', 'end_date']),
+        ]
+
+    def __str__(self):
+        return f"{self.name} ({self.organization.name})"
+
+    def clean(self):
+        super().clean()
+        from django.core.exceptions import ValidationError
+        if self.start_date and self.end_date and self.start_date >= self.end_date:
+            raise ValidationError({'end_date': "Financial year end date must be after start date."})
+
+
+class TaxDeclarationCategory(models.Model):
+    """
+    Configurable tax deduction / exemption category with effective-dated limits.
+    Prevents hardcoding statutory limits into model methods.
+    """
+    REGIME_OLD = 'OLD'
+    REGIME_NEW = 'NEW'
+    REGIME_BOTH = 'BOTH'
+    REGIME_APPLICABILITY_CHOICES = [
+        (REGIME_OLD, 'Old Regime Only'),
+        (REGIME_NEW, 'New Regime Only'),
+        (REGIME_BOTH, 'Both Regimes'),
+    ]
+
+    organization = models.ForeignKey(
+        Organization,
+        on_delete=models.CASCADE,
+        related_name='tax_declaration_categories',
+    )
+    code = models.CharField(max_length=32, help_text="e.g. 80C, 80D, 80G, 80CCD_1B, HRA, HOME_LOAN_INTEREST")
+    name = models.CharField(max_length=150)
+    description = models.TextField(blank=True)
+    max_limit = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        help_text="Configurable statutory ceiling (e.g. 150000.00 for 80C). Null indicates no fixed cap."
+    )
+    regime_applicability = models.CharField(
+        max_length=10,
+        choices=REGIME_APPLICABILITY_CHOICES,
+        default=REGIME_OLD,
+    )
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = ('organization', 'code')
+        ordering = ['code']
+
+    def __str__(self):
+        return f"{self.code} - {self.name}"
+
+
+class TaxDeclaration(models.Model):
+    """
+    Employee tax regime selection and declaration for a specific financial year.
+    Normalized parent record governing Section 80C/80D/HRA investment declaration items.
+    """
+    REGIME_OLD = 'OLD'
+    REGIME_NEW = 'NEW'
+    REGIME_CHOICES = [
+        (REGIME_OLD, 'Old Tax Regime'),
+        (REGIME_NEW, 'New Tax Regime'),
+    ]
+
+    STATUS_DRAFT = 'draft'
+    STATUS_SUBMITTED = 'submitted'
+    STATUS_UNDER_REVIEW = 'under_review'
+    STATUS_VERIFIED = 'verified'
+    STATUS_REJECTED = 'rejected'
+    STATUS_CHOICES = [
+        (STATUS_DRAFT, 'Draft'),
+        (STATUS_SUBMITTED, 'Submitted'),
+        (STATUS_UNDER_REVIEW, 'Under Review'),
+        (STATUS_VERIFIED, 'Verified'),
+        (STATUS_REJECTED, 'Rejected'),
+    ]
+
+    organization = models.ForeignKey(
+        Organization,
+        on_delete=models.CASCADE,
+        related_name='tax_declarations',
+    )
+    employee = models.ForeignKey(
+        Employee,
+        on_delete=models.PROTECT,
+        related_name='tax_declarations',
+    )
+    financial_year = models.ForeignKey(
+        FinancialYear,
+        on_delete=models.PROTECT,
+        related_name='declarations',
+    )
+    tax_regime = models.CharField(
+        max_length=10,
+        choices=REGIME_CHOICES,
+        default=REGIME_NEW,
+        help_text="Elected tax regime for this financial year.",
+    )
+    status = models.CharField(
+        max_length=20,
+        choices=STATUS_CHOICES,
+        default=STATUS_DRAFT,
+    )
+    total_declared_amount = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        default=Decimal('0.00'),
+    )
+    total_verified_amount = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        default=Decimal('0.00'),
+    )
+    submission_date = models.DateTimeField(null=True, blank=True)
+    verification_date = models.DateTimeField(null=True, blank=True)
+    verified_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='verified_tax_declarations',
+    )
+    rejection_reason = models.TextField(blank=True)
+    snapshot_data = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text="Immutable snapshot of approved regime, items, and totals at verification time."
+    )
+    notes = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = ('organization', 'employee', 'financial_year')
+        ordering = ['-financial_year__start_date', '-created_at']
+        indexes = [
+            models.Index(fields=['organization', 'status']),
+            models.Index(fields=['employee', 'financial_year']),
+        ]
+
+    def __str__(self):
+        return f"{self.employee.employee_code} - {self.financial_year.name} ({self.tax_regime}) [{self.status}]"
+
+    def update_totals(self):
+        """Recompute sum of declared and verified amounts across all child items."""
+        from django.db.models import Sum
+        sums = self.items.aggregate(
+            total_dec=Sum('declared_amount'),
+            total_ver=Sum('verified_amount'),
+        )
+        self.total_declared_amount = sums['total_dec'] or Decimal('0.00')
+        self.total_verified_amount = sums['total_ver'] or Decimal('0.00')
+        self.save(update_fields=['total_declared_amount', 'total_verified_amount', 'updated_at'])
+
+
+class InvestmentDeclaration(models.Model):
+    """
+    Normalized itemized investment declaration entry (e.g. 80C, 80D, HRA rent, Home Loan).
+    """
+    STATUS_PENDING = 'pending'
+    STATUS_VERIFIED = 'verified'
+    STATUS_REJECTED = 'rejected'
+    STATUS_CHOICES = [
+        (STATUS_PENDING, 'Pending Review'),
+        (STATUS_VERIFIED, 'Verified'),
+        (STATUS_REJECTED, 'Rejected'),
+    ]
+
+    declaration = models.ForeignKey(
+        TaxDeclaration,
+        on_delete=models.CASCADE,
+        related_name='items',
+    )
+    category = models.ForeignKey(
+        TaxDeclarationCategory,
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name='declaration_items',
+    )
+    category_code = models.CharField(
+        max_length=32,
+        help_text="Denormalized category code e.g. 80C, 80D, HRA",
+    )
+    description = models.CharField(max_length=255)
+    declared_amount = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        validators=[MinValueValidator(Decimal('0.01'))],
+    )
+    verified_amount = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        null=True,
+        blank=True,
+    )
+    status = models.CharField(
+        max_length=20,
+        choices=STATUS_CHOICES,
+        default=STATUS_PENDING,
+    )
+    rejection_reason = models.TextField(blank=True)
+    metadata = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text="Structured attributes such as landlord_name, landlord_pan, policy_number, etc.",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['category_code', 'id']
+        indexes = [
+            models.Index(fields=['declaration', 'category_code']),
+        ]
+
+    def __str__(self):
+        return f"{self.declaration.employee.employee_code} - {self.category_code}: ₹{self.declared_amount}"
+
+
+def tax_proof_upload_path(instance, filename):
+    """
+    Store files securely under employee_documents/<employee_id>/<uuid>.<ext>
+    Reuses existing storage vault conventions.
+    """
+    import os
+    ext = os.path.splitext(filename)[-1].lower()
+    new_filename = f"{uuid.uuid4()}{ext}"
+    employee_id = instance.declaration_item.declaration.employee_id
+    return os.path.join('employee_documents', str(employee_id), new_filename)
+
+
+class InvestmentProof(models.Model):
+    """
+    Verification document attached to an investment declaration item.
+    Reuses existing EmployeeDocument infrastructure and storage vault.
+    """
+    STATUS_SUBMITTED = 'submitted'
+    STATUS_UNDER_REVIEW = 'under_review'
+    STATUS_VERIFIED = 'verified'
+    STATUS_REJECTED = 'rejected'
+    STATUS_CHOICES = [
+        (STATUS_SUBMITTED, 'Submitted'),
+        (STATUS_UNDER_REVIEW, 'Under Review'),
+        (STATUS_VERIFIED, 'Verified'),
+        (STATUS_REJECTED, 'Rejected'),
+    ]
+
+    declaration_item = models.ForeignKey(
+        InvestmentDeclaration,
+        on_delete=models.CASCADE,
+        related_name='proofs',
+    )
+    employee_document = models.ForeignKey(
+        'employees.EmployeeDocument',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='tax_proofs',
+        help_text="Reference to existing vault EmployeeDocument if bridged.",
+    )
+    file = models.FileField(upload_to=tax_proof_upload_path)
+    proof_type = models.CharField(max_length=50, default='DOCUMENT')
+    document_name = models.CharField(max_length=255)
+    file_size = models.PositiveIntegerField(null=True, blank=True)
+    mime_type = models.CharField(max_length=100, blank=True)
+    status = models.CharField(
+        max_length=20,
+        choices=STATUS_CHOICES,
+        default=STATUS_SUBMITTED,
+    )
+    rejection_reason = models.TextField(blank=True)
+    reviewed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='+',
+    )
+    reviewed_at = models.DateTimeField(null=True, blank=True)
+    submitted_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-submitted_at']
+        indexes = [
+            models.Index(fields=['declaration_item', 'status']),
+        ]
+
+    def __str__(self):
+        return f"Proof for {self.declaration_item} - {self.document_name} ({self.status})"
 
 

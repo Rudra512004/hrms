@@ -111,6 +111,9 @@ class Command(BaseCommand):
             {'codename': 'payroll.fnf_prepare', 'resource': 'payroll', 'action': 'fnf_prepare', 'name': 'Prepare Full and Final Settlement'},
             {'codename': 'payroll.fnf_approve', 'resource': 'payroll', 'action': 'fnf_approve', 'name': 'Approve Full and Final Settlement'},
             {'codename': 'payroll.fnf_finalize', 'resource': 'payroll', 'action': 'fnf_finalize', 'name': 'Finalize Full and Final Settlement'},
+            {'codename': 'payroll.tax_declare', 'resource': 'payroll', 'action': 'tax_declare', 'name': 'Submit Tax Declarations and Proofs'},
+            {'codename': 'payroll.tax_view', 'resource': 'payroll', 'action': 'tax_view', 'name': 'View Tax Declarations'},
+            {'codename': 'payroll.tax_review', 'resource': 'payroll', 'action': 'tax_review', 'name': 'Review and Verify Tax Declarations and Proofs'},
             {'codename': 'payslip.view', 'resource': 'payslip', 'action': 'view', 'name': 'View Payslips'},
             {'codename': 'payslip.download', 'resource': 'payslip', 'action': 'download', 'name': 'Download Payslips'},
 
