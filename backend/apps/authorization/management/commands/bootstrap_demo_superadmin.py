@@ -68,6 +68,11 @@ PERMISSIONS_DATA = [
     {'codename': 'payroll.view_sensitive', 'resource': 'payroll', 'action': 'view_sensitive', 'name': 'View Sensitive Payroll Data'},
     {'codename': 'payroll.manage_compensation', 'resource': 'payroll', 'action': 'manage_compensation', 'name': 'Manage Compensation'},
     {'codename': 'payroll.view_reports', 'resource': 'payroll', 'action': 'view_reports', 'name': 'View Payroll Reports'},
+    {'codename': 'payroll.disburse', 'resource': 'payroll', 'action': 'disburse', 'name': 'Disburse Payroll'},
+    {'codename': 'payroll.disburse_prepare', 'resource': 'payroll', 'action': 'disburse_prepare', 'name': 'Prepare Bank Disbursement Batch'},
+    {'codename': 'payroll.disburse_approve', 'resource': 'payroll', 'action': 'disburse_approve', 'name': 'Approve Bank Disbursement Batch'},
+    {'codename': 'payroll.disburse_export', 'resource': 'payroll', 'action': 'disburse_export', 'name': 'Export Bank Disbursement CSV'},
+    {'codename': 'payroll.disburse_configure', 'resource': 'payroll', 'action': 'disburse_configure', 'name': 'Configure Bank Accounts & Payment Routing'},
     {'codename': 'payslip.view', 'resource': 'payslip', 'action': 'view', 'name': 'View Payslips'},
     {'codename': 'payslip.download', 'resource': 'payslip', 'action': 'download', 'name': 'Download Payslips'},
 

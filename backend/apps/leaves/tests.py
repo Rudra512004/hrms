@@ -52,12 +52,19 @@ class LeaveAPITests(TestCase):
         # so let's bypass permission checks just for the sake of the test if needed, or rely on setup.
         # Actually, in this test environment, we might need to assign the permission or mock the service.
         from unittest.mock import patch
+        today = timezone.now().date()
+        days_until_monday = (7 - today.weekday()) % 7
+        if days_until_monday == 0:
+            days_until_monday = 7
+        next_monday = today + timedelta(days=days_until_monday)
+        next_tuesday = next_monday + timedelta(days=1)
+
         with patch('apps.authorization.services.AuthorizationService.has_permission', return_value=True), \
              patch('apps.authorization.services.AuthorizationService.get_authorized_branches', return_value=[self.branch]):
             response = self.client.post(reverse('leave-requests-list'), {
                 'leave_type': self.leave_type.id,
-                'start_date': (timezone.now().date() + timedelta(days=1)).isoformat(),
-                'end_date': (timezone.now().date() + timedelta(days=2)).isoformat(),
+                'start_date': next_monday.isoformat(),
+                'end_date': next_tuesday.isoformat(),
                 'reason': 'Not feeling well'
             }, REMOTE_ADDR=self.external_ip)
             self.assertEqual(response.status_code, status.HTTP_201_CREATED)

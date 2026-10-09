@@ -1,0 +1,4 @@
+Payment_Mode,Debit_Account_Number,Beneficiary_Account_Number,Beneficiary_Name,Beneficiary_IFSC,Amount,Value_Date,Narration,Beneficiary_Email,Beneficiary_Mobile
+NEFT,001122334455,50100234567890,Rahul Navnath Shete,HDFC0001234,84500.00,31-10-2026,Salary Oct 2026,rahul@company.com,9876543210
+RTGS,001122334455,30291084729102,Amit Verma,SBIN0004521,215000.00,31-10-2026,Salary Oct 2026,amit@company.com,9123456789
+IFT,001122334455,00120156789012,Priya Patel,ICIC0000011,92000.00,31-10-2026,Salary Oct 2026,priya@company.com,9988776655

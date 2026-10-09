@@ -38,8 +38,16 @@ function monthStartEnd(year: number, month: number): { start: string; end: strin
 
 // ─── Status-badge shim (draft isn't a known status) ───────────────────────────
 
-function PeriodStatusBadge({ status }: { status: 'draft' | 'approved' }) {
-  return <StatusBadge status={status} label={status === 'draft' ? 'Draft' : 'Approved'} />;
+function PeriodStatusBadge({ status }: { status: 'draft' | 'locked' | 'processing' | 'review' | 'finalized' | 'disbursed' }) {
+  const labelMap: Record<string, string> = {
+    draft: 'Draft',
+    locked: 'Locked',
+    processing: 'Processing',
+    review: 'Review',
+    finalized: 'Finalized',
+    disbursed: 'Disbursed'
+  };
+  return <StatusBadge status={status as any} label={labelMap[status] || status} />;
 }
 
 
@@ -535,7 +543,7 @@ export function PayrollPage() {
 
   const totalPeriods   = periods.length;
   const draftCount     = periods.filter(p => p.status === 'draft').length;
-  const approvedCount  = periods.filter(p => p.status === 'approved').length;
+  const finalizedCount = periods.filter(p => p.status !== 'draft').length;
   const totalEmployees = periods.reduce((s, p) => s + p.record_count, 0);
 
   // ─── Table columns ─────────────────────────────────────────────────────────
@@ -604,8 +612,8 @@ export function PayrollPage() {
             </button>
           )}
 
-          {/* Approved lock indicator */}
-          {p.status === 'approved' && (
+          {/* Locked indicator */}
+          {p.status !== 'draft' && (
             <span
               style={{
                 display: 'flex', alignItems: 'center', gap: 4,
@@ -681,7 +689,7 @@ export function PayrollPage() {
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 16, marginBottom: 24 }}>
         <StatMini label="Total Periods" value={totalPeriods} icon={<DollarSign size={20} />} />
         <StatMini label="Draft"         value={draftCount}   icon={<FileText size={20} />}  color="var(--color-warning)" />
-        <StatMini label="Approved"      value={approvedCount} icon={<CheckCircle size={20} />} color="var(--color-success)" />
+        <StatMini label="Finalized"     value={finalizedCount} icon={<CheckCircle size={20} />} color="var(--color-success)" />
         <StatMini label="Total Records" value={totalEmployees} icon={<DollarSign size={20} />} color="var(--color-primary)" />
       </div>
 

@@ -15,7 +15,11 @@ from django.utils import timezone
 
 from apps.attendance.models import Attendance, Holiday
 from apps.leaves.models import LeaveRequest
-from .models import CompensationHistory, PayrollPeriod, PayrollRecord, Payslip
+from .models import CompensationHistory, PayrollPeriod, PayrollRecord, Payslip, PayslipLine
+from .currency_utils import amount_to_words_inr
+import hashlib
+import uuid
+from apps.audit.services import AuditService
 
 
 def _working_days_in_period(branch_id: int, start: date, end: date) -> int:
@@ -144,8 +148,8 @@ def generate_payroll_for_period(period: PayrollPeriod, requesting_user=None) -> 
 
     Raises ValueError if the period is already approved.
     """
-    if period.status == PayrollPeriod.STATUS_APPROVED:
-        raise ValueError("Cannot re-generate an approved payroll period.")
+    if period.status == PayrollPeriod.STATUS_FINALIZED:
+        raise ValueError("Cannot re-generate a finalized payroll period.")
 
     from apps.employees.models import Employee, EmploymentStatus
 
@@ -220,35 +224,178 @@ def generate_payroll_for_period(period: PayrollPeriod, requesting_user=None) -> 
     return records
 
 
-def issue_payslips_for_period(period: PayrollPeriod) -> list:
+def compute_payslip_integrity_hash(
+    payslip_number: str,
+    employee_code: str,
+    period_str: str,
+    gross: Decimal,
+    net: Decimal,
+    token: str,
+) -> str:
     """
-    Atomically issue exactly one Payslip for each approved PayrollRecord in the period.
-    Must be called within an atomic transaction.
-    Raises ValueError if period is not approved.
+    Computes a deterministic SHA-256 integrity hash over canonical financial fields.
     """
-    if period.status != PayrollPeriod.STATUS_APPROVED:
-        raise ValueError("Cannot issue payslips for an unapproved period.")
+    payload = f"{payslip_number}|{employee_code}|{period_str}|{gross:.2f}|{net:.2f}|{token}"
+    return hashlib.sha256(payload.encode('utf-8')).hexdigest()
 
-    records = period.records.filter(status=PayrollRecord.STATUS_APPROVED).select_related(
-        'employee', 'period'
+
+def issue_payslips_for_period(period: PayrollPeriod, requesting_user=None) -> list:
+    """
+    Atomically and idempotently issues Payslips for each finalized PayrollRecord in the period.
+    Snapshots all organization, employee, attendance, and financial data into the Payslip
+    and creates normalized PayslipLine records.
+    Raises ValueError if period is not finalized.
+    """
+    if period.status != PayrollPeriod.STATUS_FINALIZED:
+        raise ValueError("Cannot issue payslips for an unfinalized period.")
+
+    records = period.records.filter(status=PayrollRecord.STATUS_FINALIZED).select_related(
+        'employee', 'employee__user', 'employee__department', 'employee__designation',
+        'employee__branch', 'period', 'period__organization'
     )
     payslips = []
     from apps.notifications.services import NotificationService
-    from django.db import transaction
 
-    for record in records:
-        emp_code = record.employee.employee_code.strip()
-        num = f"PAY-{period.year}{period.month:02d}-{emp_code}"
-        payslip, created = Payslip.objects.get_or_create(
-            payroll_record=record,
-            defaults={
-                'payslip_number': num,
-                'status': Payslip.STATUS_ISSUED,
-            },
-        )
-        payslips.append(payslip)
+    with transaction.atomic():
+        for record in records:
+            emp = record.employee
+            u = emp.user
+            emp_code = emp.employee_code.strip()
+            num = f"PAY-{period.year}{period.month:02d}-{emp_code}"
 
-        if created:
+            existing = Payslip.objects.filter(payroll_record=record).first()
+            if existing:
+                payslips.append(existing)
+                continue
+
+            # Organization snapshot
+            org = period.organization
+            branch = emp.branch
+            org_name = org.name
+            legal_name = org_name
+            cin = ""
+            branch_name = branch.name if branch else ""
+            branch_address = (
+                f"{branch.address_line1}, {branch.city}, {branch.state} {branch.postal_code}".strip(", ")
+                if branch and branch.address_line1 else ""
+            )
+            org_address = branch_address
+
+            # Employee snapshot
+            emp_name = f"{u.first_name} {u.last_name}".strip() or u.email
+            dept_name = emp.department.name if emp.department else ""
+            desig_name = emp.designation.name if emp.designation else ""
+            joining_date = emp.joining_date
+
+            bank_name = ""
+            masked_bank_acc = ""
+            bank_ifsc = ""
+            payment_mode = "BANK_TRANSFER"
+            masked_pan = ""
+            uan_num = ""
+            esic_num = ""
+
+            if hasattr(emp, 'statutory_and_bank') and emp.statutory_and_bank:
+                sb = emp.statutory_and_bank
+                bank_name = sb.bank_name or ""
+                if sb.account_number:
+                    raw_acc = sb.account_number.strip()
+                    masked_bank_acc = f"{'•' * max(0, len(raw_acc) - 4)}{raw_acc[-4:]}" if len(raw_acc) >= 4 else raw_acc
+                bank_ifsc = sb.ifsc_code or ""
+                payment_mode = sb.payment_mode or "BANK_TRANSFER"
+                if sb.pan_number:
+                    raw_pan = sb.pan_number.strip()
+                    masked_pan = f"{'•' * max(0, len(raw_pan) - 4)}{raw_pan[-4:]}" if len(raw_pan) >= 4 else raw_pan
+                uan_num = sb.uan_number or ""
+                esic_num = sb.esic_number or ""
+
+            # Attendance snapshot
+            cal_days = (period.end_date - period.start_date).days + 1
+            work_days = record.working_days
+            pres_days = Decimal(record.present_days)
+            half_days = record.half_days
+            absent_days = record.absent_days
+            leave_days = Decimal(record.leave_days)
+            eff_days = record.effective_days
+            lop_days = record.lop_days
+
+            # Financial snapshot
+            basic = record.basic_salary
+            gross = record.gross_salary
+            deductions = Decimal('0.00')
+            net = record.net_salary
+            words = amount_to_words_inr(net)
+
+            # Security & verification
+            token = uuid.uuid4()
+            period_label = f"{period.year}/{period.month:02d}"
+            hash_val = compute_payslip_integrity_hash(num, emp_code, period_label, gross, net, str(token))
+
+            payslip = Payslip.objects.create(
+                payroll_record=record,
+                payslip_number=num,
+                status=Payslip.STATUS_ISSUED,
+                issued_by=requesting_user,
+                verification_token=token,
+                integrity_hash=hash_val,
+                organization_name=org_name,
+                legal_name=legal_name,
+                organization_address=org_address,
+                cin=cin,
+                branch_name=branch_name,
+                branch_address=branch_address,
+                employee_code=emp_code,
+                employee_name=emp_name,
+                department_name=dept_name,
+                designation_name=desig_name,
+                joining_date=joining_date,
+                bank_name=bank_name,
+                masked_bank_account=masked_bank_acc,
+                bank_ifsc=bank_ifsc,
+                payment_mode=payment_mode,
+                masked_pan=masked_pan,
+                uan=uan_num,
+                esic_number=esic_num,
+                period_year=period.year,
+                period_month=period.month,
+                period_start_date=period.start_date,
+                period_end_date=period.end_date,
+                calendar_days=cal_days,
+                working_days=work_days,
+                present_days=pres_days,
+                half_days=half_days,
+                absent_days=absent_days,
+                leave_days=leave_days,
+                effective_days=eff_days,
+                lop_days=lop_days,
+                basic_salary=basic,
+                gross_earnings=gross,
+                total_deductions=deductions,
+                net_pay=net,
+                net_pay_in_words=words,
+            )
+
+            # Normalized earning line item
+            PayslipLine.objects.create(
+                payslip=payslip,
+                category=PayslipLine.CATEGORY_EARNING,
+                component_code='BASIC',
+                name='Basic Salary',
+                amount=gross,
+                order=1,
+                metadata={'basic_rate': str(basic), 'effective_days': str(eff_days)}
+            )
+
+            payslips.append(payslip)
+
+            AuditService.log(
+                action='PAYSLIP_ISSUED',
+                actor=requesting_user,
+                target_type='Payslip',
+                target_id=payslip.id,
+                organization=period.organization,
+            )
+
             transaction.on_commit(lambda p=payslip, r=record, num=num: NotificationService.create_in_app_notification(
                 recipient=r.employee.user,
                 organization=r.employee.organization,

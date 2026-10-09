@@ -4,10 +4,19 @@ from .models import (
     PayrollPeriod,
     PayrollRecord,
     Payslip,
+    PayslipLine,
     SalaryComponent,
     SalaryStructure,
     SalaryStructureComponent,
+    OrganizationBankAccount,
+    PaymentRoutingConfiguration,
+    DisbursementBatch,
+    DisbursementItem,
+    FnFPolicyConfiguration,
+    FinalSettlement,
+    SettlementLine,
 )
+from .disbursement_service import mask_account_number
 
 
 class CompensationHistorySerializer(serializers.ModelSerializer):
@@ -112,6 +121,15 @@ class PayrollRecordSerializer(serializers.ModelSerializer):
         return ret
 
 
+class PayslipLineSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = PayslipLine
+        fields = [
+            'id', 'category', 'component_code', 'name', 'amount', 'order', 'metadata'
+        ]
+        read_only_fields = fields
+
+
 class PayslipSummarySerializer(serializers.ModelSerializer):
     period_label = serializers.SerializerMethodField()
     year = serializers.IntegerField(source='payroll_record.period.year', read_only=True)
@@ -136,6 +154,7 @@ class PayslipSummarySerializer(serializers.ModelSerializer):
             'id', 'payslip_number', 'status', 'issued_at',
             'period_label', 'year', 'month', 'start_date', 'end_date',
             'net_salary', 'employee_code', 'employee_name',
+            'verification_token', 'gross_earnings', 'total_deductions', 'net_pay',
         ]
         read_only_fields = fields
 
@@ -144,6 +163,8 @@ class PayslipSummarySerializer(serializers.ModelSerializer):
         return f"{p.year}/{p.month:02d}"
 
     def get_employee_name(self, obj):
+        if obj.employee_name:
+            return obj.employee_name
         u = obj.payroll_record.employee.user
         return f"{u.first_name} {u.last_name}".strip() or u.email
 
@@ -154,12 +175,15 @@ class PayslipDetailSerializer(serializers.ModelSerializer):
     period = serializers.SerializerMethodField()
     attendance = serializers.SerializerMethodField()
     financials = serializers.SerializerMethodField()
+    lines = PayslipLineSerializer(many=True, read_only=True)
+    organization = serializers.SerializerMethodField()
 
     class Meta:
         model = Payslip
         fields = [
             'id', 'payslip_number', 'status', 'issued_at',
             'period_label', 'employee', 'period', 'attendance', 'financials',
+            'lines', 'organization', 'verification_token', 'integrity_hash', 'net_pay_in_words',
         ]
         read_only_fields = fields
 
@@ -167,16 +191,34 @@ class PayslipDetailSerializer(serializers.ModelSerializer):
         p = obj.payroll_record.period
         return f"{p.year}/{p.month:02d}"
 
+    def get_organization(self, obj):
+        org = obj.payroll_record.period.organization
+        return {
+            'name': obj.organization_name or org.name,
+            'legal_name': obj.legal_name or obj.organization_name or org.name,
+            'address': obj.organization_address,
+            'cin': obj.cin,
+            'branch': obj.branch_name,
+        }
+
     def get_employee(self, obj):
         emp = obj.payroll_record.employee
         u = emp.user
         return {
             'id': emp.id,
-            'code': emp.employee_code,
-            'name': f"{u.first_name} {u.last_name}".strip() or u.email,
+            'code': obj.employee_code or emp.employee_code,
+            'name': obj.employee_name or (f"{u.first_name} {u.last_name}".strip() or u.email),
             'email': u.email,
-            'department': emp.department.name if emp.department else None,
-            'designation': emp.designation.name if emp.designation else None,
+            'department': obj.department_name or (emp.department.name if emp.department else None),
+            'designation': obj.designation_name or (emp.designation.name if emp.designation else None),
+            'joining_date': str(obj.joining_date) if obj.joining_date else (str(emp.joining_date) if emp.joining_date else None),
+            'bank_name': obj.bank_name,
+            'masked_bank_account': obj.masked_bank_account,
+            'bank_ifsc': obj.bank_ifsc,
+            'payment_mode': obj.payment_mode,
+            'masked_pan': obj.masked_pan,
+            'uan': obj.uan,
+            'esic_number': obj.esic_number,
         }
 
     def get_period(self, obj):
@@ -193,12 +235,14 @@ class PayslipDetailSerializer(serializers.ModelSerializer):
     def get_attendance(self, obj):
         r = obj.payroll_record
         return {
-            'working_days': r.working_days,
-            'present_days': r.present_days,
-            'half_days': r.half_days,
-            'leave_days': r.leave_days,
-            'absent_days': r.absent_days,
-            'effective_days': str(r.effective_days),
+            'calendar_days': obj.calendar_days or (r.period.end_date - r.period.start_date).days + 1,
+            'working_days': obj.working_days or r.working_days,
+            'present_days': str(obj.present_days) if obj.present_days > 0 else str(r.present_days),
+            'half_days': obj.half_days or r.half_days,
+            'leave_days': str(obj.leave_days) if obj.leave_days > 0 else str(r.leave_days),
+            'absent_days': obj.absent_days or r.absent_days,
+            'effective_days': str(obj.effective_days) if obj.effective_days > 0 else str(r.effective_days),
+            'lop_days': str(obj.lop_days) if obj.lop_days > 0 else str(r.lop_days),
         }
 
     def get_financials(self, obj):
@@ -225,11 +269,17 @@ class PayslipDetailSerializer(serializers.ModelSerializer):
                 'net_salary': None,
             }
 
+        basic = obj.basic_salary if obj.basic_salary > 0 else r.basic_salary
+        gross = obj.gross_earnings if obj.gross_earnings > 0 else r.gross_salary
+        net = obj.net_pay if obj.net_pay > 0 else r.net_salary
+        deductions = obj.total_deductions
+
         return {
-            'basic_salary': str(r.basic_salary),
-            'gross_salary': str(r.gross_salary),
-            'deductions': '0.00',
-            'net_salary': str(r.net_salary),
+            'basic_salary': str(basic),
+            'gross_salary': str(gross),
+            'deductions': str(deductions),
+            'net_salary': str(net),
+            'net_pay_in_words': obj.net_pay_in_words,
         }
 
 
@@ -292,3 +342,238 @@ class SalaryStructureSerializer(serializers.ModelSerializer):
             (item.amount for item in obj.components.all() if item.component.kind == 'deduction'),
             start=0,
         )
+
+
+class OrganizationBankAccountSerializer(serializers.ModelSerializer):
+    masked_account_number = serializers.SerializerMethodField()
+    branch_name = serializers.CharField(source='branch.name', read_only=True)
+
+    class Meta:
+        model = OrganizationBankAccount
+        fields = [
+            'id', 'organization', 'branch', 'branch_name',
+            'bank_name', 'account_name', 'account_number', 'masked_account_number',
+            'ifsc_code', 'is_primary', 'is_active',
+            'created_at', 'updated_at',
+        ]
+        read_only_fields = ['id', 'masked_account_number', 'created_at', 'updated_at']
+        extra_kwargs = {
+            'account_number': {'write_only': True},
+        }
+
+    def get_masked_account_number(self, obj):
+        return mask_account_number(obj.account_number)
+
+
+class PaymentRoutingConfigurationSerializer(serializers.ModelSerializer):
+    created_by_email = serializers.CharField(source='created_by.email', read_only=True)
+    updated_by_email = serializers.CharField(source='updated_by.email', read_only=True)
+
+    class Meta:
+        model = PaymentRoutingConfiguration
+        fields = [
+            'id', 'organization', 'branch',
+            'default_payment_mode', 'rtgs_enabled', 'rtgs_threshold',
+            'ift_enabled', 'ift_matching_mode', 'ift_ifsc_prefix_length',
+            'effective_from', 'is_active',
+            'created_by', 'created_by_email', 'updated_by', 'updated_by_email',
+            'created_at', 'updated_at',
+        ]
+        read_only_fields = [
+            'id', 'created_by', 'created_by_email', 'updated_by', 'updated_by_email',
+            'created_at', 'updated_at',
+        ]
+
+
+class DisbursementItemSerializer(serializers.ModelSerializer):
+    employee_code = serializers.CharField(source='employee.employee_code', read_only=True)
+    masked_debit_account_number = serializers.SerializerMethodField()
+    masked_beneficiary_account_number = serializers.SerializerMethodField()
+
+    class Meta:
+        model = DisbursementItem
+        fields = [
+            'id', 'payroll_record', 'employee', 'employee_code',
+            'payment_mode', 'masked_debit_account_number',
+            'masked_beneficiary_account_number', 'beneficiary_name',
+            'beneficiary_ifsc', 'amount', 'value_date', 'narration',
+            'beneficiary_email', 'beneficiary_mobile',
+        ]
+        read_only_fields = fields
+
+    def get_masked_debit_account_number(self, obj):
+        return mask_account_number(obj.debit_account_number)
+
+    def get_masked_beneficiary_account_number(self, obj):
+        return mask_account_number(obj.beneficiary_account_number)
+
+
+class DisbursementBatchListSerializer(serializers.ModelSerializer):
+    period_year = serializers.IntegerField(source='period.year', read_only=True)
+    period_month = serializers.IntegerField(source='period.month', read_only=True)
+    masked_debit_account_number = serializers.SerializerMethodField()
+    created_by_email = serializers.CharField(source='created_by.email', read_only=True)
+    approved_by_email = serializers.CharField(source='approved_by.email', read_only=True)
+    exported_by_email = serializers.CharField(source='exported_by.email', read_only=True)
+
+    class Meta:
+        model = DisbursementBatch
+        fields = [
+            'id', 'batch_number', 'period', 'period_year', 'period_month',
+            'branch', 'masked_debit_account_number', 'value_date', 'narration',
+            'status', 'total_amount', 'total_count',
+            'created_by_email', 'created_at',
+            'approved_by_email', 'approved_at',
+            'exported_by_email', 'exported_at',
+        ]
+        read_only_fields = fields
+
+    def get_masked_debit_account_number(self, obj):
+        return mask_account_number(obj.debit_account_number)
+
+
+class DisbursementBatchDetailSerializer(serializers.ModelSerializer):
+    period_year = serializers.IntegerField(source='period.year', read_only=True)
+    period_month = serializers.IntegerField(source='period.month', read_only=True)
+    masked_debit_account_number = serializers.SerializerMethodField()
+    created_by_email = serializers.CharField(source='created_by.email', read_only=True)
+    approved_by_email = serializers.CharField(source='approved_by.email', read_only=True)
+    exported_by_email = serializers.CharField(source='exported_by.email', read_only=True)
+    items = DisbursementItemSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = DisbursementBatch
+        fields = [
+            'id', 'batch_number', 'period', 'period_year', 'period_month',
+            'branch', 'masked_debit_account_number', 'value_date', 'narration',
+            'status', 'total_amount', 'total_count',
+            'routing_config_snapshot',
+            'created_by_email', 'created_at',
+            'approved_by_email', 'approved_at',
+            'exported_by_email', 'exported_at',
+            'items',
+        ]
+        read_only_fields = fields
+
+    def get_masked_debit_account_number(self, obj):
+        return mask_account_number(obj.debit_account_number)
+
+
+class PrepareDisbursementBatchSerializer(serializers.Serializer):
+    period_id = serializers.IntegerField(required=True)
+    value_date = serializers.DateField(required=True)
+    narration = serializers.CharField(required=False, allow_blank=True, max_length=255)
+    debit_account_id = serializers.IntegerField(required=False, allow_null=True)
+    branch_id = serializers.IntegerField(required=False, allow_null=True)
+
+
+class FnFPolicyConfigurationSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = FnFPolicyConfiguration
+        fields = [
+            'id', 'organization', 'branch', 'effective_from', 'is_active',
+            'leave_encashment_enabled', 'leave_encashment_daily_divisor',
+            'leave_encashment_salary_basis', 'encashable_leave_types',
+            'gratuity_enabled', 'gratuity_min_service_years',
+            'gratuity_wage_days_per_year', 'gratuity_divisor', 'gratuity_max_ceiling',
+            'notice_recovery_enabled', 'notice_recovery_daily_divisor',
+            'notice_recovery_salary_basis',
+            'bonus_enabled', 'joining_bonus_clawback_enabled', 'clawback_threshold_months',
+            'created_by', 'updated_by', 'created_at', 'updated_at',
+        ]
+        read_only_fields = ['id', 'created_by', 'updated_by', 'created_at', 'updated_at']
+
+
+class SettlementLineSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = SettlementLine
+        fields = [
+            'id', 'category', 'code', 'name', 'amount',
+            'calculation_basis', 'source_reference', 'order', 'metadata',
+        ]
+        read_only_fields = fields
+
+
+class FinalSettlementListSerializer(serializers.ModelSerializer):
+    employee_code = serializers.CharField(source='employee.employee_code', read_only=True)
+    employee_name = serializers.SerializerMethodField()
+    branch_name = serializers.CharField(source='employee.branch.name', read_only=True)
+    department_name = serializers.CharField(source='employee.department.name', read_only=True)
+    created_by_email = serializers.CharField(source='created_by.email', read_only=True)
+    approved_by_email = serializers.CharField(source='approved_by.email', read_only=True)
+    finalized_by_email = serializers.CharField(source='finalized_by.email', read_only=True)
+
+    class Meta:
+        model = FinalSettlement
+        fields = [
+            'id', 'settlement_number', 'employee', 'employee_code', 'employee_name',
+            'branch_name', 'department_name', 'exit_date', 'settlement_date', 'status',
+            'total_earnings', 'total_deductions', 'total_recoveries', 'net_settlement_amount',
+            'currency', 'created_by_email', 'created_at', 'approved_by_email', 'approved_at',
+            'finalized_by_email', 'finalized_at',
+        ]
+        read_only_fields = fields
+
+    def get_employee_name(self, obj):
+        u = obj.employee.user
+        return f"{u.first_name} {u.last_name}".strip() or u.email
+
+
+class FinalSettlementDetailSerializer(serializers.ModelSerializer):
+    employee_code = serializers.CharField(source='employee.employee_code', read_only=True)
+    employee_name = serializers.SerializerMethodField()
+    branch_name = serializers.CharField(source='employee.branch.name', read_only=True)
+    department_name = serializers.CharField(source='employee.department.name', read_only=True)
+    created_by_email = serializers.CharField(source='created_by.email', read_only=True)
+    approved_by_email = serializers.CharField(source='approved_by.email', read_only=True)
+    finalized_by_email = serializers.CharField(source='finalized_by.email', read_only=True)
+    lines = SettlementLineSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = FinalSettlement
+        fields = [
+            'id', 'settlement_number', 'employee', 'employee_code', 'employee_name',
+            'branch_name', 'department_name', 'exit_date', 'resignation_date',
+            'settlement_date', 'status', 'total_earnings', 'total_deductions',
+            'total_recoveries', 'net_settlement_amount', 'currency', 'remarks',
+            'cancellation_reason', 'created_by_email', 'created_at',
+            'approved_by_email', 'approved_at', 'finalized_by_email', 'finalized_at',
+            'snapshot_data', 'integrity_hash', 'lines',
+        ]
+        read_only_fields = fields
+
+    def get_employee_name(self, obj):
+        u = obj.employee.user
+        return f"{u.first_name} {u.last_name}".strip() or u.email
+
+
+class FnFPreviewRequestSerializer(serializers.Serializer):
+    employee_id = serializers.IntegerField(required=True)
+    exit_date = serializers.DateField(required=False, allow_null=True)
+    settlement_date = serializers.DateField(required=False, allow_null=True)
+    asset_recoveries = serializers.ListField(
+        child=serializers.DictField(), required=False, default=list
+    )
+    loan_recoveries = serializers.ListField(
+        child=serializers.DictField(), required=False, default=list
+    )
+    bonus_amount = serializers.DecimalField(
+        max_digits=12, decimal_places=2, required=False, allow_null=True
+    )
+    bonus_remarks = serializers.CharField(required=False, allow_blank=True, default='')
+    joining_bonus_clawback = serializers.DictField(
+        required=False, allow_null=True, default=None
+    )
+    tds_amount = serializers.DecimalField(
+        max_digits=12, decimal_places=2, required=False, allow_null=True
+    )
+    remarks = serializers.CharField(required=False, allow_blank=True, default='')
+
+
+class FnFPrepareRequestSerializer(FnFPreviewRequestSerializer):
+    pass
+
+
+class FnFCancelSerializer(serializers.Serializer):
+    reason = serializers.CharField(required=False, allow_blank=True, default='')
+

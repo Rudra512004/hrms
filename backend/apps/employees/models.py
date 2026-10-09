@@ -255,8 +255,14 @@ class EmployeeStatutoryAndBank(models.Model):
     eps_number = models.CharField(max_length=50, blank=True)
     esic_number = models.CharField(max_length=50, blank=True)
     
+    is_epf_applicable = models.BooleanField(default=False)
+    is_esic_applicable = models.BooleanField(default=False)
     is_pt_applicable = models.BooleanField(default=False)
     is_lwf_applicable = models.BooleanField(default=False)
+    
+    restrict_epf_to_ceiling = models.BooleanField(default=True)
+    vpf_percentage = models.DecimalField(max_digits=5, decimal_places=2, default=0)
+    vpf_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0)
     
     # Bank
     bank_name = models.CharField(max_length=150, blank=True)

@@ -5,7 +5,6 @@ from apps.organization.models import Branch, Department, Designation, WorkingCal
 from apps.employees.models import Employee, EmployeeStatutoryAndBank
 from apps.leaves.models import LeaveType, BranchLeavePolicy, LeaveBalance, LeaveBalanceTransaction, LeaveCycle
 from apps.attendance.models import Attendance, AttendanceProductivity, Shift, Holiday, EmployeeShiftAssignment
-from apps.payroll.models import CompensationHistory, SalaryStructureComponent, SalaryComponent, SalaryStructure
 from apps.authorization.models import UserRole, ScopeChoices
 from decimal import Decimal
 
@@ -334,6 +333,8 @@ def execute_attendance(parsed_row, organization):
 
 
 def execute_salary_structures(parsed_row, organization):
+    from apps.payroll.models import CompensationHistory, SalaryStructureComponent, SalaryComponent, SalaryStructure
+    
     emp = parsed_row['employee_code']
     
     history, created = CompensationHistory.objects.get_or_create(

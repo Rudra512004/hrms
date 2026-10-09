@@ -249,22 +249,23 @@ class EndToEndHRMSWorkflowTests(TestCase):
 
         period.refresh_from_db()
         record.refresh_from_db()
-        self.assertEqual(period.status, PayrollPeriod.STATUS_APPROVED)
-        self.assertEqual(record.status, PayrollRecord.STATUS_APPROVED)
+        self.assertEqual(period.status, PayrollPeriod.STATUS_FINALIZED)
+        self.assertEqual(record.status, PayrollRecord.STATUS_FINALIZED)
 
-        # Step G: Exactly one Payslip auto-issued
-        self.assertEqual(Payslip.objects.filter(payroll_record=record).count(), 1)
-        payslip = Payslip.objects.get(payroll_record=record)
-        self.assertEqual(payslip.payslip_number, 'PAY-202501-EMP001')
-        self.assertEqual(payslip.status, Payslip.STATUS_ISSUED)
+        # Step G: Exactly ZERO Payslips auto-issued (per Phase 6.4 spec)
+        self.assertEqual(Payslip.objects.filter(payroll_record=record).count(), 0)
 
-        # Step H: Employee views own payslip (/my/)
-        with self._auth_as(self.user1):
-            resp = self.client.get('/api/v1/payroll/payslips/my/')
+        # Step H: HR Disburses Payroll Period
+        with self._auth_as(self.hr_user, permissions=['payroll.approve']):
+            resp = self.client.post(f'/api/v1/payroll/periods/{period_id}/disburse/')
             self.assertEqual(resp.status_code, status.HTTP_200_OK, resp.data)
-            self.assertEqual(len(resp.data), 1)
-            self.assertEqual(resp.data[0]['payslip_number'], 'PAY-202501-EMP001')
-            self.assertEqual(resp.data[0]['net_salary'], str(expected_gross))
+
+        period.refresh_from_db()
+        self.assertEqual(period.status, PayrollPeriod.STATUS_DISBURSED)
+
+        # Still no payslips
+        self.assertEqual(Payslip.objects.filter(payroll_record=record).count(), 0)
+
 
         # Step I: HR views period summary & reconciliation reports
         with self._auth_as(self.hr_user, permissions=['payroll.view_reports', 'payroll.view_sensitive']):

@@ -214,14 +214,14 @@ class EmployeeLifecycleComprehensiveTests(TestCase):
         period = PayrollPeriod.objects.create(
             organization=self.org, year=2026, month=5,
             start_date=date(2026, 5, 1), end_date=date(2026, 5, 31),
-            status=PayrollPeriod.STATUS_APPROVED
+            status=PayrollPeriod.STATUS_FINALIZED
         )
         prec = PayrollRecord.objects.create(
             period=period, employee=self.employee, working_days=20,
             present_days=20, half_days=0, absent_days=0, leave_days=0,
             effective_days=Decimal('20.00'), basic_salary=Decimal('50000.00'),
             gross_salary=Decimal('50000.00'), net_salary=Decimal('50000.00'),
-            status=PayrollRecord.STATUS_APPROVED
+            status=PayrollRecord.STATUS_FINALIZED
         )
 
         self.client.force_authenticate(user=self.admin_user)
@@ -299,14 +299,14 @@ class EmployeeLifecycleComprehensiveTests(TestCase):
         period = PayrollPeriod.objects.create(
             organization=self.org, year=2026, month=6,
             start_date=date(2026, 6, 1), end_date=date(2026, 6, 30),
-            status=PayrollPeriod.STATUS_APPROVED
+            status=PayrollPeriod.STATUS_FINALIZED
         )
         PayrollRecord.objects.create(
             period=period, employee=self.employee, working_days=22,
             present_days=22, half_days=0, absent_days=0, leave_days=0,
             effective_days=Decimal('22.00'), basic_salary=Decimal('50000.00'),
             gross_salary=Decimal('50000.00'), net_salary=Decimal('50000.00'),
-            status=PayrollRecord.STATUS_APPROVED
+            status=PayrollRecord.STATUS_FINALIZED
         )
 
         # Mark employee as exited
@@ -326,14 +326,14 @@ class EmployeeLifecycleComprehensiveTests(TestCase):
         period = PayrollPeriod.objects.create(
             organization=self.org, year=2026, month=6,
             start_date=date(2026, 6, 1), end_date=date(2026, 6, 30),
-            status=PayrollPeriod.STATUS_APPROVED
+            status=PayrollPeriod.STATUS_FINALIZED
         )
         prec = PayrollRecord.objects.create(
             period=period, employee=self.employee, working_days=22,
             present_days=22, half_days=0, absent_days=0, leave_days=0,
             effective_days=Decimal('22.00'), basic_salary=Decimal('50000.00'),
             gross_salary=Decimal('50000.00'), net_salary=Decimal('50000.00'),
-            status=PayrollRecord.STATUS_APPROVED
+            status=PayrollRecord.STATUS_FINALIZED
         )
         payslips = issue_payslips_for_period(period)
         self.assertEqual(len(payslips), 1)

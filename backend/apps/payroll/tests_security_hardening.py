@@ -69,7 +69,7 @@ class PayrollSecurityAndCorrectnessTests(TestCase):
             month=future_start.month,
             start_date=future_start,
             end_date=future_end,
-            status=PayrollPeriod.STATUS_DRAFT
+            status=PayrollPeriod.STATUS_REVIEW
         )
         PayrollRecord.objects.create(
             period=period,
@@ -89,7 +89,7 @@ class PayrollSecurityAndCorrectnessTests(TestCase):
         self.client.force_authenticate(user=self.admin_user)
         resp = self.client.post(f'/api/v1/payroll/periods/{period.id}/approve/')
         self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertIn('Cannot approve an ongoing or future payroll period', resp.data['detail'])
+        self.assertIn('Cannot finalize an ongoing or future payroll period', resp.data['detail'])
 
     def test_cannot_approve_ongoing_period(self):
         """Verify that an ongoing period ending today cannot be approved."""
@@ -101,7 +101,7 @@ class PayrollSecurityAndCorrectnessTests(TestCase):
             month=ongoing_start.month,
             start_date=ongoing_start,
             end_date=ongoing_end,
-            status=PayrollPeriod.STATUS_DRAFT
+            status=PayrollPeriod.STATUS_REVIEW
         )
         PayrollRecord.objects.create(
             period=period,
@@ -121,7 +121,7 @@ class PayrollSecurityAndCorrectnessTests(TestCase):
         self.client.force_authenticate(user=self.admin_user)
         resp = self.client.post(f'/api/v1/payroll/periods/{period.id}/approve/')
         self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertIn('Cannot approve an ongoing or future payroll period', resp.data['detail'])
+        self.assertIn('Cannot finalize an ongoing or future payroll period', resp.data['detail'])
 
     def test_completed_period_approval_and_repeated_approval(self):
         """Verify that a completed period can be approved, and repeating approval is rejected."""
@@ -133,7 +133,7 @@ class PayrollSecurityAndCorrectnessTests(TestCase):
             month=completed_start.month,
             start_date=completed_start,
             end_date=completed_end,
-            status=PayrollPeriod.STATUS_DRAFT
+            status=PayrollPeriod.STATUS_REVIEW
         )
         PayrollRecord.objects.create(
             period=period,
@@ -154,14 +154,14 @@ class PayrollSecurityAndCorrectnessTests(TestCase):
         # 1. Initial approval of completed period succeeds
         resp = self.client.post(f'/api/v1/payroll/periods/{period.id}/approve/')
         self.assertEqual(resp.status_code, status.HTTP_200_OK)
-        self.assertEqual(resp.data['status'], 'approved')
+        self.assertEqual(resp.data['status'], 'finalized')
         period.refresh_from_db()
-        self.assertEqual(period.status, PayrollPeriod.STATUS_APPROVED)
+        self.assertEqual(period.status, PayrollPeriod.STATUS_FINALIZED)
 
         # 2. Repeated approval is rejected
         repeat_resp = self.client.post(f'/api/v1/payroll/periods/{period.id}/approve/')
         self.assertEqual(repeat_resp.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertIn('already approved', repeat_resp.data['detail'])
+        self.assertIn('already finalized', repeat_resp.data['detail'])
 
     def test_payslip_detail_with_designation_does_not_crash(self):
         """Verify that retrieving PayslipDetail for an employee with a designation returns designation.name cleanly."""
@@ -173,7 +173,7 @@ class PayrollSecurityAndCorrectnessTests(TestCase):
             month=1,
             start_date=past_start,
             end_date=past_end,
-            status=PayrollPeriod.STATUS_APPROVED
+            status=PayrollPeriod.STATUS_FINALIZED
         )
         record = PayrollRecord.objects.create(
             period=period,
@@ -187,7 +187,7 @@ class PayrollSecurityAndCorrectnessTests(TestCase):
             basic_salary=Decimal('80000.00'),
             gross_salary=Decimal('80000.00'),
             net_salary=Decimal('80000.00'),
-            status=PayrollRecord.STATUS_APPROVED
+            status=PayrollRecord.STATUS_FINALIZED
         )
         payslips = issue_payslips_for_period(period)
         self.assertEqual(len(payslips), 1)

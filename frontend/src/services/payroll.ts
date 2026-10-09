@@ -44,7 +44,7 @@ export interface PayrollPeriod {
   month: number;                 // 1–12
   start_date: string;
   end_date: string;
-  status: 'draft' | 'approved';
+  status: 'draft' | 'locked' | 'processing' | 'review' | 'finalized' | 'disbursed';
   generated_at: string | null;
   approved_by: number | null;
   approved_by_email: string | null;
@@ -73,7 +73,7 @@ export interface PayrollRecord {
   gross_salary?: string;
   net_salary?: string;
   lop_amount?: string;
-  status: 'draft' | 'approved';
+  status: 'draft' | 'finalized' | 'disbursed';
   generated_at: string;
 }
 

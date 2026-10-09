@@ -5,6 +5,12 @@ from .views import (
     PayrollPeriodViewSet,
     PayrollRecordViewSet,
     PayslipViewSet,
+    PayslipVerificationView,
+    OrganizationBankAccountViewSet,
+    PaymentRoutingConfigurationViewSet,
+    DisbursementBatchViewSet,
+    FinalSettlementViewSet,
+    FnFPolicyConfigurationViewSet,
 )
 from .views_reporting import PayrollReportingViewSet
 from .salary_configuration_views import SalaryComponentViewSet, SalaryStructureViewSet
@@ -17,9 +23,17 @@ router.register(r'payslips', PayslipViewSet, basename='payslip')
 router.register(r'reports', PayrollReportingViewSet, basename='payroll-reports')
 router.register(r'salary-components', SalaryComponentViewSet, basename='salary-component')
 router.register(r'salary-structures', SalaryStructureViewSet, basename='salary-structure')
+router.register(r'bank-accounts', OrganizationBankAccountViewSet, basename='organization-bank-account')
+router.register(r'routing-configurations', PaymentRoutingConfigurationViewSet, basename='payment-routing-config')
+router.register(r'disbursements', DisbursementBatchViewSet, basename='disbursement-batch')
+router.register(r'fnf', FinalSettlementViewSet, basename='final-settlement')
+router.register(r'fnf-policy', FnFPolicyConfigurationViewSet, basename='fnf-policy-config')
+
 
 
 
 urlpatterns = [
+    path('payslips/verify/<str:token>/', PayslipVerificationView.as_view(), name='payslip-verify'),
     path('', include(router.urls)),
 ]
+
