@@ -114,10 +114,16 @@ def calculate_surcharge(
     return surcharge
 
 
-def calculate_cess(tax_after_surcharge: Decimal, cess_rate: Decimal) -> Decimal:
+def calculate_cess(tax_after_surcharge: Decimal, cess_rate: Optional[Decimal]) -> Decimal:
     """
-    Calculates Health & Education Cess on tax after surcharge.
+    Calculates Health & Education Cess on tax after surcharge using the explicitly configured cess_rate.
+    Raises TaxCalculationException if cess_rate is missing or None.
     """
+    if cess_rate is None:
+        raise TaxCalculationException(
+            "Cess rate must be explicitly configured and cannot be None.",
+            code='MISSING_CESS_CONFIG'
+        )
     if tax_after_surcharge <= Decimal('0.00') or cess_rate <= Decimal('0.0000'):
         return Decimal('0.00')
     return (tax_after_surcharge * cess_rate).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
@@ -148,6 +154,13 @@ def calculate_annual_tax(
       ↓
     Annual Tax Liability
     """
+    # 0. Validate rule completeness
+    if rule_config.cess_rate is None:
+        raise TaxCalculationException(
+            f"Tax rule configuration '{rule_config.version_identifier}' is incomplete: cess_rate is not configured.",
+            code='INCOMPLETE_TAX_RULE_CONFIG'
+        )
+
     # 1. Standard deduction
     std_deduction = min(gross_taxable, rule_config.standard_deduction)
     income_after_std = max(Decimal('0.00'), gross_taxable - std_deduction)
@@ -231,6 +244,11 @@ def calculate_annual_tax(
     tax_after_surcharge = tax_after_rebate + surcharge
 
     # 6. Cess
+    if rule_config.cess_rate is None:
+        raise TaxCalculationException(
+            f"Tax rule configuration '{rule_config.version_identifier}' is incomplete: cess_rate is not configured.",
+            code='INCOMPLETE_TAX_RULE_CONFIG'
+        )
     cess = calculate_cess(tax_after_surcharge, rule_config.cess_rate)
 
     # 7. Annual tax liability (Section 288B rounded to nearest integer)
@@ -271,7 +289,7 @@ class TaxCalculationService:
         Retrieves the authoritative active TaxRuleConfiguration for an organization,
         financial year, and regime as of a given date.
         Defaults as_of_date to financial_year.start_date if not specified.
-        Validates slabs before returning.
+        Validates slabs and rule configuration completeness before returning.
         """
         if as_of_date is None:
             as_of_date = financial_year.start_date
@@ -295,6 +313,14 @@ class TaxCalculationService:
 
         # Validate slabs integrity
         rule.validate_slabs()
+
+        # Validate rule configuration completeness
+        if rule.cess_rate is None:
+            raise TaxCalculationException(
+                f"Tax rule configuration '{rule.version_identifier}' is incomplete: cess_rate is not configured.",
+                code='INCOMPLETE_TAX_RULE_CONFIG'
+            )
+
         return rule
 
     @staticmethod

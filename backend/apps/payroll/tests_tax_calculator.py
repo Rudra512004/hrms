@@ -290,6 +290,7 @@ class Phase69CTaxEngineTests(TestCase):
             regime=TaxRuleConfiguration.REGIME_NEW,
             version_identifier="INVALID-OVERLAP",
             effective_from=date(2025, 4, 1),
+            cess_rate=Decimal("0.0400"),
         )
         TaxSlab.objects.create(rule_configuration=cfg, slab_order=1, lower_limit=Decimal("0.00"), upper_limit=Decimal("300000.00"), rate=Decimal("0.0000"))
         TaxSlab.objects.create(rule_configuration=cfg, slab_order=2, lower_limit=Decimal("250000.00"), upper_limit=Decimal("600000.00"), rate=Decimal("0.0500"))
@@ -344,6 +345,7 @@ class Phase69CTaxEngineTests(TestCase):
             effective_from=date(2024, 10, 1),
             effective_to=date(2025, 3, 31),
             standard_deduction=Decimal("80000.00"),
+            cess_rate=Decimal("0.0400"),
             is_active=True,
         )
         TaxSlab.objects.create(rule_configuration=r_v2, slab_order=1, lower_limit=Decimal("0.00"), upper_limit=None, rate=Decimal("0.1000"))
@@ -943,6 +945,7 @@ class Phase69CTaxEngineTests(TestCase):
             "regime": "NEW",
             "version_identifier": "HACK-RULE",
             "effective_from": "2025-04-01",
+            "cess_rate": "0.0400",
         })
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
@@ -991,3 +994,43 @@ class Phase69CTaxEngineTests(TestCase):
         self.assertIsInstance(res['taxable_income'], Decimal)
         self.assertIsInstance(res['annual_tax'], Decimal)
         self.assertIsInstance(res['cess'], Decimal)
+
+    def test_43_missing_cess_configuration_raises_error(self):
+        """43. Missing cess configuration cannot silently default to 4%: engine raises appropriate error."""
+        # 1. Model clean validation enforces non-null cess_rate
+        rule_without_cess = TaxRuleConfiguration(
+            organization=self.org1,
+            financial_year=self.fy24,
+            regime=TaxRuleConfiguration.REGIME_NEW,
+            version_identifier="NO-CESS-RULE",
+            effective_from=date(2024, 4, 1),
+            cess_rate=None,
+        )
+        with self.assertRaises(ValidationError):
+            rule_without_cess.clean()
+
+        # 2. calculate_cess function raises MISSING_CESS_CONFIG if cess_rate is None
+        from apps.payroll.tax_calculator import calculate_cess
+        with self.assertRaises(TaxCalculationException) as ctx1:
+            calculate_cess(tax_after_surcharge=Decimal("10000.00"), cess_rate=None)
+        self.assertEqual(ctx1.exception.code, 'MISSING_CESS_CONFIG')
+
+        # 3. calculate_annual_tax raises INCOMPLETE_TAX_RULE_CONFIG if rule_config.cess_rate is None
+        with self.assertRaises(TaxCalculationException) as ctx2:
+            calculate_annual_tax(
+                gross_taxable=Decimal("1000000.00"),
+                verified_inputs={'categories': {}},
+                rule_config=rule_without_cess,
+            )
+        self.assertEqual(ctx2.exception.code, 'INCOMPLETE_TAX_RULE_CONFIG')
+
+    def test_44_explicitly_configured_cess_rate_used_accurately(self):
+        """44. Explicitly configured cess_rate is used accurately and not overwritten by any default."""
+        from apps.payroll.tax_calculator import calculate_cess
+        # Test custom 6% cess rate: ₹10,000 tax -> ₹600.00 cess (not 4% = ₹400.00)
+        cess_6pct = calculate_cess(tax_after_surcharge=Decimal("10000.00"), cess_rate=Decimal("0.0600"))
+        self.assertEqual(cess_6pct, Decimal("600.00"))
+
+        # Test custom 0% cess rate: ₹10,000 tax -> ₹0.00 cess
+        cess_0pct = calculate_cess(tax_after_surcharge=Decimal("10000.00"), cess_rate=Decimal("0.0000"))
+        self.assertEqual(cess_0pct, Decimal("0.00"))

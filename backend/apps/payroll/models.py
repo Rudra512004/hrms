@@ -1615,9 +1615,8 @@ class TaxRuleConfiguration(models.Model):
     cess_rate = models.DecimalField(
         max_digits=5,
         decimal_places=4,
-        default=Decimal('0.0400'),
         validators=[MinValueValidator(Decimal('0.0000'))],
-        help_text="Health & Education cess rate (e.g. 0.0400 for 4%)."
+        help_text="Configured Health & Education cess rate (e.g. 0.0400 for 4%). Must be explicitly specified."
     )
     is_active = models.BooleanField(default=True)
     description = models.TextField(blank=True)
@@ -1638,6 +1637,10 @@ class TaxRuleConfiguration(models.Model):
     def clean(self):
         super().clean()
         from django.core.exceptions import ValidationError
+        if self.cess_rate is None:
+            raise ValidationError({
+                'cess_rate': "Cess rate must be explicitly configured."
+            })
         if self.financial_year_id and self.organization_id:
             if self.financial_year.organization_id != self.organization_id:
                 raise ValidationError({

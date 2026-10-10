@@ -498,6 +498,13 @@ class TaxRuleConfigurationViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated]
     http_method_names = ['get', 'post', 'patch', 'delete', 'head', 'options']
 
+    def check_permissions(self, request):
+        super().check_permissions(request)
+        if request.method in ['POST', 'PUT', 'PATCH', 'DELETE']:
+            if not AuthorizationService.has_permission(request.user, 'payroll.tax_configure'):
+                from rest_framework.exceptions import PermissionDenied
+                raise PermissionDenied("Permission payroll.tax_configure is required to configure tax rules.")
+
     def get_serializer_class(self):
         from apps.payroll.serializers_tax import TaxRuleConfigurationSerializer
         return TaxRuleConfigurationSerializer
