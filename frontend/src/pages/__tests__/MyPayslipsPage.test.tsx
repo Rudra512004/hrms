@@ -15,6 +15,8 @@ vi.mock('../../services/payroll', async (importOriginal) => {
       getPayslipDetail: vi.fn(),
       downloadPayslipPdf: vi.fn(),
       getFinalSettlements: vi.fn(),
+      getMyFinalSettlements: vi.fn(),
+      getMyFinalSettlementDetail: vi.fn(),
     },
   };
 });
@@ -173,6 +175,7 @@ describe('MyPayslipsPage — Employee Portal', () => {
     vi.mocked(payrollService.getMyPayslips).mockResolvedValue(mockPayslips);
     vi.mocked(payrollService.getPayslipDetail).mockResolvedValue(mockPayslipDetail);
     vi.mocked(payrollService.getFinalSettlements).mockResolvedValue([]);
+    vi.mocked(payrollService.getMyFinalSettlements).mockResolvedValue([]);
   });
 
   it('1. renders issued payslips list with authoritative figures', async () => {
@@ -337,11 +340,8 @@ describe('MyPayslipsPage — Employee Portal', () => {
     ).toBeInTheDocument();
   });
 
-  it('7. navigates to FnF tab and handles self-service visibility / permission boundary safely', async () => {
-    vi.mocked(payrollService.getFinalSettlements).mockRejectedValue({
-      response: { status: 403 },
-      errorData: { detail: 'Permission denied.' },
-    });
+  it('7. navigates to FnF tab and renders clean empty state when employee has no settlement', async () => {
+    vi.mocked(payrollService.getMyFinalSettlements).mockResolvedValue([]);
 
     render(
       <MemoryRouter>
@@ -353,10 +353,92 @@ describe('MyPayslipsPage — Employee Portal', () => {
     fireEvent.click(fnfTabButton);
 
     await waitFor(() => {
-      expect(payrollService.getFinalSettlements).toHaveBeenCalled();
+      expect(payrollService.getMyFinalSettlements).toHaveBeenCalled();
       expect(
-        screen.getByText(/Full & Final Settlement records are restricted to HR\/Payroll Operations administrators/i)
+        screen.getByText(/No Full & Final Settlement statements found/i)
       ).toBeInTheDocument();
+    });
+  });
+
+  it('8. renders employee own finalized FnF statement with authoritative figures and itemized breakdown', async () => {
+    vi.mocked(payrollService.getMyFinalSettlements).mockResolvedValue([
+      {
+        id: 99,
+        settlement_number: 'FNF-2026-00099',
+        status: 'finalized',
+        exit_date: '2026-01-31',
+        resignation_date: '2026-01-01',
+        settlement_date: '2026-02-05',
+        currency: 'INR',
+        total_earnings: '120000.00',
+        total_deductions: '15000.00',
+        total_recoveries: '5000.00',
+        net_settlement_amount: '100000.00',
+        finalized_at: '2026-02-05T12:00:00Z',
+        lines: [
+          {
+            id: 1,
+            category: 'earning',
+            code: 'BASIC_PAY',
+            name: 'Basic Salary',
+            amount: '100000.00',
+            calculation_basis: 'Prorated for 31 days',
+          },
+          {
+            id: 2,
+            category: 'deduction',
+            code: 'TDS',
+            name: 'Tax Deducted at Source',
+            amount: '15000.00',
+            calculation_basis: null,
+          },
+          {
+            id: 3,
+            category: 'recovery',
+            code: 'ASSET_LAPTOP',
+            name: 'Unreturned Equipment',
+            amount: '5000.00',
+            calculation_basis: 'Fair value recovery',
+          },
+        ],
+      } as any,
+    ]);
+
+    render(
+      <MemoryRouter>
+        <MyPayslipsPage />
+      </MemoryRouter>
+    );
+
+    const fnfTabButton = screen.getByRole('button', { name: /full & final settlement/i });
+    fireEvent.click(fnfTabButton);
+
+    await waitFor(() => {
+      expect(payrollService.getMyFinalSettlements).toHaveBeenCalled();
+      expect(screen.getByText('Settlement FNF-2026-00099')).toBeInTheDocument();
+      expect(screen.getByText('FINALIZED')).toBeInTheDocument();
+      expect(screen.getByText('Itemized Settlement Breakdown')).toBeInTheDocument();
+      expect(screen.getByText('Basic Salary')).toBeInTheDocument();
+      expect(screen.getByText('Tax Deducted at Source')).toBeInTheDocument();
+      expect(screen.getByText('Unreturned Equipment')).toBeInTheDocument();
+    });
+  });
+
+  it('9. handles FnF fetch errors gracefully with alert banner', async () => {
+    vi.mocked(payrollService.getMyFinalSettlements).mockRejectedValue(new Error('Network error loading FnF'));
+
+    render(
+      <MemoryRouter>
+        <MyPayslipsPage />
+      </MemoryRouter>
+    );
+
+    const fnfTabButton = screen.getByRole('button', { name: /full & final settlement/i });
+    fireEvent.click(fnfTabButton);
+
+    await waitFor(() => {
+      expect(payrollService.getMyFinalSettlements).toHaveBeenCalled();
+      expect(screen.getByRole('alert')).toBeInTheDocument();
     });
   });
 });

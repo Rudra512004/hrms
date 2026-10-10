@@ -436,7 +436,7 @@ export const payrollService = {
     return { blob, filename };
   },
 
-  // FnF Final Settlements
+  // FnF Final Settlements (Administrative)
   getFinalSettlements: async (params?: { employee?: number; status?: string }): Promise<FinalSettlement[]> => {
     const searchParams = new URLSearchParams();
     if (params?.employee) searchParams.set('employee', String(params.employee));
@@ -448,6 +448,17 @@ export const payrollService = {
 
   getFinalSettlementDetail: async (id: number): Promise<FinalSettlement> => {
     const res = await fetch(`${BASE}/fnf/${id}/`, { headers: getHeaders() });
+    return handleResponse<FinalSettlement>(res);
+  },
+
+  // FnF Employee Self-Service
+  getMyFinalSettlements: async (): Promise<FinalSettlement[]> => {
+    const res = await fetch(`${BASE}/fnf/my/`, { headers: getHeaders() });
+    return handleResponse<FinalSettlement[]>(res);
+  },
+
+  getMyFinalSettlementDetail: async (id: number): Promise<FinalSettlement> => {
+    const res = await fetch(`${BASE}/fnf/my/${id}/`, { headers: getHeaders() });
     return handleResponse<FinalSettlement>(res);
   },
 

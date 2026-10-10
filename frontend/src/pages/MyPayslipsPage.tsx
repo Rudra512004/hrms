@@ -67,20 +67,15 @@ export const MyPayslipsPage: React.FC = () => {
     }
   }, []);
 
-  // Fetch FnF Settlements
+  // Fetch FnF Settlements (Employee Self-Service)
   const fetchSettlements = useCallback(async () => {
     setFnfLoading(true);
     setFnfNotice(null);
     try {
-      const data = await payrollService.getFinalSettlements();
+      const data = await payrollService.getMyFinalSettlements();
       setSettlements(data || []);
     } catch (err: any) {
-      // If 403 Forbidden, employee does not have admin fnf permission
-      if (err?.response?.status === 403 || err?.errorData?.detail?.includes('Permission denied')) {
-        setFnfNotice('Full & Final Settlement records are restricted to HR/Payroll Operations administrators. Standard employee self-service FnF visibility requires administrative permission or completed separation workflow.');
-      } else {
-        setFnfNotice(extractApiError(err));
-      }
+      setFnfNotice(extractApiError(err) || 'Failed to load Full & Final Settlement statements.');
     } finally {
       setFnfLoading(false);
     }
@@ -602,23 +597,32 @@ export const MyPayslipsPage: React.FC = () => {
             <div style={{ display: 'flex', justifyContent: 'center', padding: 'var(--spacing-2xl)' }}>
               <Loader2 className="animate-spin" size={32} color="var(--color-primary)" />
             </div>
+          ) : fnfNotice ? (
+            <AlertBanner type="error" message={fnfNotice} />
           ) : settlements.length > 0 ? (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--spacing-md)' }}>
               {settlements.map((st) => (
                 <Card
                   key={st.id}
-                  title={`Settlement ${st.settlement_number} (${st.status.toUpperCase()})`}
+                  title={`Settlement ${st.settlement_number}`}
+                  actions={
+                    <StatusBadge
+                      status={st.status === 'finalized' ? 'present' : 'pending'}
+                      label={st.status.toUpperCase()}
+                    />
+                  }
                   noPadding
                 >
                   <div style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
                     <div
                       style={{
                         display: 'grid',
-                        gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+                        gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))',
                         gap: '12px',
                         padding: '12px',
                         backgroundColor: 'var(--color-bg-body)',
                         borderRadius: 'var(--radius-sm)',
+                        border: '1px solid var(--color-border)',
                       }}
                     >
                       <div>
@@ -626,8 +630,14 @@ export const MyPayslipsPage: React.FC = () => {
                         <div style={{ fontWeight: 600 }}>{st.exit_date}</div>
                       </div>
                       <div>
+                        <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>Settlement Date</div>
+                        <div style={{ fontWeight: 600 }}>{st.settlement_date || '—'}</div>
+                      </div>
+                      <div>
                         <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>Total Earnings</div>
-                        <div style={{ fontWeight: 600 }}>{formatCurrency(st.total_earnings)}</div>
+                        <div style={{ fontWeight: 600, color: 'var(--color-text-main)' }}>
+                          {formatCurrency(st.total_earnings)}
+                        </div>
                       </div>
                       <div>
                         <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>Total Deductions</div>
@@ -642,16 +652,149 @@ export const MyPayslipsPage: React.FC = () => {
                         </div>
                       </div>
                       <div>
-                        <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>Net Payable</div>
+                        <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>Net Settlement</div>
                         <div style={{ fontWeight: 800, color: 'var(--color-status-success)', fontSize: '1.1rem' }}>
                           {formatCurrency(st.net_settlement_amount)}
                         </div>
                       </div>
                     </div>
 
-                    {st.integrity_hash && (
-                      <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', fontFamily: 'monospace' }}>
-                        Integrity Hash: {st.integrity_hash}
+                    {/* Itemized Line Breakdown */}
+                    {st.lines && st.lines.length > 0 && (
+                      <div style={{ marginTop: '8px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                        <div style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--color-text-main)' }}>
+                          Itemized Settlement Breakdown
+                        </div>
+                        <div
+                          style={{
+                            display: 'grid',
+                            gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
+                            gap: 'var(--spacing-md)',
+                          }}
+                        >
+                          {/* Earnings Breakdown */}
+                          {st.lines.some((l) => l.category === 'earning') && (
+                            <div style={{ border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)', overflow: 'hidden' }}>
+                              <div
+                                style={{
+                                  padding: '8px 12px',
+                                  backgroundColor: 'var(--color-bg-body)',
+                                  borderBottom: '1px solid var(--color-border)',
+                                  fontWeight: 600,
+                                  fontSize: '0.85rem',
+                                  display: 'flex',
+                                  justifyContent: 'space-between',
+                                }}
+                              >
+                                <span>Earnings</span>
+                                <span>Amount</span>
+                              </div>
+                              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
+                                <tbody>
+                                  {st.lines
+                                    .filter((l) => l.category === 'earning')
+                                    .map((l) => (
+                                      <tr key={l.id} style={{ borderBottom: '1px solid var(--color-border)' }}>
+                                        <td style={{ padding: '8px 12px', color: 'var(--color-text-main)' }}>
+                                          <div>{l.name}</div>
+                                          {l.calculation_basis && (
+                                            <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>
+                                              {l.calculation_basis}
+                                            </div>
+                                          )}
+                                        </td>
+                                        <td style={{ padding: '8px 12px', textAlign: 'right', fontWeight: 500, color: 'var(--color-text-main)' }}>
+                                          {formatCurrency(l.amount)}
+                                        </td>
+                                      </tr>
+                                    ))}
+                                </tbody>
+                              </table>
+                            </div>
+                          )}
+
+                          {/* Deductions Breakdown */}
+                          {st.lines.some((l) => l.category === 'deduction') && (
+                            <div style={{ border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)', overflow: 'hidden' }}>
+                              <div
+                                style={{
+                                  padding: '8px 12px',
+                                  backgroundColor: 'var(--color-bg-body)',
+                                  borderBottom: '1px solid var(--color-border)',
+                                  fontWeight: 600,
+                                  fontSize: '0.85rem',
+                                  display: 'flex',
+                                  justifyContent: 'space-between',
+                                }}
+                              >
+                                <span>Deductions & Taxes</span>
+                                <span>Amount</span>
+                              </div>
+                              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
+                                <tbody>
+                                  {st.lines
+                                    .filter((l) => l.category === 'deduction')
+                                    .map((l) => (
+                                      <tr key={l.id} style={{ borderBottom: '1px solid var(--color-border)' }}>
+                                        <td style={{ padding: '8px 12px', color: 'var(--color-text-main)' }}>
+                                          <div>{l.name}</div>
+                                          {l.calculation_basis && (
+                                            <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>
+                                              {l.calculation_basis}
+                                            </div>
+                                          )}
+                                        </td>
+                                        <td style={{ padding: '8px 12px', textAlign: 'right', fontWeight: 500, color: 'var(--color-text-muted)' }}>
+                                          {formatCurrency(l.amount)}
+                                        </td>
+                                      </tr>
+                                    ))}
+                                </tbody>
+                              </table>
+                            </div>
+                          )}
+
+                          {/* Recoveries Breakdown */}
+                          {st.lines.some((l) => l.category === 'recovery') && (
+                            <div style={{ border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)', overflow: 'hidden' }}>
+                              <div
+                                style={{
+                                  padding: '8px 12px',
+                                  backgroundColor: 'var(--color-bg-body)',
+                                  borderBottom: '1px solid var(--color-border)',
+                                  fontWeight: 600,
+                                  fontSize: '0.85rem',
+                                  display: 'flex',
+                                  justifyContent: 'space-between',
+                                }}
+                              >
+                                <span>Recoveries</span>
+                                <span>Amount</span>
+                              </div>
+                              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
+                                <tbody>
+                                  {st.lines
+                                    .filter((l) => l.category === 'recovery')
+                                    .map((l) => (
+                                      <tr key={l.id} style={{ borderBottom: '1px solid var(--color-border)' }}>
+                                        <td style={{ padding: '8px 12px', color: 'var(--color-text-main)' }}>
+                                          <div>{l.name}</div>
+                                          {l.calculation_basis && (
+                                            <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>
+                                              {l.calculation_basis}
+                                            </div>
+                                          )}
+                                        </td>
+                                        <td style={{ padding: '8px 12px', textAlign: 'right', fontWeight: 500, color: 'var(--color-status-danger)' }}>
+                                          {formatCurrency(l.amount)}
+                                        </td>
+                                      </tr>
+                                    ))}
+                                </tbody>
+                              </table>
+                            </div>
+                          )}
+                        </div>
                       </div>
                     )}
                   </div>
@@ -684,11 +827,10 @@ export const MyPayslipsPage: React.FC = () => {
                   lineHeight: 1.5,
                 }}
               >
-                {fnfNotice ||
-                  'No separation records found. Full & Final Settlement (FnF) statements are generated exclusively upon formal employee resignation or departure. Once finalized and approved by Finance, official settlement statements will be published here.'}
+                No Full & Final Settlement statements found. Full & Final Settlement (FnF) statements are generated exclusively upon formal employee resignation or departure. Once finalized and approved by Finance, official settlement statements will be published here.
               </p>
               <div style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)' }}>
-                Protected by Organization Isolation & Immutable Finalization (Phase 6.7)
+                Protected by Organization Isolation & Immutable Finalization
               </div>
             </div>
           )}

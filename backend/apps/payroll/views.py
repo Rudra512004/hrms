@@ -38,10 +38,13 @@ from .serializers import (
     FnFPolicyConfigurationSerializer,
     FinalSettlementListSerializer,
     FinalSettlementDetailSerializer,
+    EmployeeFinalSettlementSerializer,
+    EmployeeSettlementLineSerializer,
     FnFPreviewRequestSerializer,
     FnFPrepareRequestSerializer,
     FnFCancelSerializer,
 )
+from apps.employees.models import Employee
 from .services import generate_payroll_for_period, issue_payslips_for_period
 from .fnf_service import FnFService, FnFException
 
@@ -905,6 +908,70 @@ class FinalSettlementViewSet(viewsets.ModelViewSet):
         if not _has_any_perm(request.user, 'payroll.fnf_view', 'payroll.view', 'payroll.view_sensitive'):
             return Response({'detail': 'Permission denied.'}, status=status.HTTP_403_FORBIDDEN)
         return super().retrieve(request, *args, **kwargs)
+
+    @action(detail=False, methods=['get'], url_path='my')
+    def my(self, request):
+        """
+        Employee self-service: Returns the authenticated employee's own finalized
+        Full & Final Settlement records.
+
+        Security requirements:
+        - Authenticated employee access only.
+        - Derives employee identity strictly from request.user (no user-supplied employee ID).
+        - Organization isolation strictly enforced (organization=employee.organization).
+        - Only FINALIZED settlements are exposed (draft/review/approved/cancelled excluded).
+        - Exposes strictly employee-safe fields via EmployeeFinalSettlementSerializer.
+        - Excludes maker/checker workflow internals, audit metadata, admin remarks,
+          and sensitive banking/identity numbers.
+        """
+        user = request.user
+        employee = getattr(user, 'employee', None)
+        if not employee:
+            employee = Employee.objects.filter(user=user).first()
+        if not employee:
+            return Response([], status=status.HTTP_200_OK)
+
+        qs = FinalSettlement.objects.filter(
+            organization=employee.organization,
+            employee=employee,
+            status=FinalSettlement.STATUS_FINALIZED,
+        ).prefetch_related('lines').order_by('-settlement_date', '-created_at')
+
+        serializer = EmployeeFinalSettlementSerializer(qs, many=True)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+    @action(detail=False, methods=['get'], url_path=r'my/(?P<settlement_id>\d+)')
+    def my_detail(self, request, settlement_id=None):
+        """
+        Employee self-service: Returns detail of the authenticated employee's own
+        finalized Full & Final Settlement record.
+
+        Security requirements:
+        - Authenticated employee access only.
+        - Strict IDOR prevention: If settlement does not belong to the authenticated
+          employee, does not belong to their organization, or is not in FINALIZED state,
+          returns 404 NOT FOUND (never returns 403 or leaks settlement existence).
+        - Exposes strictly employee-safe fields via EmployeeFinalSettlementSerializer.
+        """
+        user = request.user
+        employee = getattr(user, 'employee', None)
+        if not employee:
+            employee = Employee.objects.filter(user=user).first()
+        if not employee:
+            return Response({'detail': 'Not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+        settlement = FinalSettlement.objects.filter(
+            id=settlement_id,
+            organization=employee.organization,
+            employee=employee,
+            status=FinalSettlement.STATUS_FINALIZED,
+        ).prefetch_related('lines').first()
+
+        if not settlement:
+            return Response({'detail': 'Not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+        serializer = EmployeeFinalSettlementSerializer(settlement)
+        return Response(serializer.data, status=status.HTTP_200_OK)
 
     @action(detail=False, methods=['post'], url_path='preview')
     def preview(self, request):

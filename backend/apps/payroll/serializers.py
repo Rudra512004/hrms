@@ -547,6 +547,41 @@ class FinalSettlementDetailSerializer(serializers.ModelSerializer):
         return f"{u.first_name} {u.last_name}".strip() or u.email
 
 
+class EmployeeSettlementLineSerializer(serializers.ModelSerializer):
+    """
+    Employee-safe representation of a settlement line item.
+    Excludes internal metadata, debug fields, and sensitive source references.
+    """
+    class Meta:
+        model = SettlementLine
+        fields = [
+            'id', 'category', 'code', 'name', 'amount',
+            'calculation_basis', 'order',
+        ]
+        read_only_fields = fields
+
+
+class EmployeeFinalSettlementSerializer(serializers.ModelSerializer):
+    """
+    Dedicated employee self-service serializer for Full & Final Settlement (FnF).
+    Exposes only employee-safe financial outcomes, dates, and normalized line items.
+    Excludes maker-checker workflow internals, audit metadata, administrative remarks,
+    and sensitive banking/identity details.
+    """
+    lines = EmployeeSettlementLineSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = FinalSettlement
+        fields = [
+            'id', 'settlement_number', 'status', 'exit_date',
+            'resignation_date', 'settlement_date', 'currency',
+            'total_earnings', 'total_deductions', 'total_recoveries',
+            'net_settlement_amount', 'finalized_at', 'cancellation_reason',
+            'lines',
+        ]
+        read_only_fields = fields
+
+
 class FnFPreviewRequestSerializer(serializers.Serializer):
     employee_id = serializers.IntegerField(required=True)
     exit_date = serializers.DateField(required=False, allow_null=True)
