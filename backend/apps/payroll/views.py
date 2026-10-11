@@ -35,6 +35,7 @@ from .serializers import (
     DisbursementBatchListSerializer,
     DisbursementBatchDetailSerializer,
     PrepareDisbursementBatchSerializer,
+    PrepareFnFDisbursementBatchSerializer,
     FnFPolicyConfigurationSerializer,
     FinalSettlementListSerializer,
     FinalSettlementDetailSerializer,
@@ -723,11 +724,17 @@ class DisbursementBatchViewSet(viewsets.ReadOnlyModelViewSet):
         if not org:
             return DisbursementBatch.objects.none()
         qs = DisbursementBatch.objects.filter(organization=org).select_related(
-            'period', 'debit_account', 'created_by', 'approved_by', 'exported_by'
+            'period', 'final_settlement', 'debit_account', 'created_by', 'approved_by', 'exported_by'
         )
+        batch_type = self.request.query_params.get('batch_type')
+        if batch_type:
+            qs = qs.filter(batch_type=batch_type)
         period_id = self.request.query_params.get('period')
         if period_id:
             qs = qs.filter(period_id=period_id)
+        settlement_id = self.request.query_params.get('final_settlement')
+        if settlement_id:
+            qs = qs.filter(final_settlement_id=settlement_id)
         status_param = self.request.query_params.get('status')
         if status_param:
             qs = qs.filter(status=status_param)
@@ -766,9 +773,84 @@ class DisbursementBatchViewSet(viewsets.ReadOnlyModelViewSet):
         if not org:
             return Response({'detail': 'No organization context.'}, status=status.HTTP_403_FORBIDDEN)
 
-        period = PayrollPeriod.objects.filter(id=data['period_id'], organization=org).first()
-        if not period:
-            return Response({'detail': 'Payroll period not found or unauthorized.'}, status=status.HTTP_404_NOT_FOUND)
+        debit_account = None
+        if data.get('debit_account_id'):
+            debit_account = OrganizationBankAccount.objects.filter(
+                id=data['debit_account_id'], organization=org
+            ).first()
+            if not debit_account:
+                return Response({'detail': 'Specified debit account not found or unauthorized.'}, status=status.HTTP_404_NOT_FOUND)
+
+        from apps.payroll.disbursement_service import DisbursementService, DisbursementException
+
+        if data.get('period_id'):
+            period = PayrollPeriod.objects.filter(id=data['period_id'], organization=org).first()
+            if not period:
+                return Response({'detail': 'Payroll period not found or unauthorized.'}, status=status.HTTP_404_NOT_FOUND)
+
+            branch = None
+            if data.get('branch_id'):
+                from apps.organization.models import Branch
+                branch = Branch.objects.filter(id=data['branch_id'], organization=org).first()
+
+            try:
+                batch = DisbursementService.prepare_disbursement_batch(
+                    period=period,
+                    user=request.user,
+                    value_date=data['value_date'],
+                    narration=data.get('narration'),
+                    debit_account=debit_account,
+                    branch=branch,
+                )
+            except DisbursementException as exc:
+                return Response({'detail': exc.message, 'code': exc.code}, status=status.HTTP_400_BAD_REQUEST)
+            except Exception as exc:
+                return Response({'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+
+            return Response(DisbursementBatchDetailSerializer(batch).data, status=status.HTTP_201_CREATED)
+
+        elif data.get('final_settlement_id'):
+            settlement = FinalSettlement.objects.filter(id=data['final_settlement_id'], organization=org).first()
+            if not settlement:
+                return Response({'detail': 'Final settlement not found or unauthorized.'}, status=status.HTTP_404_NOT_FOUND)
+
+            try:
+                batch = DisbursementService.prepare_fnf_disbursement_batch(
+                    settlement=settlement,
+                    user=request.user,
+                    value_date=data['value_date'],
+                    narration=data.get('narration'),
+                    debit_account=debit_account,
+                )
+            except DisbursementException as exc:
+                return Response({'detail': exc.message, 'code': exc.code}, status=status.HTTP_400_BAD_REQUEST)
+            except Exception as exc:
+                return Response({'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+
+            return Response(DisbursementBatchDetailSerializer(batch).data, status=status.HTTP_201_CREATED)
+
+        return Response({'detail': 'Invalid source.'}, status=status.HTTP_400_BAD_REQUEST)
+
+    @action(detail=False, methods=['post'], url_path='prepare-fnf')
+    def prepare_fnf(self, request):
+        err = _require(request.user, 'payroll.disburse_prepare')
+        if err:
+            err = _require(request.user, 'payroll.disburse')
+            if err:
+                return err
+
+        serializer = PrepareFnFDisbursementBatchSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        data = serializer.validated_data
+        org = _employee_org(request)
+        if not org:
+            return Response({'detail': 'No organization context.'}, status=status.HTTP_403_FORBIDDEN)
+
+        settlement = FinalSettlement.objects.filter(id=data['final_settlement_id'], organization=org).first()
+        if not settlement:
+            return Response({'detail': 'Final settlement not found or unauthorized.'}, status=status.HTTP_404_NOT_FOUND)
 
         debit_account = None
         if data.get('debit_account_id'):
@@ -778,20 +860,14 @@ class DisbursementBatchViewSet(viewsets.ReadOnlyModelViewSet):
             if not debit_account:
                 return Response({'detail': 'Specified debit account not found or unauthorized.'}, status=status.HTTP_404_NOT_FOUND)
 
-        branch = None
-        if data.get('branch_id'):
-            from apps.organization.models import Branch
-            branch = Branch.objects.filter(id=data['branch_id'], organization=org).first()
-
         from apps.payroll.disbursement_service import DisbursementService, DisbursementException
         try:
-            batch = DisbursementService.prepare_disbursement_batch(
-                period=period,
+            batch = DisbursementService.prepare_fnf_disbursement_batch(
+                settlement=settlement,
                 user=request.user,
                 value_date=data['value_date'],
                 narration=data.get('narration'),
                 debit_account=debit_account,
-                branch=branch,
             )
         except DisbursementException as exc:
             return Response({'detail': exc.message, 'code': exc.code}, status=status.HTTP_400_BAD_REQUEST)
@@ -1075,6 +1151,41 @@ class FinalSettlementViewSet(viewsets.ModelViewSet):
             return Response({'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
 
         return Response(FinalSettlementDetailSerializer(cancelled).data, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['post'], url_path='prepare-disbursement')
+    def prepare_disbursement(self, request, pk=None):
+        if not _has_any_perm(request.user, 'payroll.disburse_prepare', 'payroll.disburse'):
+            return Response({'detail': 'Permission denied.'}, status=status.HTTP_403_FORBIDDEN)
+
+        settlement = self.get_object()
+        value_date = request.data.get('value_date')
+        narration = request.data.get('narration')
+        debit_account_id = request.data.get('debit_account_id')
+
+        debit_account = None
+        if debit_account_id:
+            org = _employee_org(request)
+            debit_account = OrganizationBankAccount.objects.filter(
+                id=debit_account_id, organization=org
+            ).first()
+            if not debit_account:
+                return Response({'detail': 'Specified debit account not found or unauthorized.'}, status=status.HTTP_404_NOT_FOUND)
+
+        from apps.payroll.disbursement_service import DisbursementService, DisbursementException
+        try:
+            batch = DisbursementService.prepare_fnf_disbursement_batch(
+                settlement=settlement,
+                user=request.user,
+                value_date=value_date,
+                narration=narration,
+                debit_account=debit_account,
+            )
+        except DisbursementException as exc:
+            return Response({'detail': exc.message, 'code': exc.code}, status=status.HTTP_400_BAD_REQUEST)
+        except Exception as exc:
+            return Response({'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+
+        return Response(DisbursementBatchDetailSerializer(batch).data, status=status.HTTP_201_CREATED)
 
 
 class FnFPolicyConfigurationViewSet(viewsets.ModelViewSet):

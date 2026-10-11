@@ -393,7 +393,7 @@ class DisbursementItemSerializer(serializers.ModelSerializer):
     class Meta:
         model = DisbursementItem
         fields = [
-            'id', 'payroll_record', 'employee', 'employee_code',
+            'id', 'payroll_record', 'final_settlement', 'employee', 'employee_code',
             'payment_mode', 'masked_debit_account_number',
             'masked_beneficiary_account_number', 'beneficiary_name',
             'beneficiary_ifsc', 'amount', 'value_date', 'narration',
@@ -411,6 +411,7 @@ class DisbursementItemSerializer(serializers.ModelSerializer):
 class DisbursementBatchListSerializer(serializers.ModelSerializer):
     period_year = serializers.IntegerField(source='period.year', read_only=True)
     period_month = serializers.IntegerField(source='period.month', read_only=True)
+    final_settlement_number = serializers.CharField(source='final_settlement.settlement_number', read_only=True)
     masked_debit_account_number = serializers.SerializerMethodField()
     created_by_email = serializers.CharField(source='created_by.email', read_only=True)
     approved_by_email = serializers.CharField(source='approved_by.email', read_only=True)
@@ -419,7 +420,8 @@ class DisbursementBatchListSerializer(serializers.ModelSerializer):
     class Meta:
         model = DisbursementBatch
         fields = [
-            'id', 'batch_number', 'period', 'period_year', 'period_month',
+            'id', 'batch_type', 'batch_number', 'period', 'period_year', 'period_month',
+            'final_settlement', 'final_settlement_number',
             'branch', 'masked_debit_account_number', 'value_date', 'narration',
             'status', 'total_amount', 'total_count',
             'created_by_email', 'created_at',
@@ -435,6 +437,7 @@ class DisbursementBatchListSerializer(serializers.ModelSerializer):
 class DisbursementBatchDetailSerializer(serializers.ModelSerializer):
     period_year = serializers.IntegerField(source='period.year', read_only=True)
     period_month = serializers.IntegerField(source='period.month', read_only=True)
+    final_settlement_number = serializers.CharField(source='final_settlement.settlement_number', read_only=True)
     masked_debit_account_number = serializers.SerializerMethodField()
     created_by_email = serializers.CharField(source='created_by.email', read_only=True)
     approved_by_email = serializers.CharField(source='approved_by.email', read_only=True)
@@ -444,7 +447,8 @@ class DisbursementBatchDetailSerializer(serializers.ModelSerializer):
     class Meta:
         model = DisbursementBatch
         fields = [
-            'id', 'batch_number', 'period', 'period_year', 'period_month',
+            'id', 'batch_type', 'batch_number', 'period', 'period_year', 'period_month',
+            'final_settlement', 'final_settlement_number',
             'branch', 'masked_debit_account_number', 'value_date', 'narration',
             'status', 'total_amount', 'total_count',
             'routing_config_snapshot',
@@ -460,11 +464,28 @@ class DisbursementBatchDetailSerializer(serializers.ModelSerializer):
 
 
 class PrepareDisbursementBatchSerializer(serializers.Serializer):
-    period_id = serializers.IntegerField(required=True)
+    period_id = serializers.IntegerField(required=False, allow_null=True)
+    final_settlement_id = serializers.IntegerField(required=False, allow_null=True)
     value_date = serializers.DateField(required=True)
     narration = serializers.CharField(required=False, allow_blank=True, max_length=255)
     debit_account_id = serializers.IntegerField(required=False, allow_null=True)
     branch_id = serializers.IntegerField(required=False, allow_null=True)
+
+    def validate(self, attrs):
+        period_id = attrs.get('period_id')
+        final_settlement_id = attrs.get('final_settlement_id')
+        if not period_id and not final_settlement_id:
+            raise serializers.ValidationError("Either period_id or final_settlement_id must be provided.")
+        if period_id and final_settlement_id:
+            raise serializers.ValidationError("Cannot provide both period_id and final_settlement_id.")
+        return attrs
+
+
+class PrepareFnFDisbursementBatchSerializer(serializers.Serializer):
+    final_settlement_id = serializers.IntegerField(required=True)
+    value_date = serializers.DateField(required=True)
+    narration = serializers.CharField(required=False, allow_blank=True, max_length=255)
+    debit_account_id = serializers.IntegerField(required=False, allow_null=True)
 
 
 class FnFPolicyConfigurationSerializer(serializers.ModelSerializer):
@@ -528,6 +549,7 @@ class FinalSettlementDetailSerializer(serializers.ModelSerializer):
     approved_by_email = serializers.CharField(source='approved_by.email', read_only=True)
     finalized_by_email = serializers.CharField(source='finalized_by.email', read_only=True)
     lines = SettlementLineSerializer(many=True, read_only=True)
+    disbursement_batches = serializers.SerializerMethodField()
 
     class Meta:
         model = FinalSettlement
@@ -538,13 +560,27 @@ class FinalSettlementDetailSerializer(serializers.ModelSerializer):
             'total_recoveries', 'net_settlement_amount', 'currency', 'remarks',
             'cancellation_reason', 'created_by_email', 'created_at',
             'approved_by_email', 'approved_at', 'finalized_by_email', 'finalized_at',
-            'snapshot_data', 'integrity_hash', 'lines',
+            'snapshot_data', 'integrity_hash', 'lines', 'disbursement_batches',
         ]
         read_only_fields = fields
 
     def get_employee_name(self, obj):
         u = obj.employee.user
         return f"{u.first_name} {u.last_name}".strip() or u.email
+
+    def get_disbursement_batches(self, obj):
+        batches = obj.disbursement_batches.all()
+        return [
+            {
+                'id': b.id,
+                'batch_number': b.batch_number,
+                'status': b.status,
+                'total_amount': b.total_amount,
+                'value_date': b.value_date,
+                'created_at': b.created_at,
+            }
+            for b in batches
+        ]
 
 
 class EmployeeSettlementLineSerializer(serializers.ModelSerializer):

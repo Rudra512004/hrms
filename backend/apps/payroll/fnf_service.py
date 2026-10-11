@@ -14,6 +14,7 @@ from apps.payroll.models import (
     CompensationHistory,
     PayrollPeriod,
     PayrollRecord,
+    DisbursementBatch,
     FnFPolicyConfiguration,
     FinalSettlement,
     SettlementLine,
@@ -212,27 +213,38 @@ def calculate_fnf_settlement(
     else:
         gross_salary_lwd = Decimal('0.00')
 
-    # Guard against double payment: check if a regular payroll record was already finalized for this month
-    finalized_record = (
+    # Guard against double payment: check if a regular payroll record was already approved/finalized,
+    # or actively queued/exported in a disbursement batch for this month
+    already_accounted_record = (
         PayrollRecord.objects.filter(
             employee=employee,
             period__organization=employee.organization,
             period__year=lwd.year,
             period__month=lwd.month,
-            period__status=PayrollPeriod.STATUS_FINALIZED,
+        )
+        .filter(
+            Q(period__status__in=[PayrollPeriod.STATUS_FINALIZED, PayrollPeriod.STATUS_LOCKED, PayrollPeriod.STATUS_DISBURSED])
+            | Q(
+                disbursement_items__batch__status__in=[
+                    DisbursementBatch.STATUS_DRAFT,
+                    DisbursementBatch.STATUS_APPROVED,
+                    DisbursementBatch.STATUS_EXPORTED,
+                ]
+            )
         )
         .select_related('period')
+        .distinct()
         .first()
     )
 
     already_paid_salary = Decimal('0.00')
-    if finalized_record:
-        already_paid_salary = finalized_record.gross_salary
+    if already_accounted_record:
+        already_paid_salary = already_accounted_record.gross_salary
         net_salary_lwd = max(Decimal('0.00'), gross_salary_lwd - already_paid_salary)
         basis_explanation = (
             f"Basic: ₹{basic_salary}. Effective: {effective_days}/{total_month_working_days} days "
             f"(Prorated: ₹{gross_salary_lwd}). Less already paid in regular payroll period "
-            f"{finalized_record.period.year}/{finalized_record.period.month:02d}: ₹{already_paid_salary}."
+            f"{already_accounted_record.period.year}/{already_accounted_record.period.month:02d}: ₹{already_paid_salary}."
         )
     else:
         net_salary_lwd = gross_salary_lwd
@@ -686,6 +698,14 @@ class FnFService:
     """
     Orchestration service for Full & Final Settlement (FnF).
     """
+
+    @staticmethod
+    def calculate_settlement_preview(employee, exit_date=None, **kwargs) -> Dict[str, Any]:
+        """Calculates settlement preview for an employee instance."""
+        resignation_date = kwargs.pop('resignation_date', None)
+        if resignation_date:
+            employee.resignation_date = resignation_date
+        return calculate_fnf_settlement(employee, exit_date=exit_date, **kwargs)
 
     @staticmethod
     def preview(employee_id: int, requesting_user, **kwargs) -> Dict[str, Any]:

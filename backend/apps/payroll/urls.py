@@ -34,6 +34,7 @@ router.register(r'bank-accounts', OrganizationBankAccountViewSet, basename='orga
 router.register(r'routing-configurations', PaymentRoutingConfigurationViewSet, basename='payment-routing-config')
 router.register(r'disbursements', DisbursementBatchViewSet, basename='disbursement-batch')
 router.register(r'fnf', FinalSettlementViewSet, basename='final-settlement')
+router.register(r'final-settlements', FinalSettlementViewSet, basename='final-settlements')
 router.register(r'fnf-policy', FnFPolicyConfigurationViewSet, basename='fnf-policy-config')
 router.register(r'tax/financial-years', FinancialYearViewSet, basename='tax-financial-year')
 router.register(r'tax/categories', TaxDeclarationCategoryViewSet, basename='tax-category')

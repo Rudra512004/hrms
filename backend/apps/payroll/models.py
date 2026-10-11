@@ -663,10 +663,17 @@ class PaymentRoutingConfiguration(models.Model):
 
 class DisbursementBatch(models.Model):
     """
-    Offline generic bank disbursement export batch for a finalized payroll period.
+    Offline generic bank disbursement export batch for finalized payroll or FnF settlement.
     Tracks maker-checker workflow (draft/prepared -> approved -> exported) and
     snapshots the routing configuration used.
     """
+    BATCH_TYPE_REGULAR = 'regular'
+    BATCH_TYPE_FNF = 'fnf'
+    BATCH_TYPE_CHOICES = [
+        (BATCH_TYPE_REGULAR, 'Regular Payroll'),
+        (BATCH_TYPE_FNF, 'Full & Final Settlement'),
+    ]
+
     STATUS_DRAFT = 'draft'
     STATUS_APPROVED = 'approved'
     STATUS_EXPORTED = 'exported'
@@ -683,9 +690,24 @@ class DisbursementBatch(models.Model):
         on_delete=models.CASCADE,
         related_name='disbursement_batches',
     )
+    batch_type = models.CharField(
+        max_length=20,
+        choices=BATCH_TYPE_CHOICES,
+        default=BATCH_TYPE_REGULAR,
+        db_index=True,
+    )
     period = models.ForeignKey(
         PayrollPeriod,
         on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name='disbursement_batches',
+    )
+    final_settlement = models.ForeignKey(
+        'payroll.FinalSettlement',
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
         related_name='disbursement_batches',
     )
     branch = models.ForeignKey(
@@ -699,7 +721,7 @@ class DisbursementBatch(models.Model):
         max_length=64,
         unique=True,
         db_index=True,
-        help_text="Format: DISB-YYYYMM-ORGCODE-SEQUENCE",
+        help_text="Format: DISB-YYYYMM-ORGCODE-SEQUENCE or DISB-FNF-YYYYMM-ORGCODE-SEQUENCE",
     )
     debit_account = models.ForeignKey(
         OrganizationBankAccount,
@@ -715,7 +737,7 @@ class DisbursementBatch(models.Model):
     )
     narration = models.CharField(
         max_length=255,
-        help_text="Deterministic payroll narration (e.g. Salary Oct 2026).",
+        help_text="Deterministic payroll/FnF narration (e.g. Salary Oct 2026 or FnF Settlement FNF-001).",
     )
     status = models.CharField(
         max_length=20,
@@ -760,21 +782,49 @@ class DisbursementBatch(models.Model):
     exported_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
-        ordering = ['-period__year', '-period__month', '-created_at']
+        ordering = ['-created_at']
         indexes = [
             models.Index(fields=['organization', 'period']),
+            models.Index(fields=['organization', 'final_settlement']),
             models.Index(fields=['status']),
             models.Index(fields=['batch_number']),
+            models.Index(fields=['batch_type']),
+        ]
+        constraints = [
+            models.CheckConstraint(
+                condition=(
+                    (models.Q(batch_type='regular', period__isnull=False, final_settlement__isnull=True)) |
+                    (models.Q(batch_type='fnf', period__isnull=True, final_settlement__isnull=False))
+                ),
+                name='disbursement_batch_valid_source_by_type',
+            ),
+            models.UniqueConstraint(
+                fields=['organization', 'final_settlement'],
+                condition=models.Q(batch_type='fnf') & ~models.Q(status='cancelled'),
+                name='unique_active_fnf_disbursement_batch',
+            ),
         ]
 
     def __str__(self):
-        return f"{self.batch_number} — {self.period.year}/{self.period.month:02d} ({self.status})"
+        if self.period:
+            return f"{self.batch_number} — {self.period.year}/{self.period.month:02d} ({self.status})"
+        if self.final_settlement:
+            return f"{self.batch_number} — FnF {self.final_settlement.settlement_number} ({self.status})"
+        return f"{self.batch_number} ({self.status})"
 
     def clean(self):
         super().clean()
         from django.core.exceptions import ValidationError
+        if self.period and self.organization_id != self.period.organization_id:
+            raise ValidationError("DisbursementBatch organization must match period organization.")
+        if self.final_settlement and self.organization_id != self.final_settlement.organization_id:
+            raise ValidationError("DisbursementBatch organization must match final settlement organization.")
+        if self.debit_account and self.organization_id != self.debit_account.organization_id:
+            raise ValidationError("DisbursementBatch organization must match debit account organization.")
         if self.pk:
-            orig = DisbursementBatch.objects.filter(pk=self.pk).values('status', 'total_amount', 'total_count', 'debit_account_number', 'value_date').first()
+            orig = DisbursementBatch.objects.filter(pk=self.pk).values(
+                'status', 'total_amount', 'total_count', 'debit_account_number', 'value_date'
+            ).first()
             if orig and orig['status'] in [self.STATUS_APPROVED, self.STATUS_EXPORTED]:
                 if (
                     self.total_amount != orig['total_amount']
@@ -804,6 +854,15 @@ class DisbursementItem(models.Model):
     payroll_record = models.ForeignKey(
         PayrollRecord,
         on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name='disbursement_items',
+    )
+    final_settlement = models.ForeignKey(
+        'payroll.FinalSettlement',
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
         related_name='disbursement_items',
     )
     employee = models.ForeignKey(
@@ -825,21 +884,53 @@ class DisbursementItem(models.Model):
     class Meta:
         ordering = ['employee__employee_code', 'id']
         constraints = [
+            models.CheckConstraint(
+                condition=(
+                    (models.Q(payroll_record__isnull=False, final_settlement__isnull=True)) |
+                    (models.Q(payroll_record__isnull=True, final_settlement__isnull=False))
+                ),
+                name='disbursement_item_exactly_one_source',
+            ),
             models.UniqueConstraint(
                 fields=['batch', 'payroll_record'],
+                condition=models.Q(payroll_record__isnull=False),
                 name='unique_disbursement_item_per_batch_record',
+            ),
+            models.UniqueConstraint(
+                fields=['batch', 'final_settlement'],
+                condition=models.Q(final_settlement__isnull=False),
+                name='unique_disbursement_item_per_batch_settlement',
             ),
         ]
         indexes = [
             models.Index(fields=['batch', 'payment_mode']),
+            models.Index(fields=['final_settlement']),
         ]
 
     def __str__(self):
         return f"{self.batch.batch_number} - {self.employee.employee_code}: ₹{self.amount} ({self.payment_mode})"
 
+    @property
+    def beneficiary_ifsc_code(self):
+        return self.beneficiary_ifsc
+
     def clean(self):
         super().clean()
         from django.core.exceptions import ValidationError
+        if self.payroll_record and self.final_settlement:
+            raise ValidationError("DisbursementItem cannot reference both PayrollRecord and FinalSettlement.")
+        if not self.payroll_record and not self.final_settlement:
+            raise ValidationError("DisbursementItem must reference either PayrollRecord or FinalSettlement.")
+        if self.payroll_record and self.payroll_record.employee != self.employee:
+            raise ValidationError("DisbursementItem employee must match PayrollRecord employee.")
+        if self.final_settlement and self.final_settlement.employee != self.employee:
+            raise ValidationError("DisbursementItem employee must match FinalSettlement employee.")
+        if self.batch.organization_id != self.employee.organization_id:
+            raise ValidationError("DisbursementItem employee organization must match batch organization.")
+        if self.payroll_record and self.batch.period and self.payroll_record.period != self.batch.period:
+            raise ValidationError("DisbursementItem PayrollRecord period must match batch period.")
+        if self.final_settlement and self.batch.final_settlement and self.final_settlement != self.batch.final_settlement:
+            raise ValidationError("DisbursementItem FinalSettlement must match batch FinalSettlement.")
         if self.pk and self.batch.status in [DisbursementBatch.STATUS_APPROVED, DisbursementBatch.STATUS_EXPORTED]:
             orig = DisbursementItem.objects.filter(pk=self.pk).values('amount', 'beneficiary_account_number', 'payment_mode').first()
             if orig and (
@@ -1120,6 +1211,10 @@ class FinalSettlement(models.Model):
                 name='unique_active_fnf_per_employee',
             ),
         ]
+
+    @property
+    def net_payable(self):
+        return self.net_settlement_amount
 
     def __str__(self):
         return f"{self.settlement_number} — {self.employee.employee_code} ({self.status})"

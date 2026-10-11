@@ -15,7 +15,7 @@ from django.utils import timezone
 
 from apps.attendance.models import Attendance, Holiday
 from apps.leaves.models import LeaveRequest
-from .models import CompensationHistory, PayrollPeriod, PayrollRecord, Payslip, PayslipLine
+from .models import CompensationHistory, FinalSettlement, PayrollPeriod, PayrollRecord, Payslip, PayslipLine
 from .currency_utils import amount_to_words_inr
 import hashlib
 import uuid
@@ -169,6 +169,34 @@ def generate_payroll_for_period(period: PayrollPeriod, requesting_user=None) -> 
     records = []
 
     for emp in employees:
+        # Safeguard: Check if employee's salary for this period or prior period was already settled in an approved/finalized FnF
+        has_prior_finalized_fnf = FinalSettlement.objects.filter(
+            organization=period.organization,
+            employee=emp,
+            status__in=[FinalSettlement.STATUS_APPROVED, FinalSettlement.STATUS_FINALIZED],
+            exit_date__lt=period.start_date,
+        ).exists()
+        if has_prior_finalized_fnf:
+            logger.info(
+                f"Skipping payroll generation for employee {emp.employee_code}: "
+                f"Employee has an approved/finalized FnF settlement with exit date prior to period start date."
+            )
+            continue
+
+        has_period_finalized_salary_lwd = FinalSettlement.objects.filter(
+            organization=period.organization,
+            employee=emp,
+            status__in=[FinalSettlement.STATUS_APPROVED, FinalSettlement.STATUS_FINALIZED],
+            lines__code='SALARY_LWD',
+            lines__source_reference=f"{period.year}-{period.month:02d}",
+        ).exists()
+        if has_period_finalized_salary_lwd:
+            logger.info(
+                f"Skipping payroll generation for employee {emp.employee_code}: "
+                f"Salary for {period.year}-{period.month:02d} was already settled in finalized FnF."
+            )
+            continue
+
         working_days = _working_days_in_period(
             emp.branch_id, period.start_date, period.end_date
         )
