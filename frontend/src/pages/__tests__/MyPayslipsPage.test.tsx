@@ -441,4 +441,190 @@ describe('MyPayslipsPage — Employee Portal', () => {
       expect(screen.getByRole('alert')).toBeInTheDocument();
     });
   });
+
+  it('10. renders exported FnF disbursement status without claiming payment is complete', async () => {
+    vi.mocked(payrollService.getMyFinalSettlements).mockResolvedValue([
+      {
+        id: 101,
+        settlement_number: 'FNF-2026-00101',
+        status: 'finalized',
+        exit_date: '2026-01-31',
+        settlement_date: '2026-02-05',
+        currency: 'INR',
+        total_earnings: '150000.00',
+        total_deductions: '20000.00',
+        total_recoveries: '0.00',
+        net_settlement_amount: '130000.00',
+        disbursement_status: 'exported',
+        disbursement_status_label: 'Bank file exported — bank confirmation pending',
+        disbursement_reference: 'DISB-FNF-202602-BSCA-0001',
+        value_date: '2026-02-10',
+        prepared_at: '2026-02-06T10:00:00Z',
+        exported_at: '2026-02-08T15:30:00Z',
+        payment_status: {
+          status: 'exported',
+          status_label: 'Bank file exported — bank confirmation pending',
+          disbursement_reference: 'DISB-FNF-202602-BSCA-0001',
+          value_date: '2026-02-10',
+          prepared_at: '2026-02-06T10:00:00Z',
+          approved_at: '2026-02-07T12:00:00Z',
+          exported_at: '2026-02-08T15:30:00Z',
+          bank_confirmation_pending: true,
+        },
+      } as any,
+    ]);
+
+    render(
+      <MemoryRouter>
+        <MyPayslipsPage />
+      </MemoryRouter>
+    );
+
+    const fnfTabButton = screen.getByRole('button', { name: /full & final settlement/i });
+    fireEvent.click(fnfTabButton);
+
+    await waitFor(() => {
+      expect(screen.getByText('Disbursement & Payment Instruction Status')).toBeInTheDocument();
+      expect(screen.getAllByText('Bank file exported — bank confirmation pending').length).toBeGreaterThan(0);
+      expect(screen.getByText('DISB-FNF-202602-BSCA-0001')).toBeInTheDocument();
+      expect(screen.getByText('2026-02-10')).toBeInTheDocument();
+      expect(screen.getByText(/Offline bank confirmation is pending/i)).toBeInTheDocument();
+
+      // STRICT CHECK: The UI must never display "Paid" or "Payment Successful"
+      expect(screen.queryByText(/^Paid$/i)).not.toBeInTheDocument();
+      expect(screen.queryByText(/Payment Successful/i)).not.toBeInTheDocument();
+    });
+  });
+
+  it('11. renders approved and draft payment instruction states accurately', async () => {
+    vi.mocked(payrollService.getMyFinalSettlements).mockResolvedValue([
+      {
+        id: 102,
+        settlement_number: 'FNF-2026-00102',
+        status: 'finalized',
+        exit_date: '2026-02-28',
+        settlement_date: '2026-03-05',
+        currency: 'INR',
+        total_earnings: '90000.00',
+        total_deductions: '10000.00',
+        total_recoveries: '0.00',
+        net_settlement_amount: '80000.00',
+        disbursement_status: 'approved',
+        disbursement_status_label: 'Payment instruction approved',
+        disbursement_reference: 'DISB-FNF-202603-BSCA-0002',
+        value_date: '2026-03-10',
+        prepared_at: '2026-03-06T10:00:00Z',
+        approved_at: '2026-03-07T11:00:00Z',
+        exported_at: null,
+      } as any,
+    ]);
+
+    render(
+      <MemoryRouter>
+        <MyPayslipsPage />
+      </MemoryRouter>
+    );
+
+    const fnfTabButton = screen.getByRole('button', { name: /full & final settlement/i });
+    fireEvent.click(fnfTabButton);
+
+    await waitFor(() => {
+      expect(screen.getAllByText('Payment instruction approved').length).toBeGreaterThan(0);
+      expect(screen.getByText('DISB-FNF-202603-BSCA-0002')).toBeInTheDocument();
+      expect(screen.getByText(/queued for bank file generation/i)).toBeInTheDocument();
+    });
+  });
+
+  it('12. renders cancelled payment instruction state clearly', async () => {
+    vi.mocked(payrollService.getMyFinalSettlements).mockResolvedValue([
+      {
+        id: 103,
+        settlement_number: 'FNF-2026-00103',
+        status: 'finalized',
+        exit_date: '2026-02-28',
+        settlement_date: '2026-03-05',
+        currency: 'INR',
+        total_earnings: '90000.00',
+        total_deductions: '10000.00',
+        total_recoveries: '0.00',
+        net_settlement_amount: '80000.00',
+        disbursement_status: 'cancelled',
+        disbursement_status_label: 'Payment instruction cancelled',
+        disbursement_reference: 'DISB-FNF-202603-BSCA-VOID',
+        value_date: '2026-03-10',
+      } as any,
+    ]);
+
+    render(
+      <MemoryRouter>
+        <MyPayslipsPage />
+      </MemoryRouter>
+    );
+
+    const fnfTabButton = screen.getByRole('button', { name: /full & final settlement/i });
+    fireEvent.click(fnfTabButton);
+
+    await waitFor(() => {
+      expect(screen.getAllByText('Payment instruction cancelled').length).toBeGreaterThan(0);
+      expect(screen.getByText(/The previous payment instruction was cancelled/i)).toBeInTheDocument();
+    });
+  });
+
+  it('13. renders un-prepared payment instruction state and multiple historical instructions', async () => {
+    vi.mocked(payrollService.getMyFinalSettlements).mockResolvedValue([
+      {
+        id: 104,
+        settlement_number: 'FNF-2026-00104',
+        status: 'finalized',
+        exit_date: '2026-03-31',
+        settlement_date: '2026-04-05',
+        currency: 'INR',
+        total_earnings: '70000.00',
+        total_deductions: '5000.00',
+        total_recoveries: '0.00',
+        net_settlement_amount: '65000.00',
+        disbursement_status: 'draft',
+        disbursement_status_label: 'Payment instruction prepared',
+        disbursement_reference: 'DISB-FNF-202604-BSCA-0005',
+        value_date: '2026-04-10',
+        payment_status: {
+          status: 'draft',
+          status_label: 'Payment instruction prepared',
+          disbursement_reference: 'DISB-FNF-202604-BSCA-0005',
+          value_date: '2026-04-10',
+          history: [
+            {
+              disbursement_reference: 'DISB-FNF-202604-BSCA-0005',
+              status: 'draft',
+              status_label: 'Payment instruction prepared',
+              value_date: '2026-04-10',
+              created_at: '2026-04-06T10:00:00Z',
+            },
+            {
+              disbursement_reference: 'DISB-FNF-202604-BSCA-0001',
+              status: 'cancelled',
+              status_label: 'Payment instruction cancelled',
+              value_date: '2026-04-08',
+              created_at: '2026-04-05T09:00:00Z',
+            },
+          ],
+        },
+      } as any,
+    ]);
+
+    render(
+      <MemoryRouter>
+        <MyPayslipsPage />
+      </MemoryRouter>
+    );
+
+    const fnfTabButton = screen.getByRole('button', { name: /full & final settlement/i });
+    fireEvent.click(fnfTabButton);
+
+    await waitFor(() => {
+      expect(screen.getByText('Disbursement Instruction History (2)')).toBeInTheDocument();
+      expect(screen.getByText('DISB-FNF-202604-BSCA-0001')).toBeInTheDocument();
+      expect(screen.getAllByText('DISB-FNF-202604-BSCA-0005').length).toBe(2);
+    });
+  });
 });

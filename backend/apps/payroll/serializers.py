@@ -1,4 +1,5 @@
 from rest_framework import serializers
+from django.utils import timezone
 from .models import (
     CompensationHistory,
     PayrollPeriod,
@@ -597,25 +598,123 @@ class EmployeeSettlementLineSerializer(serializers.ModelSerializer):
         read_only_fields = fields
 
 
+DISBURSEMENT_STATUS_LABELS = {
+    'not_prepared': 'Payment instruction not prepared',
+    'draft': 'Payment instruction prepared',
+    'approved': 'Payment instruction approved',
+    'exported': 'Bank file exported — bank confirmation pending',
+    'cancelled': 'Payment instruction cancelled',
+}
+
+
 class EmployeeFinalSettlementSerializer(serializers.ModelSerializer):
     """
     Dedicated employee self-service serializer for Full & Final Settlement (FnF).
-    Exposes only employee-safe financial outcomes, dates, and normalized line items.
-    Excludes maker-checker workflow internals, audit metadata, administrative remarks,
-    and sensitive banking/identity details.
+    Exposes only employee-safe financial outcomes, dates, normalized line items,
+    and payment instruction status.
+    Strictly excludes maker-checker workflow internals, audit metadata, administrative remarks,
+    rejection/cancellation reasons, and sensitive banking/statutory details.
     """
+    settlement_status = serializers.CharField(source='status', read_only=True)
     lines = EmployeeSettlementLineSerializer(many=True, read_only=True)
+    disbursement_status = serializers.SerializerMethodField()
+    disbursement_status_label = serializers.SerializerMethodField()
+    disbursement_reference = serializers.SerializerMethodField()
+    value_date = serializers.SerializerMethodField()
+    prepared_at = serializers.SerializerMethodField()
+    approved_at = serializers.SerializerMethodField()
+    exported_at = serializers.SerializerMethodField()
+    payment_status = serializers.SerializerMethodField()
 
     class Meta:
         model = FinalSettlement
         fields = [
-            'id', 'settlement_number', 'status', 'exit_date',
+            'id', 'settlement_number', 'status', 'settlement_status', 'exit_date',
             'resignation_date', 'settlement_date', 'currency',
             'total_earnings', 'total_deductions', 'total_recoveries',
-            'net_settlement_amount', 'finalized_at', 'cancellation_reason',
+            'net_settlement_amount', 'finalized_at',
             'lines',
+            'disbursement_status', 'disbursement_status_label',
+            'disbursement_reference', 'value_date',
+            'prepared_at', 'approved_at', 'exported_at',
+            'payment_status',
         ]
         read_only_fields = fields
+
+    def _get_sorted_batches(self, obj):
+        if not hasattr(obj, '_cached_sorted_batches'):
+            batches = list(obj.disbursement_batches.all())
+            batches.sort(key=lambda b: (b.created_at or timezone.now(), b.id or 0), reverse=True)
+            obj._cached_sorted_batches = batches
+        return obj._cached_sorted_batches
+
+    def _get_effective_batch(self, obj):
+        batches = self._get_sorted_batches(obj)
+        # Unique active constraint ensures at most one active batch exists (draft, approved, exported)
+        for b in batches:
+            if b.status in [DisbursementBatch.STATUS_DRAFT, DisbursementBatch.STATUS_APPROVED, DisbursementBatch.STATUS_EXPORTED]:
+                return b
+        # If no active batch, return the latest cancelled batch if one exists
+        if batches:
+            return batches[0]
+        return None
+
+    def get_disbursement_status(self, obj):
+        b = self._get_effective_batch(obj)
+        return b.status if b else 'not_prepared'
+
+    def get_disbursement_status_label(self, obj):
+        st = self.get_disbursement_status(obj)
+        return DISBURSEMENT_STATUS_LABELS.get(st, st.replace('_', ' ').title())
+
+    def get_disbursement_reference(self, obj):
+        b = self._get_effective_batch(obj)
+        return b.batch_number if b else None
+
+    def get_value_date(self, obj):
+        b = self._get_effective_batch(obj)
+        return b.value_date.isoformat() if (b and b.value_date) else None
+
+    def get_prepared_at(self, obj):
+        b = self._get_effective_batch(obj)
+        return b.created_at.isoformat() if (b and b.created_at) else None
+
+    def get_approved_at(self, obj):
+        b = self._get_effective_batch(obj)
+        return b.approved_at.isoformat() if (b and b.approved_at) else None
+
+    def get_exported_at(self, obj):
+        b = self._get_effective_batch(obj)
+        return b.exported_at.isoformat() if (b and b.exported_at) else None
+
+    def get_payment_status(self, obj):
+        b = self._get_effective_batch(obj)
+        st = b.status if b else 'not_prepared'
+        label = DISBURSEMENT_STATUS_LABELS.get(st, st.replace('_', ' ').title())
+        batches = self._get_sorted_batches(obj)
+
+        history = [
+            {
+                'disbursement_reference': h.batch_number,
+                'status': h.status,
+                'status_label': DISBURSEMENT_STATUS_LABELS.get(h.status, h.status.replace('_', ' ').title()),
+                'value_date': h.value_date.isoformat() if h.value_date else None,
+                'created_at': h.created_at.isoformat() if h.created_at else None,
+            }
+            for h in batches
+        ]
+
+        return {
+            'status': st,
+            'status_label': label,
+            'disbursement_reference': b.batch_number if b else None,
+            'value_date': b.value_date.isoformat() if (b and b.value_date) else None,
+            'prepared_at': b.created_at.isoformat() if (b and b.created_at) else None,
+            'approved_at': b.approved_at.isoformat() if (b and b.approved_at) else None,
+            'exported_at': b.exported_at.isoformat() if (b and b.exported_at) else None,
+            'bank_confirmation_pending': bool(b and b.status == DisbursementBatch.STATUS_EXPORTED),
+            'history': history,
+        }
 
 
 class FnFPreviewRequestSerializer(serializers.Serializer):

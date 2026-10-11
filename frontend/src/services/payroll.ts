@@ -178,10 +178,31 @@ export interface SettlementLine {
   metadata?: Record<string, any>;
 }
 
+export interface DisbursementHistoryItem {
+  disbursement_reference: string;
+  status: 'draft' | 'approved' | 'exported' | 'cancelled';
+  status_label: string;
+  value_date: string | null;
+  created_at: string | null;
+}
+
+export interface PaymentStatusInfo {
+  status: 'not_prepared' | 'draft' | 'approved' | 'exported' | 'cancelled';
+  status_label: string;
+  disbursement_reference: string | null;
+  value_date: string | null;
+  prepared_at: string | null;
+  approved_at: string | null;
+  exported_at: string | null;
+  bank_confirmation_pending?: boolean;
+  history?: DisbursementHistoryItem[];
+}
+
 export interface FinalSettlement {
   id: number;
   settlement_number: string;
   status: 'draft' | 'review' | 'approved' | 'finalized' | 'cancelled';
+  settlement_status?: string;
   exit_date: string;
   resignation_date?: string | null;
   settlement_date: string;
@@ -190,10 +211,19 @@ export interface FinalSettlement {
   total_recoveries: string;
   net_settlement_amount: string;
   currency: string;
+  finalized_at?: string | null;
   remarks?: string;
   cancellation_reason?: string;
   integrity_hash?: string;
   lines?: SettlementLine[];
+  disbursement_status?: 'not_prepared' | 'draft' | 'approved' | 'exported' | 'cancelled';
+  disbursement_status_label?: string;
+  disbursement_reference?: string | null;
+  value_date?: string | null;
+  prepared_at?: string | null;
+  approved_at?: string | null;
+  exported_at?: string | null;
+  payment_status?: PaymentStatusInfo;
 }
 
 export interface CreatePeriodPayload {

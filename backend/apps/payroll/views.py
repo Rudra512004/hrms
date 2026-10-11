@@ -1011,7 +1011,7 @@ class FinalSettlementViewSet(viewsets.ModelViewSet):
             organization=employee.organization,
             employee=employee,
             status=FinalSettlement.STATUS_FINALIZED,
-        ).prefetch_related('lines').order_by('-settlement_date', '-created_at')
+        ).prefetch_related('lines', 'disbursement_batches').order_by('-settlement_date', '-created_at')
 
         serializer = EmployeeFinalSettlementSerializer(qs, many=True)
         return Response(serializer.data, status=status.HTTP_200_OK)
@@ -1041,7 +1041,7 @@ class FinalSettlementViewSet(viewsets.ModelViewSet):
             organization=employee.organization,
             employee=employee,
             status=FinalSettlement.STATUS_FINALIZED,
-        ).prefetch_related('lines').first()
+        ).prefetch_related('lines', 'disbursement_batches').first()
 
         if not settlement:
             return Response({'detail': 'Not found.'}, status=status.HTTP_404_NOT_FOUND)

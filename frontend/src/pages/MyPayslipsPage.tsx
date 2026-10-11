@@ -659,6 +659,222 @@ export const MyPayslipsPage: React.FC = () => {
                       </div>
                     </div>
 
+                    {/* Payment Instruction & Disbursement Status Card */}
+                    <div
+                      style={{
+                        padding: '16px',
+                        backgroundColor: 'var(--color-bg-body)',
+                        borderRadius: 'var(--radius-md)',
+                        border: '1px solid var(--color-border)',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '12px',
+                      }}
+                    >
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <CreditCard size={18} color="var(--color-primary)" />
+                          <span style={{ fontWeight: 600, fontSize: '0.95rem', color: 'var(--color-text-main)' }}>
+                            Disbursement & Payment Instruction Status
+                          </span>
+                        </div>
+                        <div>
+                          {(() => {
+                            const dStatus = st.disbursement_status || st.payment_status?.status || 'not_prepared';
+                            const badgeType =
+                              dStatus === 'exported' ? 'approved' :
+                              dStatus === 'approved' ? 'present' :
+                              dStatus === 'cancelled' ? 'absent' :
+                              'pending';
+                            const label =
+                              st.disbursement_status_label ||
+                              st.payment_status?.status_label ||
+                              (dStatus === 'exported' ? 'Bank file exported — bank confirmation pending' :
+                               dStatus === 'approved' ? 'Payment instruction approved' :
+                               dStatus === 'draft' ? 'Payment instruction prepared' :
+                               dStatus === 'cancelled' ? 'Payment instruction cancelled' :
+                               'Payment instruction not prepared');
+                            return <StatusBadge status={badgeType} label={label} />;
+                          })()}
+                        </div>
+                      </div>
+
+                      {/* Payment Metadata Grid */}
+                      <div
+                        style={{
+                          display: 'grid',
+                          gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))',
+                          gap: '12px',
+                          padding: '12px',
+                          backgroundColor: 'var(--color-bg-surface)',
+                          borderRadius: 'var(--radius-sm)',
+                          border: '1px solid var(--color-border)',
+                        }}
+                      >
+                        <div>
+                          <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>Payment Instruction Reference</div>
+                          <div style={{ fontWeight: 600, fontFamily: (st.disbursement_reference || st.payment_status?.disbursement_reference) ? 'monospace' : 'inherit' }}>
+                            {st.disbursement_reference || st.payment_status?.disbursement_reference || 'Not prepared'}
+                          </div>
+                        </div>
+                        <div>
+                          <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>Configured Value Date</div>
+                          <div style={{ fontWeight: 600 }}>
+                            {st.value_date || st.payment_status?.value_date || 'Not configured'}
+                          </div>
+                        </div>
+                        <div>
+                          <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>Prepared At</div>
+                          <div style={{ fontWeight: 600 }}>
+                            {st.prepared_at || st.payment_status?.prepared_at ? new Date(st.prepared_at || st.payment_status!.prepared_at!).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'}
+                          </div>
+                        </div>
+                        <div>
+                          <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>Bank Export Timestamp</div>
+                          <div style={{ fontWeight: 600 }}>
+                            {st.exported_at || st.payment_status?.exported_at ? new Date(st.exported_at || st.payment_status!.exported_at!).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* State-specific explanatory notice & bank confirmation limitation message */}
+                      {(() => {
+                        const dStatus = st.disbursement_status || st.payment_status?.status || 'not_prepared';
+                        if (dStatus === 'exported') {
+                          return (
+                            <div
+                              style={{
+                                padding: '12px 14px',
+                                backgroundColor: 'rgba(234, 179, 8, 0.08)',
+                                border: '1px solid rgba(234, 179, 8, 0.3)',
+                                borderRadius: 'var(--radius-sm)',
+                                fontSize: '0.825rem',
+                                color: 'var(--color-text-secondary)',
+                                lineHeight: 1.5,
+                              }}
+                            >
+                              <div style={{ fontWeight: 600, color: 'var(--color-text-main)', marginBottom: 4, display: 'flex', alignItems: 'center', gap: 6 }}>
+                                <Info size={16} color="var(--color-status-warning)" />
+                                Bank file exported — bank confirmation pending
+                              </div>
+                              The payment instruction file for this settlement has been generated and exported for bank processing.
+                              Offline bank confirmation is pending; actual crediting of funds depends on interbank clearing schedules (NEFT/RTGS).
+                              The system does not record automatic bank confirmation.
+                            </div>
+                          );
+                        } else if (dStatus === 'approved') {
+                          return (
+                            <div
+                              style={{
+                                padding: '12px 14px',
+                                backgroundColor: 'rgba(59, 130, 246, 0.08)',
+                                border: '1px solid rgba(59, 130, 246, 0.3)',
+                                borderRadius: 'var(--radius-sm)',
+                                fontSize: '0.825rem',
+                                color: 'var(--color-text-secondary)',
+                                lineHeight: 1.5,
+                              }}
+                            >
+                              <div style={{ fontWeight: 600, color: 'var(--color-text-main)', marginBottom: 4 }}>
+                                Payment instruction approved
+                              </div>
+                              The payment instruction has been verified and approved by the finance team. It is queued for bank file generation.
+                            </div>
+                          );
+                        } else if (dStatus === 'draft') {
+                          return (
+                            <div
+                              style={{
+                                padding: '12px 14px',
+                                backgroundColor: 'var(--color-bg-surface)',
+                                border: '1px solid var(--color-border)',
+                                borderRadius: 'var(--radius-sm)',
+                                fontSize: '0.825rem',
+                                color: 'var(--color-text-secondary)',
+                                lineHeight: 1.5,
+                              }}
+                            >
+                              <div style={{ fontWeight: 600, color: 'var(--color-text-main)', marginBottom: 4 }}>
+                                Payment instruction prepared
+                              </div>
+                              A draft payment instruction has been initiated by payroll and is awaiting finance approval.
+                            </div>
+                          );
+                        } else if (dStatus === 'cancelled') {
+                          return (
+                            <div
+                              style={{
+                                padding: '12px 14px',
+                                backgroundColor: 'rgba(239, 68, 68, 0.08)',
+                                border: '1px solid rgba(239, 68, 68, 0.3)',
+                                borderRadius: 'var(--radius-sm)',
+                                fontSize: '0.825rem',
+                                color: 'var(--color-text-secondary)',
+                                lineHeight: 1.5,
+                              }}
+                            >
+                              <div style={{ fontWeight: 600, color: 'var(--color-status-danger)', marginBottom: 4 }}>
+                                Payment instruction cancelled
+                              </div>
+                              The previous payment instruction was cancelled. If required, payroll will issue a revised disbursement instruction.
+                            </div>
+                          );
+                        } else {
+                          return (
+                            <div
+                              style={{
+                                padding: '12px 14px',
+                                backgroundColor: 'var(--color-bg-surface)',
+                                border: '1px solid var(--color-border)',
+                                borderRadius: 'var(--radius-sm)',
+                                fontSize: '0.825rem',
+                                color: 'var(--color-text-muted)',
+                                lineHeight: 1.5,
+                              }}
+                            >
+                              <div style={{ fontWeight: 600, color: 'var(--color-text-main)', marginBottom: 4 }}>
+                                Payment instruction not prepared
+                              </div>
+                              Your settlement statement has been finalized. Finance has not yet generated the bank disbursement instruction batch.
+                            </div>
+                          );
+                        }
+                      })()}
+
+                      {/* Historical instructions trail if multiple batches exist */}
+                      {st.payment_status?.history && st.payment_status.history.length > 1 && (
+                        <div style={{ marginTop: 4, borderTop: '1px solid var(--color-border)', paddingTop: 10 }}>
+                          <div style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--color-text-muted)', marginBottom: 6 }}>
+                            Disbursement Instruction History ({st.payment_status.history.length})
+                          </div>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                            {st.payment_status.history.map((h, idx) => (
+                              <div
+                                key={idx}
+                                style={{
+                                  display: 'flex',
+                                  justifyContent: 'space-between',
+                                  alignItems: 'center',
+                                  fontSize: '0.78rem',
+                                  padding: '6px 10px',
+                                  backgroundColor: 'var(--color-bg-surface)',
+                                  borderRadius: 'var(--radius-sm)',
+                                  border: '1px solid var(--color-border)',
+                                }}
+                              >
+                                <span style={{ fontFamily: 'monospace', fontWeight: 600 }}>{h.disbursement_reference}</span>
+                                <span style={{ color: 'var(--color-text-muted)' }}>Value: {h.value_date || '—'}</span>
+                                <StatusBadge
+                                  status={h.status === 'exported' ? 'approved' : h.status === 'approved' ? 'present' : h.status === 'cancelled' ? 'absent' : 'pending'}
+                                  label={h.status_label}
+                                />
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
                     {/* Itemized Line Breakdown */}
                     {st.lines && st.lines.length > 0 && (
                       <div style={{ marginTop: '8px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
