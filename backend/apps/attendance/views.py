@@ -169,6 +169,9 @@ class AttendanceViewSet(viewsets.GenericViewSet):
             except Attendance.DoesNotExist:
                 return Response({'detail': 'Cannot check out without a check-in.'}, status=status.HTTP_400_BAD_REQUEST)
 
+            if not attendance.check_in:
+                return Response({'detail': 'Cannot check out without a check-in.'}, status=status.HTTP_400_BAD_REQUEST)
+
             if attendance.check_out:
                 return Response({'detail': 'Already checked out for today.'}, status=status.HTTP_400_BAD_REQUEST)
 

@@ -79,6 +79,7 @@ class AttendanceAPITests(TestCase):
         self.client.force_authenticate(user=self.user)
         response = self.client.post(reverse('attendance-check-out'), REMOTE_ADDR=self.office_ip)
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(response.data.get('detail'), 'Cannot check out without a check-in.')
 
     def test_duplicate_check_out(self):
         self.client.force_authenticate(user=self.user)
@@ -86,6 +87,72 @@ class AttendanceAPITests(TestCase):
         self.client.post(reverse('attendance-check-out'), REMOTE_ADDR=self.office_ip)
         response = self.client.post(reverse('attendance-check-out'), REMOTE_ADDR=self.office_ip)
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(response.data.get('detail'), 'Already checked out for today.')
+
+    def test_check_out_with_existing_attendance_null_check_in_returns_400(self):
+        """Regression test: attendance record exists for today with check_in=None.
+        Checkout must return HTTP 400 with expected detail without producing HTTP 500
+        and without modifying check_out or attendance status."""
+        today = timezone.now().date()
+        att = Attendance.objects.create(
+            employee=self.employee,
+            date=today,
+            status='present',
+            check_in=None
+        )
+        self.client.force_authenticate(user=self.user)
+        response = self.client.post(reverse('attendance-check-out'), REMOTE_ADDR=self.office_ip)
+
+        self.assertNotEqual(response.status_code, status.HTTP_500_INTERNAL_SERVER_ERROR)
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(response.data.get('detail'), 'Cannot check out without a check-in.')
+
+        att.refresh_from_db()
+        self.assertIsNone(att.check_in)
+        self.assertIsNone(att.check_out)
+        self.assertEqual(att.status, 'present')
+        self.assertIsNone(att.productive_work_duration)
+
+    def test_check_out_during_active_break_rejected(self):
+        """Checkout while on an active break returns HTTP 400 and preserves open break."""
+        self.client.force_authenticate(user=self.user)
+        self.client.post(reverse('attendance-check-in'), REMOTE_ADDR=self.office_ip)
+        self.client.post(reverse('attendance-start-break'), REMOTE_ADDR=self.office_ip)
+
+        response = self.client.post(reverse('attendance-check-out'), REMOTE_ADDR=self.office_ip)
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(response.data.get('detail'), 'End the active break before checking out.')
+
+        att = Attendance.objects.get(employee=self.employee, date=timezone.now().date())
+        self.assertIsNone(att.check_out)
+        self.assertTrue(att.breaks.filter(ended_at__isnull=True).exists())
+
+    def test_check_out_productive_duration_calculated_with_breaks(self):
+        """Normal checkout with valid check_in and completed break calculates productive duration."""
+        self.client.force_authenticate(user=self.user)
+        self.client.post(reverse('attendance-check-in'), REMOTE_ADDR=self.office_ip)
+        att = Attendance.objects.get(employee=self.employee, date=timezone.now().date())
+        now = timezone.now()
+        att.check_in = now - timedelta(hours=2)
+        att.save()
+
+        # Start and end a 20-minute break
+        self.client.post(reverse('attendance-start-break'), REMOTE_ADDR=self.office_ip)
+        brk = att.breaks.first()
+        brk.started_at = now - timedelta(minutes=40)
+        brk.ended_at = now - timedelta(minutes=20)
+        brk.save()
+        att.total_break_duration = timedelta(minutes=20)
+        att.save()
+
+        response = self.client.post(reverse('attendance-check-out'), REMOTE_ADDR=self.office_ip)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        att.refresh_from_db()
+        self.assertIsNotNone(att.check_out)
+        self.assertIsNotNone(att.productive_work_duration)
+        self.assertGreaterEqual(att.productive_work_duration.total_seconds(), 95 * 60)
+        self.assertLessEqual(att.productive_work_duration.total_seconds(), 105 * 60)
 
     def test_employee_id_injection(self):
         self.client.force_authenticate(user=self.user)
