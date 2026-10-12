@@ -179,39 +179,20 @@ def calculate_fnf_settlement(
         employee.branch_id, exit_month_start, lwd
     )
 
-    basic_salary = _get_active_salary(employee, lwd, lwd)
-    if basic_salary == Decimal('0.00'):
-        basic_salary = _get_active_salary(employee, exit_month_start, lwd)
-    att = _attendance_summary(employee, exit_month_start, lwd)
-
-    from apps.attendance.models import Attendance
-    present_dates = set(
-        Attendance.objects.filter(
-            employee=employee,
-            date__range=[exit_month_start, lwd],
-            status='present',
-        ).values_list('date', flat=True)
+    from apps.payroll.segmentation_service import SalarySegmentationService
+    seg_summary = SalarySegmentationService.calculate_segments(
+        employee=employee,
+        start_date=exit_month_start,
+        end_date=lwd,
+        total_period_working_days=total_month_working_days,
     )
-    leave_days = _approved_leave_days(
-        employee, exit_month_start, lwd, exclude_dates=present_dates
-    )
-
-    present = att['present']
-    half = att['half']
-    calculated_effective = Decimal(present) + Decimal(half) * Decimal('0.5') + Decimal(leave_days)
-    effective_days = (
-        min(Decimal(lwd_working_days), calculated_effective)
-        if lwd_working_days > 0
-        else Decimal('0.00')
-    )
-    lop_days = max(Decimal('0.0'), Decimal(lwd_working_days) - effective_days)
-
-    if total_month_working_days > 0:
-        gross_salary_lwd = (
-            basic_salary * effective_days / Decimal(total_month_working_days)
-        ).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
-    else:
-        gross_salary_lwd = Decimal('0.00')
+    gross_salary_lwd = seg_summary.total_gross
+    effective_days = seg_summary.total_effective_days
+    lop_days = seg_summary.total_lop_days
+    basic_salary = seg_summary.last_drawn_basic
+    present = seg_summary.total_present_days
+    half = seg_summary.total_half_days
+    leave_days = seg_summary.total_leave_days
 
     # Guard against double payment: check if a regular payroll record was already approved/finalized,
     # or actively queued/exported in a disbursement batch for this month
@@ -272,6 +253,8 @@ def calculate_fnf_settlement(
             'lop_days': str(lop_days),
             'gross_earned': str(gross_salary_lwd),
             'already_paid_regular_payroll': str(already_paid_salary),
+            'segments': seg_summary.snapshot['segments'],
+            'is_segmented': seg_summary.is_segmented,
         },
     })
     order += 1
@@ -643,6 +626,7 @@ def calculate_fnf_settlement(
             'effective_days': str(effective_days),
             'lop_days': str(lop_days),
         },
+        'salary_segmentation': seg_summary.snapshot,
         'lines': [
             {
                 'category': l['category'],

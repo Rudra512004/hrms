@@ -199,6 +199,11 @@ class PayrollRecord(models.Model):
         blank=True,
         help_text="Audit snapshot of tax calculation inputs, slabs, deductions, and projected liability"
     )
+    salary_segmentation_snapshot = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text="Audit snapshot of effective-dated salary segments, structures, components, and proration."
+    )
 
     status = models.CharField(
         max_length=20,

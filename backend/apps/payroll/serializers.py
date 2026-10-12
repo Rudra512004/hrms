@@ -99,6 +99,7 @@ class PayrollRecordSerializer(serializers.ModelSerializer):
             'working_days', 'present_days', 'half_days', 'absent_days',
             'leave_days', 'effective_days', 'lop_days',
             'basic_salary', 'gross_salary', 'net_salary', 'lop_amount',
+            'salary_segmentation_snapshot',
             'status', 'generated_at',
         ]
         read_only_fields = fields  # records are fully computed; never user-editable
@@ -119,6 +120,7 @@ class PayrollRecordSerializer(serializers.ModelSerializer):
             ret.pop('gross_salary', None)
             ret.pop('net_salary', None)
             ret.pop('lop_amount', None)
+            ret.pop('salary_segmentation_snapshot', None)
         return ret
 
 

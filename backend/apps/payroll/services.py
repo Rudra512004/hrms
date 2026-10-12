@@ -197,38 +197,31 @@ def generate_payroll_for_period(period: PayrollPeriod, requesting_user=None) -> 
             )
             continue
 
+        range_start = period.start_date
+        range_end = period.end_date
+        if emp.joining_date and emp.joining_date > range_start:
+            range_start = emp.joining_date
+        if emp.exit_date and emp.exit_date < range_end:
+            range_end = emp.exit_date
+
         working_days = _working_days_in_period(
             emp.branch_id, period.start_date, period.end_date
         )
-        basic_salary = _get_active_salary(emp, period.start_date, period.end_date)
-        att = _attendance_summary(emp, period.start_date, period.end_date)
 
-        # Dates already accounted for by present attendance to prevent double-counting with approved leave
-        present_dates = set(
-            Attendance.objects.filter(
-                employee=emp,
-                date__range=[period.start_date, period.end_date],
-                status='present',
-            ).values_list('date', flat=True)
-        )
-        leave_days = _approved_leave_days(
-            emp, period.start_date, period.end_date, exclude_dates=present_dates
+        from apps.payroll.segmentation_service import SalarySegmentationService
+        seg_summary = SalarySegmentationService.calculate_segments(
+            employee=emp,
+            start_date=range_start,
+            end_date=range_end,
+            total_period_working_days=working_days,
         )
 
-        present = att['present']
-        half = att['half']
-        # Effective paid days: full present + half_days * 0.5 + approved leave
-        calculated_effective = Decimal(present) + Decimal(half) * Decimal('0.5') + Decimal(leave_days)
-        # Cap effective days at working days to avoid unbudgeted overpayment
-        effective_days = min(Decimal(working_days), calculated_effective) if working_days > 0 else Decimal('0.00')
-
-        if working_days > 0:
-            gross = (basic_salary * effective_days / Decimal(working_days)).quantize(
-                Decimal('0.01'), rounding=ROUND_HALF_UP
-            )
-        else:
-            gross = Decimal('0.00')
-
+        gross = seg_summary.total_gross
+        effective_days = seg_summary.total_effective_days
+        present = seg_summary.total_present_days
+        half = seg_summary.total_half_days
+        leave_days = seg_summary.total_leave_days
+        basic_salary = seg_summary.blended_basic_salary
         absent_days = max(0, working_days - int(effective_days))
 
         # P6.9C Authoritative Progressive TDS Calculation
@@ -265,6 +258,7 @@ def generate_payroll_for_period(period: PayrollPeriod, requesting_user=None) -> 
             tds_amount=tds_amount,
             net_salary=net,
             tax_calculation_snapshot=tax_snapshot,
+            salary_segmentation_snapshot=seg_summary.snapshot,
             status=PayrollRecord.STATUS_DRAFT,
         )
         records.append(record)
@@ -429,6 +423,11 @@ def issue_payslips_for_period(period: PayrollPeriod, requesting_user=None) -> li
             )
 
             # Normalized earning line item
+            line_metadata = {'basic_rate': str(basic), 'effective_days': str(eff_days)}
+            if record.salary_segmentation_snapshot:
+                line_metadata['segments'] = record.salary_segmentation_snapshot.get('segments', [])
+                line_metadata['is_segmented'] = record.salary_segmentation_snapshot.get('is_segmented', False)
+
             PayslipLine.objects.create(
                 payslip=payslip,
                 category=PayslipLine.CATEGORY_EARNING,
@@ -436,7 +435,7 @@ def issue_payslips_for_period(period: PayrollPeriod, requesting_user=None) -> li
                 name='Basic Salary',
                 amount=gross,
                 order=1,
-                metadata={'basic_rate': str(basic), 'effective_days': str(eff_days)}
+                metadata=line_metadata,
             )
 
             # Normalized deduction line item for TDS
