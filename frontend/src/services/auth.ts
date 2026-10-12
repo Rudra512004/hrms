@@ -18,6 +18,9 @@ export interface User {
   isSuperuser?: boolean;
   hasEmployeeProfile: boolean; // True only if linked to an Employee record
   canCreateOrganization?: boolean;
+  designation?: string;
+  department?: string;
+  organizationName?: string;
 }
 
 export interface AuthSession {
@@ -104,6 +107,9 @@ export const authService = {
             isSuperuser: Boolean(data.user.is_superuser),
             hasEmployeeProfile: Boolean(data.user.has_employee_profile),
             canCreateOrganization: Boolean(data.user.can_create_organization),
+            designation: data.user.designation || undefined,
+            department: data.user.department || undefined,
+            organizationName: data.user.organization_name || undefined,
           },
           roles: data.roles || [],
           permissions: data.permissions || [],

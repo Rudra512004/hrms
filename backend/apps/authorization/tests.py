@@ -44,3 +44,42 @@ class AuthorizationAPITests(TestCase):
         self.client.force_authenticate(user=self.user)
         response = self.client.get(reverse('auth-me'))
         self.assertIn('test.perm', response.data['permissions'])
+
+    def test_me_endpoint_with_employee_profile(self):
+        """Verifies designation, department, and organization_name are returned for employees."""
+        from apps.organization.models import Branch, Department, Designation
+        from apps.employees.models import Employee
+
+        branch = Branch.objects.create(organization=self.org, name='Main Branch', radius=100)
+        dept = Department.objects.create(branch=branch, name='Engineering')
+        desig = Designation.objects.create(organization=self.org, name='Staff Engineer')
+        Employee.objects.create(
+            user=self.user,
+            organization=self.org,
+            branch=branch,
+            department=dept,
+            designation=desig,
+            employee_code='EMP-777',
+        )
+
+        self.client.force_authenticate(user=self.user)
+        response = self.client.get(reverse('auth-me'))
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        user_data = response.data['user']
+        self.assertTrue(user_data['has_employee_profile'])
+        self.assertEqual(user_data['employee_code'], 'EMP-777')
+        self.assertEqual(user_data['designation'], 'Staff Engineer')
+        self.assertEqual(user_data['department'], 'Engineering')
+        self.assertEqual(user_data['organization_name'], 'Test Org')
+
+    def test_me_endpoint_without_employee_profile_safe(self):
+        """Verifies headless user returns None for employee fields safely."""
+        self.client.force_authenticate(user=self.user)
+        response = self.client.get(reverse('auth-me'))
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        user_data = response.data['user']
+        self.assertFalse(user_data['has_employee_profile'])
+        self.assertIsNone(user_data['employee_code'])
+        self.assertIsNone(user_data['designation'])
+        self.assertIsNone(user_data['department'])
+        self.assertEqual(user_data['organization_name'], 'Test Org')

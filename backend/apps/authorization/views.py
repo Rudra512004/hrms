@@ -57,6 +57,10 @@ class CurrentUserPermissionsView(APIView):
         
         has_employee = _emp is not None
         employee_code = _emp.employee_code if _emp else None
+        designation_name = _emp.designation.name if _emp and _emp.designation else None
+        department_name = _emp.department.name if _emp and _emp.department else None
+        org = _emp.organization if _emp else (_get_user_organization(request) or getattr(user, 'organization', None))
+        organization_name = org.name if org else None
         registration = getattr(user, 'tenant_owner_registration', None)
 
         return Response({
@@ -68,6 +72,9 @@ class CurrentUserPermissionsView(APIView):
                 'is_superuser': user.is_superuser,
                 'has_employee_profile': has_employee,
                 'employee_code': employee_code,
+                'designation': designation_name,
+                'department': department_name,
+                'organization_name': organization_name,
                 'can_create_organization': bool(registration and registration.can_launch_organization),
             },
             'roles': list(roles),
