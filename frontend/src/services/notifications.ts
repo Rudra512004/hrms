@@ -1,9 +1,9 @@
-﻿export type Notification = {
+export type Notification = {
   id: number;
   notification_type: string;
   title: string;
   message: string;
-  reference_id: string;
+  reference_id?: string | null;
   is_read: boolean;
   created_at: string;
 };
@@ -23,7 +23,10 @@ export const notificationService = {
       headers: getHeaders()
     });
     if (!response.ok) throw new Error('Failed to fetch notifications');
-    return response.json();
+    const data = await response.json();
+    if (Array.isArray(data)) return data;
+    if (data && Array.isArray(data.results)) return data.results;
+    return [];
   },
 
   async getUnreadCount(): Promise<{ unread_count: number }> {

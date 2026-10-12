@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   Bell,
   BellOff,
@@ -6,10 +6,12 @@ import {
   CheckCheck,
   AlertCircle,
   Loader2,
+  ExternalLink,
 } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import { notificationService, type Notification } from '../services/notifications';
 
-// GöÇGöÇ Helpers GöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇ
+// --- Helpers ---
 
 /** Format ISO timestamp as compact relative string */
 function relativeTime(iso: string): string {
@@ -25,10 +27,7 @@ function relativeTime(iso: string): string {
   return new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 }
 
-/**
- * DEV1_CONTRACT: Map provisional notification_type values to UI accent colours.
- * Update keys once Dev1 confirms the exact type string values.
- */
+/** Map notification_type values to UI accent colours */
 const TYPE_COLOR: Record<string, string> = {
   leave_approved:      'var(--color-status-success)',
   leave_rejected:      'var(--color-status-danger)',
@@ -45,25 +44,27 @@ const TYPE_COLOR: Record<string, string> = {
 };
 
 function accentForType(type: string): string {
-  return TYPE_COLOR[type] ?? 'var(--color-primary)';
+  const normalized = (type || '').toLowerCase();
+  return TYPE_COLOR[normalized] ?? 'var(--color-primary)';
 }
 
-// GöÇGöÇ Component GöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇ
+function getDestination(type: string): string | null {
+  if (!type) return null;
+  const t = type.toLowerCase();
+  if (t.includes('leave')) return '/leaves';
+  if (t.includes('payslip') || t.includes('payroll')) return '/payslips';
+  if (t.includes('attendance')) return '/attendance';
+  if (t.includes('wfh')) return '/admin/wfh';
+  if (t.includes('asset')) return '/my-assets';
+  if (t.includes('announcement')) return '/announcements';
+  if (t.includes('review')) return '/reviews';
+  return null;
+}
 
-/**
- * NotificationBell
- *
- * Self-contained header notification widget:
- * - Bell icon button with unread-count badge
- * - Keyboard accessible (Escape closes, focus returns to button)
- * - Panel renders all UX states: loading, empty, error, populated
- * - Individual mark-as-read + mark-all-read
- *
- * API wiring is provisional (see services/notifications.ts).
- * When Dev1 finalises the backend contract, only the service layer needs
- * to change; this component requires no modification.
- */
+// --- Component ---
+
 export const NotificationBell: React.FC = () => {
+  const navigate = useNavigate();
   const [isOpen, setIsOpen] = useState(false);
 
   // Notification data
@@ -81,7 +82,18 @@ export const NotificationBell: React.FC = () => {
   const buttonRef = useRef<HTMLButtonElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
 
-  // GöÇGöÇ Data fetching GöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇ
+  // --- Data Fetching ---
+
+  const fetchUnreadCount = useCallback(async () => {
+    try {
+      const res = await notificationService.getUnreadCount();
+      if (res && typeof res.unread_count === 'number') {
+        setUnreadCount(res.unread_count);
+      }
+    } catch {
+      // Background unread count check fails silently
+    }
+  }, []);
 
   const fetchNotifications = useCallback(async () => {
     setLoading(true);
@@ -106,14 +118,28 @@ export const NotificationBell: React.FC = () => {
     }
   }, []);
 
-  // Reload whenever panel is opened
+  // Sync unread count on mount and window focus
+  useEffect(() => {
+    fetchUnreadCount();
+
+    const handleFocus = () => {
+      fetchUnreadCount();
+    };
+
+    window.addEventListener('focus', handleFocus);
+    return () => {
+      window.removeEventListener('focus', handleFocus);
+    };
+  }, [fetchUnreadCount]);
+
+  // Reload full list whenever panel is opened
   useEffect(() => {
     if (isOpen) {
       fetchNotifications();
     }
   }, [isOpen, fetchNotifications]);
 
-  // GöÇGöÇ Keyboard & outside-click GöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇ
+  // --- Keyboard & Outside Click ---
 
   useEffect(() => {
     if (!isOpen) return;
@@ -143,7 +169,7 @@ export const NotificationBell: React.FC = () => {
     };
   }, [isOpen]);
 
-  // GöÇGöÇ Actions GöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇ
+  // --- Actions ---
 
   const handleMarkRead = async (notif: Notification) => {
     if (notif.is_read || markingId === notif.id) return;
@@ -156,7 +182,7 @@ export const NotificationBell: React.FC = () => {
       );
       setUnreadCount(prev => Math.max(0, prev - 1));
     } catch {
-      // Silent fail for individual mark-read GÇö data reloads on next panel open
+      // Silent fail for individual mark-read — data reloads on next panel open
     } finally {
       setMarkingId(null);
     }
@@ -170,25 +196,33 @@ export const NotificationBell: React.FC = () => {
       setNotifications(prev => prev.map(n => ({ ...n, is_read: true })));
       setUnreadCount(0);
     } catch {
-      // Could surface a toast once a toast system is implemented
+      // Silent fail
     } finally {
       setMarkingAll(false);
     }
   };
 
-  // GöÇGöÇ Derived display GöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇ
+  const handleNotificationClick = async (notif: Notification) => {
+    if (!notif.is_read) {
+      await handleMarkRead(notif);
+    }
+    const dest = getDestination(notif.notification_type);
+    if (dest) {
+      setIsOpen(false);
+      navigate(dest);
+    }
+  };
+
+  // --- Derived Display ---
 
   const badgeLabel = unreadCount > 99 ? '99+' : unreadCount > 9 ? '9+' : String(unreadCount);
   const ariaLabel = unreadCount > 0
     ? `Notifications, ${unreadCount} unread`
     : 'Notifications';
 
-  // GöÇGöÇ Render GöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇ
-
   return (
     <div style={{ position: 'relative', flexShrink: 0 }}>
-
-      {/* GöÇGöÇ Bell button GöÇGöÇ */}
+      {/* Bell button */}
       <button
         ref={buttonRef}
         id="notification-bell-btn"
@@ -207,7 +241,7 @@ export const NotificationBell: React.FC = () => {
         )}
       </button>
 
-      {/* GöÇGöÇ Dropdown panel GöÇGöÇ */}
+      {/* Dropdown panel */}
       {isOpen && (
         <div
           ref={panelRef}
@@ -229,7 +263,7 @@ export const NotificationBell: React.FC = () => {
               )}
             </div>
 
-            <div style={{ display: 'flex', alignItems: 'center', gap: '2px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
               {unreadCount > 0 && !loading && !error && (
                 <button
                   className="btn btn-ghost btn-sm"
@@ -265,7 +299,6 @@ export const NotificationBell: React.FC = () => {
             aria-live="polite"
             aria-label="Notification items"
           >
-
             {/* Loading */}
             {loading && (
               <div className="notif-state">
@@ -276,7 +309,7 @@ export const NotificationBell: React.FC = () => {
                   aria-hidden="true"
                 />
                 <span style={{ fontSize: 'var(--font-size-sm)', color: 'var(--color-text-muted)' }}>
-                  Loading notificationsGÇª
+                  Loading notifications...
                 </span>
               </div>
             )}
@@ -341,56 +374,77 @@ export const NotificationBell: React.FC = () => {
             {/* Notification list */}
             {!loading && !error && notifications.length > 0 && (
               <ul className="notif-list" role="list">
-                {notifications.map(notif => (
-                  <li
-                    key={notif.id}
-                    className={`notif-item${notif.is_read ? '' : ' notif-item--unread'}`}
-                  >
-                    {/* Unread accent bar */}
-                    {!notif.is_read && (
-                      <span
-                        className="notif-accent"
-                        aria-hidden="true"
-                        style={{ backgroundColor: accentForType(notif.notification_type) }}
-                      />
-                    )}
+                {notifications.map(notif => {
+                  const dest = getDestination(notif.notification_type);
 
-                    {/* Content */}
-                    <div className="notif-item-content">
-                      <p className="notif-item-title" title={notif.title}>
-                        {notif.title}
-                      </p>
-                      {notif.message && (
-                        <p className="notif-item-msg" title={notif.message}>
-                          {notif.message}
-                        </p>
+                  return (
+                    <li
+                      key={notif.id}
+                      className={`notif-item${notif.is_read ? '' : ' notif-item--unread'}`}
+                      style={{ cursor: dest ? 'pointer' : 'default' }}
+                      onClick={() => handleNotificationClick(notif)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault();
+                          handleNotificationClick(notif);
+                        }
+                      }}
+                      tabIndex={dest ? 0 : undefined}
+                      role={dest ? 'button' : undefined}
+                      aria-label={dest ? `${notif.title}, click to navigate` : undefined}
+                    >
+                      {/* Unread accent bar */}
+                      {!notif.is_read && (
+                        <span
+                          className="notif-accent"
+                          aria-hidden="true"
+                          style={{ backgroundColor: accentForType(notif.notification_type) }}
+                        />
                       )}
-                      <time
-                        className="notif-item-time"
-                        dateTime={notif.created_at}
-                        title={new Date(notif.created_at).toLocaleString()}
-                      >
-                        {relativeTime(notif.created_at)}
-                      </time>
-                    </div>
 
-                    {/* Mark read action */}
-                    {!notif.is_read && (
-                      <button
-                        className="notif-markread-btn"
-                        type="button"
-                        onClick={() => handleMarkRead(notif)}
-                        disabled={markingId === notif.id}
-                        aria-label={`Mark "${notif.title}" as read`}
-                        title="Mark as read"
-                      >
-                        {markingId === notif.id
-                          ? <Loader2 size={12} className="animate-spin" aria-hidden="true" />
-                          : <CheckCheck size={12} aria-hidden="true" />}
-                      </button>
-                    )}
-                  </li>
-                ))}
+                      {/* Content */}
+                      <div className="notif-item-content">
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <p className="notif-item-title" title={notif.title} style={{ margin: 0, flex: 1 }}>
+                            {notif.title}
+                          </p>
+                          {dest && <ExternalLink size={12} style={{ color: 'var(--color-text-muted)', flexShrink: 0 }} />}
+                        </div>
+                        {notif.message && (
+                          <p className="notif-item-msg" title={notif.message}>
+                            {notif.message}
+                          </p>
+                        )}
+                        <time
+                          className="notif-item-time"
+                          dateTime={notif.created_at}
+                          title={new Date(notif.created_at).toLocaleString()}
+                        >
+                          {relativeTime(notif.created_at)}
+                        </time>
+                      </div>
+
+                      {/* Mark read action */}
+                      {!notif.is_read && (
+                        <button
+                          className="notif-markread-btn"
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleMarkRead(notif);
+                          }}
+                          disabled={markingId === notif.id}
+                          aria-label={`Mark "${notif.title}" as read`}
+                          title="Mark as read"
+                        >
+                          {markingId === notif.id
+                            ? <Loader2 size={12} className="animate-spin" aria-hidden="true" />
+                            : <CheckCheck size={12} aria-hidden="true" />}
+                        </button>
+                      )}
+                    </li>
+                  );
+                })}
               </ul>
             )}
           </div>

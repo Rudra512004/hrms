@@ -175,8 +175,10 @@ export const Header: React.FC<HeaderProps> = ({ toggleSidebar }) => {
           <span style={{ fontSize: 'var(--font-size-sm)', fontWeight: 600, color: '#FFFFFF', lineHeight: 1.3 }}>
             {user?.firstName || user?.lastName ? `${user.firstName || ''} ${user.lastName || ''}`.trim() : 'Admin User'}
           </span>
-          <span style={{ fontSize: 'var(--font-size-xs)', color: 'rgba(255,255,255,0.6)', lineHeight: 1.3 }}>
-            {user?.email}
+          <span style={{ fontSize: 'var(--font-size-xs)', color: 'rgba(255,255,255,0.7)', lineHeight: 1.3 }}>
+            {user?.designation
+              ? `${user.designation}${user?.department ? ` • ${user.department}` : ''}`
+              : user?.email}
           </span>
         </div>
 

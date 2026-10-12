@@ -139,3 +139,22 @@ class NotificationAPITests(APITestCase):
 
         response = self.client.get('/api/v1/notifications/unread-count/')
         self.assertEqual(response.data['unread_count'], 1)
+
+    def test_no_org_user_unread_and_mark_all_safe(self):
+        """Users without employee/org context should get 0 unread and 0 updated safely without exceptions."""
+        self.client.force_authenticate(user=self.user_no_org)
+        res_count = self.client.get('/api/v1/notifications/unread-count/')
+        self.assertEqual(res_count.status_code, status.HTTP_200_OK)
+        self.assertEqual(res_count.data['unread_count'], 0)
+
+        res_mark = self.client.post('/api/v1/notifications/read-all/')
+        self.assertEqual(res_mark.status_code, status.HTTP_200_OK)
+        self.assertEqual(res_mark.data['updated_count'], 0)
+
+    def test_cross_tenant_unread_isolation(self):
+        """Verify unread count does not include notifications from other organizations."""
+        self.client.force_authenticate(user=self.user_b1)
+        response = self.client.get('/api/v1/notifications/unread-count/')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        # user_b1 has only 1 notification (notif_b1)
+        self.assertEqual(response.data['unread_count'], 1)

@@ -1,27 +1,23 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { useNavigate, Navigate } from 'react-router-dom';
-import {
-  Users,
-  Clock,
-  Calendar,
-  Coffee,
-  Activity,
-  LogIn,
-  LogOut,
-  Loader2,
-  RefreshCw,
-  Briefcase,
-  ShieldAlert,
-} from 'lucide-react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { Navigate } from 'react-router-dom';
+import { Loader2 } from 'lucide-react';
 
 import { useAuth } from '../contexts/AuthContext';
 import { AlertBanner } from '../components/AlertBanner';
-import { StatCard } from '../components/StatCard';
-import { attendanceService } from '../services/attendance';
-import { dashboardService, type DashboardOverviewResponse } from '../services/dashboard';
+import { attendanceService, type AttendanceRecord } from '../services/attendance';
+import {
+  dashboardService,
+  type DashboardOverviewResponse,
+  type AttendanceTrendItem,
+} from '../services/dashboard';
+import { leaveService, type LeaveRequest } from '../services/leaves';
 
 import {
-  PersonalAttendanceWidget,
+  WelcomeBanner,
+  AttendanceKpiCards,
+  TodayAttendanceCard,
+  AttendanceTrendWidget,
+  RecentLeaveRequestsWidget,
   LeaveBalanceWidget,
   TeamAttendanceWidget,
   OrgWorkforceWidget,
@@ -34,38 +30,72 @@ import {
 
 export const DashboardPage: React.FC = () => {
   const { user, hasEmployeeProfile } = useAuth();
-  const navigate = useNavigate();
 
   const [dashboardData, setDashboardData] = useState<DashboardOverviewResponse | null>(null);
+  const [attendanceHistory, setAttendanceHistory] = useState<AttendanceRecord[]>([]);
+  const [recentLeaveRequests, setRecentLeaveRequests] = useState<LeaveRequest[]>([]);
+  const [orgTrendData, setOrgTrendData] = useState<AttendanceTrendItem[] | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const [actionLoading, setActionLoading] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
 
-  const fetchDashboardData = useCallback(async (isSilent = false) => {
-    if (!isSilent) {
-      setLoading(true);
-      setError(null);
-    }
-    try {
-      const data = await dashboardService.getOverview();
-      setDashboardData(data);
-    } catch (err: any) {
-      console.error('Failed to load dashboard overview:', err);
+  const fetchDashboardData = useCallback(
+    async (isSilent = false) => {
       if (!isSilent) {
-        setError(
-          err?.errorData?.detail ||
-            err?.message ||
-            'Unable to load dashboard data. Please check your connection and try again.'
-        );
+        setLoading(true);
+        setError(null);
       }
-    } finally {
-      if (!isSilent) {
-        setLoading(false);
+      try {
+        const [overviewData, historyData, leavesData, trendsData] = await Promise.all([
+          dashboardService.getOverview(),
+          hasEmployeeProfile
+            ? attendanceService.getHistory().catch((err) => {
+                console.warn('Failed to load personal attendance history:', err);
+                return [] as AttendanceRecord[];
+              })
+            : Promise.resolve([] as AttendanceRecord[]),
+          hasEmployeeProfile
+            ? leaveService
+                .getRequests({ page_size: 5 })
+                .then((res: any) => {
+                  if (Array.isArray(res)) return res;
+                  if (res && Array.isArray(res.results)) return res.results;
+                  return [] as LeaveRequest[];
+                })
+                .catch((err) => {
+                  console.warn('Failed to load recent leave requests:', err);
+                  return [] as LeaveRequest[];
+                })
+            : Promise.resolve([] as LeaveRequest[]),
+          Promise.resolve()
+            .then(() => dashboardService.getTrends('7d'))
+            .then((res) => res?.attendance_trend ?? null)
+            .catch(() => null),
+        ]);
+
+        setDashboardData(overviewData);
+        setAttendanceHistory(historyData);
+        setRecentLeaveRequests(leavesData);
+        setOrgTrendData(trendsData);
+      } catch (err: any) {
+        console.error('Failed to load dashboard overview:', err);
+        if (!isSilent) {
+          setError(
+            err?.errorData?.detail ||
+              err?.message ||
+              'Unable to load dashboard data. Please check your connection and try again.'
+          );
+        }
+      } finally {
+        if (!isSilent) {
+          setLoading(false);
+        }
       }
-    }
-  }, []);
+    },
+    [hasEmployeeProfile]
+  );
 
   useEffect(() => {
     fetchDashboardData();
@@ -179,19 +209,82 @@ export const DashboardPage: React.FC = () => {
     }
   };
 
-  const greeting = () => {
-    const h = new Date().getHours();
-    if (h < 12) return 'Good morning';
-    if (h < 17) return 'Good afternoon';
-    return 'Good evening';
-  };
+  const personal = dashboardData?.personal;
+  const team = dashboardData?.team;
+  const org = dashboardData?.organization;
+  const attendanceToday = personal?.attendance_today;
+  const leaveBalances = personal?.leave_balances || [];
 
-  const dateStr = new Date().toLocaleDateString(undefined, {
-    weekday: 'long',
-    month: 'long',
-    day: 'numeric',
-    year: 'numeric',
-  });
+  // Compute month-to-date personal metrics
+  const kpiMetrics = useMemo(() => {
+    if (!hasEmployeeProfile) return null;
+
+    const now = new Date();
+    const currentMonth = now.getMonth();
+    const currentYear = now.getFullYear();
+
+    const currentMonthRecords = attendanceHistory.filter((rec) => {
+      if (!rec.date) return false;
+      const d = new Date(rec.date);
+      return d.getMonth() === currentMonth && d.getFullYear() === currentYear;
+    });
+
+    const relevantRecords = currentMonthRecords.length > 0 ? currentMonthRecords : attendanceHistory;
+
+    const presentDays = relevantRecords.filter(
+      (r) => r.status === 'present' || r.status === 'half_day' || Boolean(r.check_in)
+    ).length;
+
+    const lateArrivals = relevantRecords.filter((r) => r.is_late).length;
+
+    let elapsedWorkingDays = 0;
+    for (let day = 1; day <= now.getDate(); day++) {
+      const checkDate = new Date(currentYear, currentMonth, day);
+      const dayOfWeek = checkDate.getDay();
+      if (dayOfWeek !== 0 && dayOfWeek !== 6) {
+        elapsedWorkingDays++;
+      }
+    }
+    const totalWorkingDays = Math.max(elapsedWorkingDays, relevantRecords.length, 1);
+
+    const attendancePercentage =
+      relevantRecords.length > 0
+        ? Math.min(100, Math.round((presentDays / totalWorkingDays) * 100 * 10) / 10)
+        : org?.attendance_today?.attendance_percentage ?? null;
+
+    let totalSecondsWorked = 0;
+    for (const rec of relevantRecords) {
+      if (rec.productive_work_duration) {
+        const parts = rec.productive_work_duration.split(':');
+        if (parts.length >= 2) {
+          const h = parseInt(parts[0], 10) || 0;
+          const m = parseInt(parts[1], 10) || 0;
+          const s = parseInt(parts[2], 10) || 0;
+          totalSecondsWorked += h * 3600 + m * 60 + s;
+        }
+      }
+    }
+
+    if (attendanceToday?.productive_work_duration_seconds) {
+      const todayDateStr = now.toISOString().split('T')[0];
+      const hasTodayInRecords = relevantRecords.some((r) => r.date === todayDateStr);
+      if (!hasTodayInRecords) {
+        totalSecondsWorked += attendanceToday.productive_work_duration_seconds;
+      }
+    }
+
+    const hoursWorked = Math.floor(totalSecondsWorked / 3600);
+    const minsWorked = Math.floor((totalSecondsWorked % 3600) / 60);
+    const hoursWorkedFormatted = `${hoursWorked}h ${minsWorked}m`;
+
+    return {
+      presentDays,
+      totalWorkingDays,
+      attendancePercentage,
+      hoursWorkedFormatted,
+      lateArrivals,
+    };
+  }, [hasEmployeeProfile, attendanceHistory, attendanceToday, org]);
 
   if (!user) {
     return (
@@ -206,151 +299,21 @@ export const DashboardPage: React.FC = () => {
     return <Navigate to="/admin/organization-launchpad" replace />;
   }
 
-  const personal = dashboardData?.personal;
-  const team = dashboardData?.team;
-  const org = dashboardData?.organization;
-
-  const attendanceToday = personal?.attendance_today;
-  const leaveBalances = personal?.leave_balances || [];
-  const totalLeaveRemaining = leaveBalances.reduce((acc, b) => acc + (b.remaining || 0), 0);
-
   return (
     <div className="animate-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: 'var(--spacing-lg)' }}>
-      {/* Executive Welcome Hero Banner */}
-      <div
-        style={{
-          background: 'linear-gradient(135deg, var(--color-primary-glow) 0%, rgba(71, 191, 255, 0.06) 100%)',
-          border: '1px solid var(--color-primary-border)',
-          borderRadius: 'var(--radius-xl)',
-          padding: '22px 26px',
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          flexWrap: 'wrap',
-          gap: '16px',
-          boxShadow: 'var(--shadow-xs)',
-        }}
-      >
-        <div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '4px', flexWrap: 'wrap' }}>
-            <h1
-              style={{
-                fontSize: '1.5rem',
-                fontWeight: 700,
-                margin: 0,
-                color: 'var(--color-text-main)',
-                letterSpacing: '-0.02em',
-              }}
-            >
-              {greeting()}, {user.firstName || user.email.split('@')[0]}
-            </h1>
-            {hasEmployeeProfile ? (
-              <span
-                style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: '5px',
-                  padding: '2px 8px',
-                  borderRadius: 'var(--radius-full)',
-                  fontSize: '0.7rem',
-                  fontWeight: 600,
-                  backgroundColor:
-                    attendanceToday && !attendanceToday.check_out
-                      ? 'rgba(5, 150, 105, 0.12)'
-                      : 'rgba(100, 116, 139, 0.1)',
-                  color:
-                    attendanceToday && !attendanceToday.check_out
-                      ? 'var(--color-status-success)'
-                      : 'var(--color-text-muted)',
-                  border:
-                    attendanceToday && !attendanceToday.check_out
-                      ? '1px solid rgba(5, 150, 105, 0.25)'
-                      : '1px solid rgba(100, 116, 139, 0.2)',
-                }}
-              >
-                <span style={{ width: 6, height: 6, borderRadius: '50%', backgroundColor: 'currentColor' }} />
-                {attendanceToday
-                  ? attendanceToday.check_out
-                    ? 'Shift Completed'
-                    : attendanceToday.is_on_break
-                    ? 'On Break'
-                    : 'Clocked In'
-                  : 'Not Clocked In'}
-              </span>
-            ) : (
-              <span
-                style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: '5px',
-                  padding: '2px 10px',
-                  borderRadius: 'var(--radius-full)',
-                  fontSize: '0.72rem',
-                  fontWeight: 600,
-                  backgroundColor: 'var(--color-primary-light)',
-                  color: 'var(--color-primary)',
-                  border: '1px solid var(--color-primary-border)',
-                }}
-              >
-                <ShieldAlert size={12} />
-                System Administrator
-              </span>
-            )}
-          </div>
-          <p style={{ color: 'var(--color-text-muted)', margin: 0, fontSize: 'var(--font-size-sm)' }}>
-            {dateStr} • BeyondSure HRMS Workspace
-          </p>
-        </div>
+      {/* 1. Deep-green Role-Aware Welcome Banner */}
+      <WelcomeBanner
+        user={user}
+        hasEmployeeProfile={hasEmployeeProfile}
+        attendanceToday={attendanceToday}
+        actionLoading={actionLoading}
+        loading={loading}
+        onCheckIn={handleCheckIn}
+        onCheckOut={handleCheckOut}
+        onRefresh={() => fetchDashboardData()}
+      />
 
-        {/* Quick actions inside banner */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-          {hasEmployeeProfile ? (
-            <>
-              {!attendanceToday ? (
-                <button className="btn btn-primary" onClick={handleCheckIn} disabled={actionLoading} type="button">
-                  {actionLoading ? <Loader2 size={15} className="animate-spin" /> : <LogIn size={15} />}
-                  Web Check In
-                </button>
-              ) : !attendanceToday.check_out ? (
-                <button className="btn btn-primary" onClick={handleCheckOut} disabled={actionLoading} type="button">
-                  {actionLoading ? <Loader2 size={15} className="animate-spin" /> : <LogOut size={15} />}
-                  Check Out
-                </button>
-              ) : null}
-
-              <button className="btn btn-secondary" onClick={() => navigate('/leaves')} type="button">
-                <Calendar size={15} /> Apply Leave
-              </button>
-              <button className="btn btn-secondary" onClick={() => navigate('/payslips')} type="button">
-                My Payslips
-              </button>
-            </>
-          ) : (
-            <>
-              <button className="btn btn-primary" onClick={() => navigate('/admin/employees')} type="button">
-                <Users size={15} /> Employees
-              </button>
-              <button className="btn btn-secondary" onClick={() => navigate('/admin/attendance')} type="button">
-                <Clock size={15} /> Attendance
-              </button>
-              <button className="btn btn-secondary" onClick={() => navigate('/admin/leaves')} type="button">
-                <Calendar size={15} /> Leave Requests
-              </button>
-            </>
-          )}
-          <button
-            className="btn btn-ghost"
-            onClick={() => fetchDashboardData()}
-            title="Refresh dashboard"
-            type="button"
-            style={{ padding: '8px' }}
-          >
-            <RefreshCw size={15} className={loading ? 'animate-spin' : ''} />
-          </button>
-        </div>
-      </div>
-
-      {/* Global Error Banner if initial fetch failed */}
+      {/* Global Error Banner */}
       {error && (
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap' }}>
           <AlertBanner type="error" message={error} style={{ flex: 1 }} />
@@ -360,144 +323,45 @@ export const DashboardPage: React.FC = () => {
         </div>
       )}
 
-      {/* Loading Skeleton Indicator */}
+      {/* Loading Skeleton */}
       {loading && !dashboardData && (
         <div className="loading-center" style={{ padding: '60px 0' }}>
           <Loader2 size={32} className="animate-spin" style={{ color: 'var(--color-primary)' }} />
         </div>
       )}
 
-      {/* Executive KPI Hierarchy Strip */}
-      {dashboardData && (
-        <div
-          style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
-            gap: 'var(--spacing-md)',
-          }}
-        >
-          {/* Card 1: Primary Organizational Rate OR Shift Status */}
-          {org?.attendance_today ? (
-            <StatCard
-              title="Net Attendance Rate"
-              value={`${org.attendance_today.attendance_percentage.toFixed(1)}%`}
-              icon={Activity}
-              color={
-                org.attendance_today.attendance_percentage >= 90
-                  ? 'var(--color-status-success)'
-                  : org.attendance_today.attendance_percentage >= 75
-                  ? 'var(--color-status-warning)'
-                  : 'var(--color-status-danger)'
-              }
-            />
-          ) : (
-            <StatCard
-              title={attendanceToday?.check_out ? 'Shift Closed' : attendanceToday ? 'Clocked In' : 'No Punch Recorded'}
-              value={
-                attendanceToday?.check_in
-                  ? new Date(attendanceToday.check_in).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-                  : 'Not Logged'
-              }
-              icon={Clock}
-              color="#0284c7"
-            />
-          )}
+      {/* 2. White Rounded Attendance KPI Cards Strip */}
+      <AttendanceKpiCards
+        hasEmployeeProfile={hasEmployeeProfile}
+        presentDays={kpiMetrics?.presentDays}
+        totalWorkingDays={kpiMetrics?.totalWorkingDays}
+        attendancePercentage={kpiMetrics?.attendancePercentage}
+        hoursWorkedFormatted={kpiMetrics?.hoursWorkedFormatted}
+        lateArrivals={kpiMetrics?.lateArrivals}
+        orgAttendancePercentage={org?.attendance_today?.attendance_percentage}
+        orgActiveWorkforce={org?.workforce?.total_active}
+        orgPendingApprovals={
+          org?.pending_approvals
+            ? (org.pending_approvals.leaves_count || 0) + (org.pending_approvals.wfh_count || 0)
+            : team?.pending_approvals
+            ? team.pending_approvals.leaves_count + team.pending_approvals.wfh_count
+            : null
+        }
+        teamReportsCount={team?.direct_reports_count}
+        teamPresentCount={team?.attendance_today?.present}
+        loading={loading && !dashboardData}
+      />
 
-          {/* Card 2: Workforce Capacity OR Team Status */}
-          {org?.workforce ? (
-            <StatCard
-              title="Active Workforce"
-              value={org.workforce.total_active}
-              icon={Users}
-              color="var(--color-primary)"
-            />
-          ) : team ? (
-            <StatCard
-              title="Team Direct Reports"
-              value={`${team.attendance_today.present}/${team.direct_reports_count} Present`}
-              icon={Users}
-              color="var(--color-primary)"
-            />
-          ) : (
-            <StatCard
-              title={attendanceToday?.check_out ? 'Shift Closed' : attendanceToday ? 'Clocked In' : 'No Punch Recorded'}
-              value={
-                attendanceToday?.check_in
-                  ? new Date(attendanceToday.check_in).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-                  : 'Not Logged'
-              }
-              icon={Clock}
-              color="#0284c7"
-            />
-          )}
-
-          {/* Card 3: Pending Approvals / Actions */}
-          {team ? (
-            <StatCard
-              title="Pending Team Approvals"
-              value={team.pending_approvals.leaves_count + team.pending_approvals.wfh_count}
-              icon={Calendar}
-              color="#d97706"
-            />
-          ) : org?.pending_approvals ? (
-            <StatCard
-              title="Pending Org Approvals"
-              value={(org.pending_approvals.leaves_count || 0) + (org.pending_approvals.wfh_count || 0)}
-              icon={Calendar}
-              color="#d97706"
-            />
-          ) : (
-            <StatCard
-              title="My Pending Requests"
-              value={personal?.my_pending_requests.total || 0}
-              icon={Calendar}
-              color="#d97706"
-            />
-          )}
-
-          {/* Card 4: Available Leave Balance OR Workforce Breakdown */}
-          {hasEmployeeProfile ? (
-            <StatCard
-              title="Available Leave Days"
-              value={`${totalLeaveRemaining}d`}
-              icon={Coffee}
-              color="#059669"
-            />
-          ) : (
-            <StatCard
-              title="Onboarding / On Notice"
-              value={`${org?.workforce?.total_onboarding ?? 0} / ${org?.workforce?.total_on_notice ?? 0}`}
-              icon={Briefcase}
-              color="#059669"
-            />
-          )}
-        </div>
-      )}
-
-      {/* Main Responsive Asymmetric Layout */}
+      {/* 3. Main Asymmetric Dashboard Grid */}
       {dashboardData && (
         <div className="dashboard-main-grid">
-          {/* Primary Analytics Rail (Left) */}
+          {/* Primary Operations & Analytics Rail (Left) */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--spacing-lg)', minWidth: 0 }}>
-            {/* Net Scheduled Attendance Rate & Distribution Bar */}
-            {org?.attendance_today && <AttendanceRateWidget attendance={org.attendance_today} />}
-
-            {/* Historical Analytics & Trends (7d Attendance / 6m Workforce) */}
-            <DashboardTrendsSection />
-
-            {/* Team Attendance Pulse for Managers */}
-            {team && <TeamAttendanceWidget team={team} />}
-
-            {/* Organization Workforce & Department Analytics */}
-            {org?.workforce && <OrgWorkforceWidget workforce={org.workforce} />}
-          </div>
-
-          {/* Operational & Actions Rail (Right) */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--spacing-lg)', minWidth: 0 }}>
-            {/* Personal Attendance Terminal (Employees Only) */}
+            {/* Today's Attendance Terminal (Employees Only) */}
             {hasEmployeeProfile && (
-              <PersonalAttendanceWidget
+              <TodayAttendanceCard
                 attendance={attendanceToday || null}
+                loading={loading && !dashboardData}
                 actionLoading={actionLoading}
                 actionError={actionError}
                 onCheckIn={handleCheckIn}
@@ -506,6 +370,40 @@ export const DashboardPage: React.FC = () => {
                 onEndBreak={handleEndBreak}
               />
             )}
+
+            {/* Attendance Trend Widget */}
+            <AttendanceTrendWidget
+              personalRecords={attendanceHistory}
+              orgTrendData={orgTrendData}
+              hasOrgViewPermission={Boolean(org || team)}
+              loading={loading && !dashboardData}
+            />
+
+            {/* Team Attendance Pulse for Managers */}
+            {team && <TeamAttendanceWidget team={team} />}
+
+            {/* Net Scheduled Attendance Rate & Distribution Bar for Org */}
+            {org?.attendance_today && <AttendanceRateWidget attendance={org.attendance_today} />}
+
+            {/* Organization Workforce & Department Analytics */}
+            {org?.workforce && <OrgWorkforceWidget workforce={org.workforce} />}
+
+            {/* Historical Analytics & Trends (7d Attendance / 6m Workforce) */}
+            <DashboardTrendsSection />
+          </div>
+
+          {/* Operational & Requests Rail (Right) */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--spacing-lg)', minWidth: 0 }}>
+            {/* Recent Leave Requests Widget (Employees Only) */}
+            {hasEmployeeProfile && (
+              <RecentLeaveRequestsWidget
+                requests={recentLeaveRequests}
+                loading={loading && !dashboardData}
+              />
+            )}
+
+            {/* Leave Balances with Progress Indicators (Employees Only) */}
+            {hasEmployeeProfile && <LeaveBalanceWidget balances={leaveBalances} />}
 
             {/* Pending Approvals Command Center */}
             <PendingApprovalsWidget
@@ -517,9 +415,6 @@ export const DashboardPage: React.FC = () => {
             {/* Categorized Quick Actions */}
             <QuickActionsWidget hasTeam={Boolean(team)} hasOrg={Boolean(org?.workforce || org?.attendance_today)} />
 
-            {/* Leave Balances with Progress Indicators (Employees Only) */}
-            {hasEmployeeProfile && <LeaveBalanceWidget balances={leaveBalances} />}
-
             {/* Upcoming Company Holidays */}
             {personal?.upcoming_holidays && personal.upcoming_holidays.length > 0 && (
               <UpcomingHolidaysWidget holidays={personal.upcoming_holidays} />
@@ -530,3 +425,4 @@ export const DashboardPage: React.FC = () => {
     </div>
   );
 };
+
