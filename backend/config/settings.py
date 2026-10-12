@@ -246,6 +246,10 @@ if render_external_hostname:
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 MEDIA_ROOT = BASE_DIR / 'media' / 'private'
+# MEDIA_URL is intentionally not exposed via a public URL pattern.
+# Local development: files served only through authenticated backend endpoints.
+# Production: files served from S3 pre-signed URLs (no public bucket exposure).
+MEDIA_URL = '/media/private/'
 MAX_DOCUMENT_UPLOAD_SIZE = 5 * 1024 * 1024  # 5 MB
 
 if not DEBUG:
