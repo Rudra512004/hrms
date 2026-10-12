@@ -119,30 +119,42 @@ class AttendanceViewSet(viewsets.GenericViewSet):
         check_in_time = timezone.now()
         is_late = AttendanceCalculationService.is_late_check_in(shift, check_in_time, target_date=today)
 
-        try:
-            with transaction.atomic():
-                if Attendance.objects.filter(employee=employee, date=today).exists():
+        with transaction.atomic():
+            attendance = Attendance.objects.select_for_update().filter(employee=employee, date=today).first()
+            if attendance:
+                if attendance.check_in:
+                    return Response({'detail': 'Check-in already exists for today.'}, status=status.HTTP_400_BAD_REQUEST)
+                # Existing record with null check_in: record the punch-in now
+                attendance.check_in = check_in_time
+                attendance.status = 'present'
+                attendance.is_late = is_late
+                if loc:
+                    attendance.check_in_latitude = loc.get('lat')
+                    attendance.check_in_longitude = loc.get('lon')
+                    attendance.check_in_accuracy = loc.get('acc')
+                attendance.save()
+            else:
+                try:
+                    attendance = Attendance.objects.create(
+                        employee=employee,
+                        date=today,
+                        check_in=check_in_time,
+                        status='present',
+                        is_late=is_late,
+                        check_in_latitude=loc.get('lat') if loc else None,
+                        check_in_longitude=loc.get('lon') if loc else None,
+                        check_in_accuracy=loc.get('acc') if loc else None
+                    )
+                except IntegrityError:
                     return Response({'detail': 'Check-in already exists for today.'}, status=status.HTTP_400_BAD_REQUEST)
 
-                attendance = Attendance.objects.create(
-                    employee=employee,
-                    date=today,
-                    check_in=check_in_time,
-                    status='present',
-                    is_late=is_late,
-                    check_in_latitude=loc.get('lat') if loc else None,
-                    check_in_longitude=loc.get('lon') if loc else None,
-                    check_in_accuracy=loc.get('acc') if loc else None
-                )
-                AuditService.log(
-                    action='check-in',
-                    actor=request.user,
-                    target_type='attendance',
-                    target_id=attendance.id,
-                    request=request
-                )
-        except IntegrityError:
-            return Response({'detail': 'Check-in already exists for today.'}, status=status.HTTP_400_BAD_REQUEST)
+            AuditService.log(
+                action='check-in',
+                actor=request.user,
+                target_type='attendance',
+                target_id=attendance.id,
+                request=request
+            )
 
         serializer = self.get_serializer(attendance)
         return Response(serializer.data, status=status.HTTP_201_CREATED)
@@ -230,6 +242,9 @@ class AttendanceViewSet(viewsets.GenericViewSet):
             try:
                 attendance = Attendance.objects.select_for_update().get(employee=employee, date=today)
             except Attendance.DoesNotExist:
+                return Response({'detail': 'Cannot start a break without checking in.'}, status=status.HTTP_400_BAD_REQUEST)
+
+            if not attendance.check_in:
                 return Response({'detail': 'Cannot start a break without checking in.'}, status=status.HTTP_400_BAD_REQUEST)
 
             if attendance.check_out:
@@ -348,6 +363,9 @@ class AttendanceViewSet(viewsets.GenericViewSet):
                 attendance = Attendance.objects.select_for_update().get(employee=employee, date=today)
             except Attendance.DoesNotExist:
                 return Response({'detail': 'No active attendance found.'}, status=status.HTTP_400_BAD_REQUEST)
+
+            if not attendance.check_in:
+                return Response({'detail': 'Cannot end a break without checking in.'}, status=status.HTTP_400_BAD_REQUEST)
 
             active_breaks = attendance.breaks.filter(ended_at__isnull=True)
             if not active_breaks.exists():

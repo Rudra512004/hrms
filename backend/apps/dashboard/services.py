@@ -76,7 +76,8 @@ class DashboardAggregationService:
         att = Attendance.objects.filter(employee=employee, date=today).first()
         att_data = None
         if att:
-            active_break = att.breaks.filter(ended_at__isnull=True).order_by('-started_at').first()
+            is_active_session = att.check_in is not None
+            active_break = att.breaks.filter(ended_at__isnull=True).order_by('-started_at').first() if is_active_session else None
             is_on_break = active_break is not None
             current_break_started_at = (
                 active_break.started_at.isoformat()
@@ -87,22 +88,25 @@ class DashboardAggregationService:
                 (b.ended_at - b.started_at).total_seconds()
                 for b in att.breaks.filter(ended_at__isnull=False)
                 if b.ended_at and b.started_at and b.ended_at >= b.started_at
-            ))
+            )) if is_active_session else 0
             saved_break_sec = (
                 int(att.total_break_duration.total_seconds())
-                if att.total_break_duration
+                if att.total_break_duration and is_active_session
                 else 0
             )
             total_break_sec = max(saved_break_sec, completed_break_sec)
             productive_sec = (
                 int(att.productive_work_duration.total_seconds())
-                if att.productive_work_duration
+                if att.productive_work_duration and is_active_session
                 else 0
             )
+            effective_status = att.status
+            if not att.check_in and effective_status == 'present':
+                effective_status = 'absent'
             att_data = {
                 'id': att.id,
                 'date': str(att.date),
-                'status': att.status,
+                'status': effective_status,
                 'check_in': att.check_in.isoformat() if att.check_in else None,
                 'check_out': att.check_out.isoformat() if att.check_out else None,
                 'is_on_break': is_on_break,
@@ -174,8 +178,8 @@ class DashboardAggregationService:
 
         # 1. Team Attendance Pulse today
         team_att = Attendance.objects.filter(employee__in=team_qs, date=today)
-        present_emp_ids = set(team_att.filter(status='present').values_list('employee_id', flat=True))
-        half_day_emp_ids = set(team_att.filter(status='half_day').values_list('employee_id', flat=True))
+        present_emp_ids = set(team_att.filter(status='present', check_in__isnull=False).values_list('employee_id', flat=True))
+        half_day_emp_ids = set(team_att.filter(status='half_day', check_in__isnull=False).values_list('employee_id', flat=True))
         on_break_count = team_att.filter(breaks__ended_at__isnull=True).distinct().count()
 
         now = timezone.now()
@@ -358,8 +362,8 @@ class DashboardAggregationService:
                 employee__user__status='active',
                 date=today
             )
-            present_emp_ids = set(org_att.filter(status='present').values_list('employee_id', flat=True))
-            half_day_emp_ids = set(org_att.filter(status='half_day').values_list('employee_id', flat=True))
+            present_emp_ids = set(org_att.filter(status='present', check_in__isnull=False).values_list('employee_id', flat=True))
+            half_day_emp_ids = set(org_att.filter(status='half_day', check_in__isnull=False).values_list('employee_id', flat=True))
             on_break_count = org_att.filter(breaks__ended_at__isnull=True).distinct().count()
 
             now = timezone.now()

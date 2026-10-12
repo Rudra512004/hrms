@@ -128,6 +128,57 @@ describe('Phase 16B: Role-Aware Employee Dashboard Redesign', () => {
       expect(screen.getByText(/On Break/i)).toBeInTheDocument();
     });
 
+    it('displays Not Clocked In and Web Check In button when attendance record has null check_in', () => {
+      render(
+        <MemoryRouter>
+          <WelcomeBanner
+            user={mockUser as any}
+            hasEmployeeProfile={true}
+            attendanceToday={{
+              id: 98,
+              date: '2026-10-12',
+              status: 'present',
+              check_in: null,
+              check_out: null,
+              is_on_break: false,
+              total_break_duration_seconds: 0,
+              productive_work_duration_seconds: 0,
+            }}
+          />
+        </MemoryRouter>
+      );
+
+      expect(screen.getByText(/Not Clocked In/i)).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /Web Check In/i })).toBeInTheDocument();
+      expect(screen.queryByText(/^Clocked In$/i)).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /Check Out/i })).not.toBeInTheDocument();
+    });
+
+    it('displays Shift Completed and no punch actions when shift has both check_in and check_out', () => {
+      render(
+        <MemoryRouter>
+          <WelcomeBanner
+            user={mockUser as any}
+            hasEmployeeProfile={true}
+            attendanceToday={{
+              id: 98,
+              date: '2026-10-12',
+              status: 'present',
+              check_in: '2026-10-12T09:00:00Z',
+              check_out: '2026-10-12T17:30:00Z',
+              is_on_break: false,
+              total_break_duration_seconds: 0,
+              productive_work_duration_seconds: 28800,
+            }}
+          />
+        </MemoryRouter>
+      );
+
+      expect(screen.getByText(/Shift Completed/i)).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /Check Out/i })).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /Web Check In/i })).not.toBeInTheDocument();
+    });
+
     it('renders admin badge and admin navigation shortcuts when user lacks employee profile', () => {
       const adminUser = {
         ...mockUser,
@@ -364,6 +415,72 @@ describe('Phase 16B: Role-Aware Employee Dashboard Redesign', () => {
 
       expect(screen.getByTestId('live-break-duration')).toHaveTextContent('15m');
       viDateSpy.mockRestore();
+    });
+
+    it('displays Not Clocked In, enables Web Punch In, and does not show Punch Out or Take Break when attendance has null check_in', () => {
+      const onCheckIn = vi.fn();
+      render(
+        <MemoryRouter>
+          <TodayAttendanceCard
+            attendance={{
+              id: 98,
+              date: '2026-10-12',
+              status: 'present',
+              check_in: null,
+              check_out: null,
+              is_on_break: false,
+              total_break_duration_seconds: 0,
+              productive_work_duration_seconds: 0,
+            }}
+            actionLoading={false}
+            actionError={null}
+            onCheckIn={onCheckIn}
+            onCheckOut={vi.fn()}
+            onStartBreak={vi.fn()}
+            onEndBreak={vi.fn()}
+          />
+        </MemoryRouter>
+      );
+
+      expect(screen.getAllByText(/Not Clocked In/i).length).toBeGreaterThanOrEqual(1);
+      const checkInBtn = screen.getByRole('button', { name: /Web Punch In/i });
+      expect(checkInBtn).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /Punch Out/i })).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /Take Break/i })).not.toBeInTheDocument();
+
+      fireEvent.click(checkInBtn);
+      expect(onCheckIn).toHaveBeenCalledTimes(1);
+    });
+
+    it('displays completed state and omits punch actions when shift has both check_in and check_out', () => {
+      render(
+        <MemoryRouter>
+          <TodayAttendanceCard
+            attendance={{
+              id: 98,
+              date: '2026-10-12',
+              status: 'present',
+              check_in: '2026-10-12T09:00:00Z',
+              check_out: '2026-10-12T17:30:00Z',
+              is_on_break: false,
+              total_break_duration_seconds: 0,
+              productive_work_duration_seconds: 28800,
+            }}
+            actionLoading={false}
+            actionError={null}
+            onCheckIn={vi.fn()}
+            onCheckOut={vi.fn()}
+            onStartBreak={vi.fn()}
+            onEndBreak={vi.fn()}
+          />
+        </MemoryRouter>
+      );
+
+      expect(screen.getAllByText(/Shift Completed/i).length).toBeGreaterThanOrEqual(1);
+      expect(screen.getByText(/Daily punch sequence complete for today/i)).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /Web Punch In/i })).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /Punch Out/i })).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /Take Break/i })).not.toBeInTheDocument();
     });
   });
 
@@ -661,6 +778,180 @@ describe('Phase 16B: Role-Aware Employee Dashboard Redesign', () => {
           expect.objectContaining({ reason: 'lunch' })
         );
       });
+    });
+
+    it('handles attendance record with null check-in: displays Not Clocked In, Web Punch In, and does not show Punch Out', async () => {
+      vi.mocked(AuthContext.useAuth).mockReturnValue({
+        user: {
+          id: 1,
+          email: 'jordan@beyondsure.com',
+          firstName: 'Jordan',
+          lastName: 'Lee',
+          isSuperuser: false,
+          canCreateOrganization: false,
+          designation: 'Product Designer',
+          department: 'Design',
+          organizationName: 'BeyondSure Systems',
+        },
+        hasEmployeeProfile: true,
+        loading: false,
+        error: null,
+      } as any);
+
+      vi.mocked(dashboardService.getOverview).mockResolvedValue({
+        personal: {
+          attendance_today: {
+            id: 98,
+            date: '2026-10-12',
+            status: 'present',
+            check_in: null,
+            check_out: null,
+            is_on_break: false,
+            total_break_duration_seconds: 0,
+            productive_work_duration_seconds: 0,
+          },
+          leave_balances: [],
+          my_pending_requests: { leaves: 0, wfh: 0, total: 0 },
+          upcoming_holidays: [],
+        },
+        team: null,
+        organization: null,
+      } as any);
+
+      vi.mocked(attendanceService.getHistory).mockResolvedValue([] as any);
+      vi.mocked(leaveService.getRequests).mockResolvedValue([] as any);
+
+      render(
+        <MemoryRouter>
+          <DashboardPage />
+        </MemoryRouter>
+      );
+
+      await waitFor(() => {
+        expect(screen.getByText(/Jordan/i)).toBeInTheDocument();
+      });
+
+      // Status must not say "Clocked In" or offer "Check Out" / "Punch Out"
+      expect(screen.getAllByText(/Not Clocked In/i).length).toBeGreaterThanOrEqual(1);
+      expect(screen.queryByText(/^Clocked In$/i)).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /^Check Out$/i })).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /^Punch Out$/i })).not.toBeInTheDocument();
+
+      // Punch In actions must be offered
+      const punchInBtn = screen.getByRole('button', { name: /Web Punch In/i });
+      expect(punchInBtn).toBeInTheDocument();
+
+      // Punch In triggers checkIn service
+      vi.mocked(attendanceService.checkIn).mockResolvedValueOnce({
+        id: 98,
+        date: '2026-10-12',
+        status: 'present',
+        check_in: '2026-10-12T10:00:00Z',
+        check_out: null,
+      } as any);
+
+      fireEvent.click(punchInBtn);
+
+      await waitFor(() => {
+        expect(attendanceService.checkIn).toHaveBeenCalledTimes(1);
+      });
+    });
+
+    it('handles completed attendance: displays Shift Completed and does not offer checkout again', async () => {
+      vi.mocked(AuthContext.useAuth).mockReturnValue({
+        user: {
+          id: 1,
+          email: 'jordan@beyondsure.com',
+          firstName: 'Jordan',
+          lastName: 'Lee',
+          isSuperuser: false,
+          canCreateOrganization: false,
+          designation: 'Product Designer',
+          department: 'Design',
+          organizationName: 'BeyondSure Systems',
+        },
+        hasEmployeeProfile: true,
+        loading: false,
+        error: null,
+      } as any);
+
+      vi.mocked(dashboardService.getOverview).mockResolvedValue({
+        personal: {
+          attendance_today: {
+            id: 98,
+            date: '2026-10-12',
+            status: 'present',
+            check_in: '2026-10-12T09:00:00Z',
+            check_out: '2026-10-12T17:30:00Z',
+            is_on_break: false,
+            total_break_duration_seconds: 0,
+            productive_work_duration_seconds: 28800,
+          },
+          leave_balances: [],
+          my_pending_requests: { leaves: 0, wfh: 0, total: 0 },
+          upcoming_holidays: [],
+        },
+        team: null,
+        organization: null,
+      } as any);
+
+      vi.mocked(attendanceService.getHistory).mockResolvedValue([] as any);
+      vi.mocked(leaveService.getRequests).mockResolvedValue([] as any);
+
+      render(
+        <MemoryRouter>
+          <DashboardPage />
+        </MemoryRouter>
+      );
+
+      await waitFor(() => {
+        expect(screen.getByText(/Jordan/i)).toBeInTheDocument();
+      });
+
+      expect(screen.getAllByText(/Shift Completed/i).length).toBeGreaterThanOrEqual(1);
+      expect(screen.getByText(/Daily punch sequence complete for today/i)).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /^Check Out$/i })).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /^Punch Out$/i })).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /Web Punch In/i })).not.toBeInTheDocument();
+    });
+
+    it('does not claim user is clocked in when dashboard overview fails with an error', async () => {
+      vi.mocked(AuthContext.useAuth).mockReturnValue({
+        user: {
+          id: 1,
+          email: 'jordan@beyondsure.com',
+          firstName: 'Jordan',
+          lastName: 'Lee',
+          isSuperuser: false,
+          canCreateOrganization: false,
+          designation: 'Product Designer',
+          department: 'Design',
+          organizationName: 'BeyondSure Systems',
+        },
+        hasEmployeeProfile: true,
+        loading: false,
+        error: null,
+      } as any);
+
+      vi.mocked(dashboardService.getOverview).mockRejectedValue(new Error('Network error'));
+      vi.mocked(attendanceService.getHistory).mockResolvedValue([] as any);
+      vi.mocked(leaveService.getRequests).mockResolvedValue([] as any);
+
+      render(
+        <MemoryRouter>
+          <DashboardPage />
+        </MemoryRouter>
+      );
+
+      await waitFor(() => {
+        expect(screen.getByText(/Jordan/i)).toBeInTheDocument();
+      });
+
+      // Error state must NOT claim user is clocked in
+      expect(screen.queryByText(/^Clocked In$/i)).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /^Check Out$/i })).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /^Punch Out$/i })).not.toBeInTheDocument();
+      expect(screen.getAllByText(/Not Clocked In/i).length).toBeGreaterThanOrEqual(1);
     });
   });
 });

@@ -121,7 +121,7 @@ export const TodayAttendanceCard: React.FC<TodayAttendanceCardProps> = ({
   ]);
 
   const getStatusInfo = () => {
-    if (!attendance) {
+    if (!attendance || !attendance.check_in) {
       return {
         badgeStatus: 'neutral' as const,
         label: 'Not Clocked In',
@@ -243,7 +243,7 @@ export const TodayAttendanceCard: React.FC<TodayAttendanceCardProps> = ({
               height: 8,
               borderRadius: '50%',
               backgroundColor:
-                attendance && !attendance.check_out
+                attendance?.check_in && !attendance.check_out
                   ? 'var(--color-status-success)'
                   : 'var(--color-text-muted)',
               display: 'inline-block',
@@ -350,7 +350,7 @@ export const TodayAttendanceCard: React.FC<TodayAttendanceCardProps> = ({
                 Worked Time
               </div>
               <div style={{ fontSize: '1.15rem', fontWeight: 700, color: 'var(--color-status-success)' }}>
-                {attendance ? formatSeconds(attendance.productive_work_duration_seconds) : '--'}
+                {attendance?.check_in ? formatSeconds(attendance.productive_work_duration_seconds) : '--'}
               </div>
             </div>
 
@@ -366,7 +366,7 @@ export const TodayAttendanceCard: React.FC<TodayAttendanceCardProps> = ({
                 <span style={{ fontSize: 'var(--font-size-xs)', color: 'var(--color-text-muted)', fontWeight: 500 }}>
                   Break Time
                 </span>
-                {attendance?.is_on_break && (
+                {attendance?.check_in && attendance?.is_on_break && (
                   <span
                     data-testid="live-break-badge"
                     style={{
@@ -388,14 +388,14 @@ export const TodayAttendanceCard: React.FC<TodayAttendanceCardProps> = ({
                 data-testid="live-break-duration"
                 style={{ fontSize: '1.15rem', fontWeight: 700, color: 'var(--color-status-warning)' }}
               >
-                {attendance ? formatSeconds(liveBreakDuration) : '--'}
+                {attendance?.check_in ? formatSeconds(liveBreakDuration) : '--'}
               </div>
             </div>
           </div>
 
           {/* Interactive Punch & Break Controls */}
           <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', paddingTop: '4px' }}>
-            {!attendance ? (
+            {!attendance || !attendance.check_in ? (
               <button
                 className="btn btn-primary"
                 onClick={onCheckIn}

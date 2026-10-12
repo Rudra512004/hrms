@@ -595,3 +595,80 @@ class AttendanceAPITests(TestCase):
         )
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertEqual(response.data['detail'], 'Selected break type is unavailable.')
+
+    def test_check_in_with_existing_attendance_null_check_in_succeeds(self):
+        """When an attendance record already exists for today with check_in=None,
+        check-in updates the existing record and sets check_in without producing HTTP 400 or duplicate row."""
+        today = timezone.now().date()
+        att = Attendance.objects.create(
+            employee=self.employee,
+            date=today,
+            status='absent',
+            check_in=None
+        )
+        self.client.force_authenticate(user=self.user)
+        response = self.client.post(reverse('attendance-check-in'), REMOTE_ADDR=self.office_ip)
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(Attendance.objects.filter(employee=self.employee, date=today).count(), 1)
+
+        att.refresh_from_db()
+        self.assertIsNotNone(att.check_in)
+        self.assertEqual(att.status, 'present')
+        self.assertIsNone(att.check_out)
+
+    def test_start_break_with_null_check_in_rejected(self):
+        """When attendance record exists with check_in=None, start-break returns HTTP 400."""
+        today = timezone.now().date()
+        Attendance.objects.create(
+            employee=self.employee,
+            date=today,
+            status='absent',
+            check_in=None
+        )
+        self.client.force_authenticate(user=self.user)
+        response = self.client.post(
+            reverse('attendance-start-break'),
+            {'reason': 'lunch'},
+            format='json',
+            REMOTE_ADDR=self.office_ip
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(response.data.get('detail'), 'Cannot start a break without checking in.')
+
+    def test_end_break_with_null_check_in_rejected(self):
+        """When attendance record exists with check_in=None, end-break returns HTTP 400."""
+        today = timezone.now().date()
+        Attendance.objects.create(
+            employee=self.employee,
+            date=today,
+            status='absent',
+            check_in=None
+        )
+        self.client.force_authenticate(user=self.user)
+        response = self.client.post(reverse('attendance-end-break'), REMOTE_ADDR=self.office_ip)
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(response.data.get('detail'), 'Cannot end a break without checking in.')
+
+    def test_status_derivation_null_check_in_is_absent(self):
+        """Backend status derivation returns 'absent' when check-in timestamp is absent."""
+        from apps.attendance.services import AttendanceCalculationService
+        att = Attendance(employee=self.employee, date=timezone.now().date(), check_in=None, status='present')
+        status_result = AttendanceCalculationService.determine_attendance_status(att)
+        self.assertEqual(status_result, 'absent')
+
+    def test_check_in_tenant_isolation(self):
+        """User from Org A cannot manipulate or record attendance under Org B."""
+        from apps.organization.models import Organization, Branch
+        foreign_org = Organization.objects.create(name='Foreign Org B')
+        foreign_branch = Branch.objects.create(organization=foreign_org, name='Foreign Branch')
+        foreign_user = User.objects.create_user(email='foreign@orgb.local', password='Password123!', status='active')
+        foreign_emp = Employee.objects.create(user=foreign_user, employee_code='EMP-FOR', organization=foreign_org, branch=foreign_branch)
+
+        # Authenticated as self.user (Org A)
+        self.client.force_authenticate(user=self.user)
+        response = self.client.post(reverse('attendance-check-in'), REMOTE_ADDR=self.office_ip)
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+
+        # Ensure only Org A employee has attendance, Foreign Org has 0
+        self.assertEqual(Attendance.objects.filter(employee=self.employee).count(), 1)
+        self.assertEqual(Attendance.objects.filter(employee=foreign_emp).count(), 0)

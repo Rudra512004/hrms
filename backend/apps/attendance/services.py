@@ -200,6 +200,9 @@ class AttendanceCalculationService:
         productive_work_duration and the shift's full_day_hours and half_day_hours thresholds.
         If no shift or thresholds are configured, preserves existing attendance status.
         """
+        if not attendance.check_in:
+            return 'absent'
+
         if attendance.productive_work_duration is None:
             return attendance.status or 'present'
 

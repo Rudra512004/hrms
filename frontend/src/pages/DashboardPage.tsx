@@ -283,7 +283,7 @@ export const DashboardPage: React.FC = () => {
       }
     }
 
-    if (attendanceToday?.productive_work_duration_seconds) {
+    if (attendanceToday?.check_in && attendanceToday?.productive_work_duration_seconds) {
       const todayDateStr = now.toISOString().split('T')[0];
       const hasTodayInRecords = relevantRecords.some((r) => r.date === todayDateStr);
       if (!hasTodayInRecords) {

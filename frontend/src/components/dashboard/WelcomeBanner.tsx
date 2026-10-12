@@ -61,7 +61,7 @@ export const WelcomeBanner: React.FC<WelcomeBannerProps> = ({
 
   const getAttendanceChip = () => {
     if (!hasEmployeeProfile) return null;
-    if (!attendanceToday) {
+    if (!attendanceToday || !attendanceToday.check_in) {
       return {
         label: 'Not Clocked In',
         bg: 'rgba(255, 255, 255, 0.15)',
@@ -205,7 +205,7 @@ export const WelcomeBanner: React.FC<WelcomeBannerProps> = ({
       <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap', position: 'relative', zIndex: 1 }}>
         {hasEmployeeProfile ? (
           <>
-            {!attendanceToday ? (
+            {!attendanceToday || !attendanceToday.check_in ? (
               <button
                 className="btn"
                 onClick={onCheckIn}

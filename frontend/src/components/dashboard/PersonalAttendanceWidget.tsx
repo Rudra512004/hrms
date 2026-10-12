@@ -40,7 +40,7 @@ export const PersonalAttendanceWidget: React.FC<PersonalAttendanceWidgetProps> =
   const navigate = useNavigate();
 
   const getStatusInfo = () => {
-    if (!attendance) {
+    if (!attendance || !attendance.check_in) {
       return {
         badgeStatus: 'absent' as const,
         label: 'Not Clocked In',
@@ -141,7 +141,7 @@ export const PersonalAttendanceWidget: React.FC<PersonalAttendanceWidgetProps> =
           </div>
 
           {/* Work & Break Duration Metrics */}
-          {attendance && (
+          {attendance && attendance.check_in && (
             <div
               style={{
                 display: 'grid',
@@ -185,7 +185,7 @@ export const PersonalAttendanceWidget: React.FC<PersonalAttendanceWidgetProps> =
 
           {/* Action Buttons */}
           <div style={{ display: 'flex', gap: 'var(--spacing-sm)', flexWrap: 'wrap' }}>
-            {!attendance ? (
+            {!attendance || !attendance.check_in ? (
               <button
                 className="btn btn-primary"
                 onClick={onCheckIn}

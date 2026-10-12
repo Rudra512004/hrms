@@ -58,9 +58,13 @@ class AttendanceSerializer(serializers.ModelSerializer):
         read_only_fields = ['id', 'employee', 'employee_name', 'employee_code', 'date', 'check_in', 'check_out', 'status', 'is_late', 'total_break_duration', 'productive_work_duration', 'is_on_break', 'current_break_started_at', 'breaks', 'distance_from_branch']
 
     def get_is_on_break(self, obj):
+        if not obj.check_in:
+            return False
         return obj.breaks.filter(ended_at__isnull=True).exists()
 
     def get_current_break_started_at(self, obj):
+        if not obj.check_in:
+            return None
         active = obj.breaks.filter(ended_at__isnull=True).order_by('-started_at').first()
         return active.started_at.isoformat() if active and active.started_at else None
 
