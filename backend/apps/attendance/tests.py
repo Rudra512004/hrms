@@ -188,6 +188,83 @@ class AttendanceAPITests(TestCase):
         # Using almostEqual logic manually because of execution delay
         self.assertTrue(att.total_break_duration.total_seconds() == 45 * 60)
         self.assertTrue(att.productive_work_duration.total_seconds() > 8 * 3600)
+
+    def test_repeated_end_break_requests(self):
+        """Repeated or retried end-break requests cannot double-count or corrupt duration."""
+        self.client.force_authenticate(user=self.user)
+        self.client.post(reverse('attendance-check-in'), REMOTE_ADDR=self.office_ip)
+        self.client.post(reverse('attendance-start-break'), REMOTE_ADDR=self.office_ip)
+
+        # First request succeeds
+        res1 = self.client.post(reverse('attendance-end-break'), REMOTE_ADDR=self.office_ip)
+        self.assertEqual(res1.status_code, status.HTTP_200_OK)
+
+        att = Attendance.objects.get(employee=self.employee, date=timezone.now().date())
+        first_duration = att.total_break_duration
+
+        # Second request (retry/double-click) returns 400 Bad Request safely
+        res2 = self.client.post(reverse('attendance-end-break'), REMOTE_ADDR=self.office_ip)
+        self.assertEqual(res2.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(res2.data.get('detail'), 'No active break to end.')
+
+        # Total break duration is verified unchanged
+        att.refresh_from_db()
+        self.assertEqual(att.total_break_duration, first_duration)
+
+    def test_end_break_persists_total_break_duration_prior_to_checkout(self):
+        """Verifies that ending a break persists total_break_duration before checkout occurs."""
+        self.client.force_authenticate(user=self.user)
+        self.client.post(reverse('attendance-check-in'), REMOTE_ADDR=self.office_ip)
+        self.client.post(reverse('attendance-start-break'), REMOTE_ADDR=self.office_ip)
+
+        att = Attendance.objects.get(employee=self.employee, date=timezone.now().date())
+        b = att.breaks.first()
+        b.started_at = timezone.now() - timedelta(minutes=25)
+        b.save()
+
+        res = self.client.post(reverse('attendance-end-break'), REMOTE_ADDR=self.office_ip)
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+
+        # Verify serializer output
+        self.assertFalse(res.data.get('is_on_break'))
+        self.assertIsNone(res.data.get('current_break_started_at'))
+
+        att.refresh_from_db()
+        self.assertIsNotNone(att.total_break_duration)
+        self.assertGreaterEqual(att.total_break_duration.total_seconds(), 24 * 60)
+
+    def test_multiple_breaks_sum_correctly_without_double_counting(self):
+        """Multiple completed breaks sum accurately and checkout preserves exact total."""
+        self.client.force_authenticate(user=self.user)
+        self.client.post(reverse('attendance-check-in'), REMOTE_ADDR=self.office_ip)
+
+        att = Attendance.objects.get(employee=self.employee, date=timezone.now().date())
+
+        # Break 1: 15 minutes
+        self.client.post(reverse('attendance-start-break'), REMOTE_ADDR=self.office_ip)
+        b1 = att.breaks.first()
+        b1.started_at = timezone.now() - timedelta(minutes=15)
+        b1.save()
+        self.client.post(reverse('attendance-end-break'), REMOTE_ADDR=self.office_ip)
+
+        # Break 2: 20 minutes
+        self.client.post(reverse('attendance-start-break'), REMOTE_ADDR=self.office_ip)
+        b2 = att.breaks.order_by('-started_at').first()
+        b2.started_at = timezone.now() - timedelta(minutes=20)
+        b2.save()
+        self.client.post(reverse('attendance-end-break'), REMOTE_ADDR=self.office_ip)
+
+        att.refresh_from_db()
+        # Sum of break 1 and 2 should be at least 35 minutes
+        self.assertGreaterEqual(att.total_break_duration.total_seconds(), 34 * 60)
+
+        # Check out should not double count
+        res_out = self.client.post(reverse('attendance-check-out'), REMOTE_ADDR=self.office_ip)
+        self.assertEqual(res_out.status_code, status.HTTP_200_OK)
+
+        att.refresh_from_db()
+        self.assertGreaterEqual(att.total_break_duration.total_seconds(), 34 * 60)
+
     def test_admin_attendance_list_unauthenticated(self):
         response = self.client.get(reverse('attendance-management-list'), REMOTE_ADDR=self.office_ip)
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)

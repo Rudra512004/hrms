@@ -36,6 +36,7 @@ class TimesheetSerializer(serializers.ModelSerializer):
 
 class AttendanceSerializer(serializers.ModelSerializer):
     is_on_break = serializers.SerializerMethodField()
+    current_break_started_at = serializers.SerializerMethodField()
     breaks = AttendanceBreakSerializer(many=True, read_only=True)
     employee_name = serializers.SerializerMethodField()
     employee_code = serializers.CharField(source='employee.employee_code', read_only=True)
@@ -43,11 +44,15 @@ class AttendanceSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Attendance
-        fields = ['id', 'employee', 'employee_name', 'employee_code', 'date', 'check_in', 'check_out', 'status', 'is_late', 'total_break_duration', 'productive_work_duration', 'is_on_break', 'breaks', 'distance_from_branch']
-        read_only_fields = ['id', 'employee', 'employee_name', 'employee_code', 'date', 'check_in', 'check_out', 'status', 'is_late', 'total_break_duration', 'productive_work_duration', 'is_on_break', 'breaks', 'distance_from_branch']
+        fields = ['id', 'employee', 'employee_name', 'employee_code', 'date', 'check_in', 'check_out', 'status', 'is_late', 'total_break_duration', 'productive_work_duration', 'is_on_break', 'current_break_started_at', 'breaks', 'distance_from_branch']
+        read_only_fields = ['id', 'employee', 'employee_name', 'employee_code', 'date', 'check_in', 'check_out', 'status', 'is_late', 'total_break_duration', 'productive_work_duration', 'is_on_break', 'current_break_started_at', 'breaks', 'distance_from_branch']
 
     def get_is_on_break(self, obj):
         return obj.breaks.filter(ended_at__isnull=True).exists()
+
+    def get_current_break_started_at(self, obj):
+        active = obj.breaks.filter(ended_at__isnull=True).order_by('-started_at').first()
+        return active.started_at.isoformat() if active and active.started_at else None
 
     def get_employee_name(self, obj):
         if not obj.employee or not obj.employee.user:

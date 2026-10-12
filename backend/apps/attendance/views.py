@@ -292,6 +292,14 @@ class AttendanceViewSet(viewsets.GenericViewSet):
             active_break.ended_at = timezone.now()
             active_break.save()
 
+            # Update cumulative total_break_duration on the attendance record
+            total_break = timedelta(0)
+            for b in attendance.breaks.all():
+                if b.ended_at:
+                    total_break += (b.ended_at - b.started_at)
+            attendance.total_break_duration = total_break
+            attendance.save(update_fields=['total_break_duration'])
+
             AuditService.log(
                 action='break_ended',
                 actor=request.user,

@@ -6,6 +6,7 @@ export interface PersonalAttendanceToday {
   check_in: string | null;
   check_out: string | null;
   is_on_break: boolean;
+  current_break_started_at?: string | null;
   total_break_duration_seconds: number;
   productive_work_duration_seconds: number;
 }

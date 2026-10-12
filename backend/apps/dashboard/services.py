@@ -76,12 +76,24 @@ class DashboardAggregationService:
         att = Attendance.objects.filter(employee=employee, date=today).first()
         att_data = None
         if att:
-            is_on_break = att.breaks.filter(ended_at__isnull=True).exists()
-            total_break_sec = (
+            active_break = att.breaks.filter(ended_at__isnull=True).order_by('-started_at').first()
+            is_on_break = active_break is not None
+            current_break_started_at = (
+                active_break.started_at.isoformat()
+                if active_break and active_break.started_at
+                else None
+            )
+            completed_break_sec = int(sum(
+                (b.ended_at - b.started_at).total_seconds()
+                for b in att.breaks.filter(ended_at__isnull=False)
+                if b.ended_at and b.started_at and b.ended_at >= b.started_at
+            ))
+            saved_break_sec = (
                 int(att.total_break_duration.total_seconds())
                 if att.total_break_duration
                 else 0
             )
+            total_break_sec = max(saved_break_sec, completed_break_sec)
             productive_sec = (
                 int(att.productive_work_duration.total_seconds())
                 if att.productive_work_duration
@@ -94,6 +106,7 @@ class DashboardAggregationService:
                 'check_in': att.check_in.isoformat() if att.check_in else None,
                 'check_out': att.check_out.isoformat() if att.check_out else None,
                 'is_on_break': is_on_break,
+                'current_break_started_at': current_break_started_at,
                 'total_break_duration_seconds': total_break_sec,
                 'productive_work_duration_seconds': productive_sec,
             }
