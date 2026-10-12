@@ -26,7 +26,9 @@ import {
   UpcomingHolidaysWidget,
   PendingApprovalsWidget,
   DashboardTrendsSection,
+  BreakReasonModal,
 } from '../components/dashboard';
+import type { BreakReasonKey } from '../types/attendance';
 
 export const DashboardPage: React.FC = () => {
   const { user, hasEmployeeProfile } = useAuth();
@@ -40,6 +42,10 @@ export const DashboardPage: React.FC = () => {
 
   const [actionLoading, setActionLoading] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
+
+  const [isBreakModalOpen, setIsBreakModalOpen] = useState(false);
+  const [breakActionLoading, setBreakActionLoading] = useState(false);
+  const [breakActionError, setBreakActionError] = useState<string | null>(null);
 
   const fetchDashboardData = useCallback(
     async (isSilent = false) => {
@@ -171,9 +177,14 @@ export const DashboardPage: React.FC = () => {
     }
   };
 
-  const handleStartBreak = async () => {
-    setActionLoading(true);
-    setActionError(null);
+  const handleOpenBreakModal = () => {
+    setBreakActionError(null);
+    setIsBreakModalOpen(true);
+  };
+
+  const handleStartBreak = async (reason: BreakReasonKey = 'lunch', comment?: string) => {
+    setBreakActionLoading(true);
+    setBreakActionError(null);
     try {
       let loc;
       try {
@@ -181,12 +192,19 @@ export const DashboardPage: React.FC = () => {
       } catch (e) {
         console.warn('Geolocation capture failed', e);
       }
-      await attendanceService.startBreak(loc);
+      await attendanceService.startBreak({
+        reason,
+        comment,
+        ...(loc || {}),
+      });
       await fetchDashboardData(true);
+      setIsBreakModalOpen(false);
     } catch (e: any) {
-      setActionError(e?.errorData?.detail || 'Failed to start break. Please try again.');
+      const msg = e?.errorData?.detail || 'Failed to start break. Please try again.';
+      setBreakActionError(msg);
+      throw e;
     } finally {
-      setActionLoading(false);
+      setBreakActionLoading(false);
     }
   };
 
@@ -362,11 +380,11 @@ export const DashboardPage: React.FC = () => {
               <TodayAttendanceCard
                 attendance={attendanceToday || null}
                 loading={loading && !dashboardData}
-                actionLoading={actionLoading}
+                actionLoading={actionLoading || breakActionLoading}
                 actionError={actionError}
                 onCheckIn={handleCheckIn}
                 onCheckOut={handleCheckOut}
-                onStartBreak={handleStartBreak}
+                onStartBreak={handleOpenBreakModal}
                 onEndBreak={handleEndBreak}
               />
             )}
@@ -421,6 +439,21 @@ export const DashboardPage: React.FC = () => {
             )}
           </div>
         </div>
+      )}
+
+      {hasEmployeeProfile && (
+        <BreakReasonModal
+          isOpen={isBreakModalOpen}
+          onClose={() => {
+            if (!breakActionLoading) {
+              setIsBreakModalOpen(false);
+              setBreakActionError(null);
+            }
+          }}
+          onSubmit={handleStartBreak}
+          loading={breakActionLoading}
+          error={breakActionError}
+        />
       )}
     </div>
   );

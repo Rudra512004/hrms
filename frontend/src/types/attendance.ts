@@ -3,8 +3,45 @@
  * Aligned with backend models & serializers from C5.5.1, C5.5.2, C5.5.2.1
  */
 
+export type BreakReasonKey =
+  | 'lunch'
+  | 'tea_coffee'
+  | 'outside_meeting'
+  | 'client_visit'
+  | 'client_call'
+  | 'personal_call'
+  | 'team_meeting'
+  | 'training'
+  | 'paperwork'
+  | 'other';
+
+export interface BreakReasonOption {
+  key: BreakReasonKey;
+  label: string;
+  description: string;
+  limitLabel: string;
+  countsAsWorkedTime: boolean;
+  durationMinutes?: number | null;
+}
+
+export interface StartBreakPayload {
+  reason?: BreakReasonKey;
+  comment?: string;
+  break_type_id?: number;
+  latitude?: number;
+  longitude?: number;
+  accuracy?: number;
+}
+
 export interface AttendanceBreak {
   id: number;
+  break_type?: number | null;
+  break_type_name?: string | null;
+  reason?: string | null;
+  reason_label?: string | null;
+  comment?: string;
+  counts_as_worked_time?: boolean;
+  duration_limit_minutes?: number | null;
   started_at: string;
   ended_at: string | null;
 }

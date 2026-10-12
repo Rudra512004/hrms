@@ -439,3 +439,159 @@ class AttendanceAPITests(TestCase):
         self.assertEqual(len(names), 1)
         self.assertIn('HQ Holiday', names)
         self.assertNotIn('Branch 2 Holiday', names)
+
+    def test_start_break_with_valid_reason_lunch(self):
+        """Valid reason 'lunch' persists authoritative server label and duration limit."""
+        self.client.force_authenticate(user=self.user)
+        self.client.post(reverse('attendance-check-in'), REMOTE_ADDR=self.office_ip)
+        response = self.client.post(
+            reverse('attendance-start-break'),
+            {'reason': 'lunch'},
+            format='json',
+            REMOTE_ADDR=self.office_ip
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertTrue(response.data['is_on_break'])
+        brk = response.data['breaks'][0]
+        self.assertEqual(brk['reason'], 'lunch')
+        self.assertEqual(brk['reason_label'], 'Lunch')
+        self.assertEqual(brk['counts_as_worked_time'], False)
+        self.assertEqual(brk['duration_limit_minutes'], 40)
+
+    def test_start_break_with_worked_time_reason(self):
+        """Reason 'outside_meeting' sets counts_as_worked_time=True and duration_limit=None."""
+        self.client.force_authenticate(user=self.user)
+        self.client.post(reverse('attendance-check-in'), REMOTE_ADDR=self.office_ip)
+        response = self.client.post(
+            reverse('attendance-start-break'),
+            {'reason': 'outside_meeting'},
+            format='json',
+            REMOTE_ADDR=self.office_ip
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        brk = response.data['breaks'][0]
+        self.assertEqual(brk['reason'], 'outside_meeting')
+        self.assertEqual(brk['reason_label'], 'Outside meeting')
+        self.assertEqual(brk['counts_as_worked_time'], True)
+        self.assertIsNone(brk['duration_limit_minutes'])
+
+    def test_start_break_forged_client_metadata_ignored(self):
+        """Client-supplied label, limits, and counts_as_worked_time are ignored in favor of server definitions."""
+        self.client.force_authenticate(user=self.user)
+        self.client.post(reverse('attendance-check-in'), REMOTE_ADDR=self.office_ip)
+        response = self.client.post(
+            reverse('attendance-start-break'),
+            {
+                'reason': 'lunch',
+                'reason_label': 'Manipulated Label',
+                'counts_as_worked_time': True,
+                'duration_limit_minutes': 999
+            },
+            format='json',
+            REMOTE_ADDR=self.office_ip
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        brk = response.data['breaks'][0]
+        self.assertEqual(brk['reason'], 'lunch')
+        self.assertEqual(brk['reason_label'], 'Lunch')
+        self.assertEqual(brk['counts_as_worked_time'], False)
+        self.assertEqual(brk['duration_limit_minutes'], 40)
+
+    def test_start_break_invalid_reason_rejected(self):
+        """Invalid break reason returns HTTP 400."""
+        self.client.force_authenticate(user=self.user)
+        self.client.post(reverse('attendance-check-in'), REMOTE_ADDR=self.office_ip)
+        response = self.client.post(
+            reverse('attendance-start-break'),
+            {'reason': 'power_nap'},
+            format='json',
+            REMOTE_ADDR=self.office_ip
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("Invalid break reason", response.data['detail'])
+
+    def test_start_break_empty_reason_rejected(self):
+        """Explicit empty reason returns HTTP 400."""
+        self.client.force_authenticate(user=self.user)
+        self.client.post(reverse('attendance-check-in'), REMOTE_ADDR=self.office_ip)
+        response = self.client.post(
+            reverse('attendance-start-break'),
+            {'reason': '   '},
+            format='json',
+            REMOTE_ADDR=self.office_ip
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(response.data['detail'], 'A break reason is required.')
+
+    def test_start_break_other_comment_validation(self):
+        """Reason 'other' strictly requires trimmed comment between 3 and 255 characters."""
+        self.client.force_authenticate(user=self.user)
+        self.client.post(reverse('attendance-check-in'), REMOTE_ADDR=self.office_ip)
+
+        # Missing comment
+        r1 = self.client.post(reverse('attendance-start-break'), {'reason': 'other'}, format='json', REMOTE_ADDR=self.office_ip)
+        self.assertEqual(r1.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('comment between 3 and 255', r1.data['detail'])
+
+        # Comment too short
+        r2 = self.client.post(reverse('attendance-start-break'), {'reason': 'other', 'comment': 'ab'}, format='json', REMOTE_ADDR=self.office_ip)
+        self.assertEqual(r2.status_code, status.HTTP_400_BAD_REQUEST)
+
+        # Comment too long
+        r3 = self.client.post(reverse('attendance-start-break'), {'reason': 'other', 'comment': 'x' * 256}, format='json', REMOTE_ADDR=self.office_ip)
+        self.assertEqual(r3.status_code, status.HTTP_400_BAD_REQUEST)
+
+        # Valid comment
+        r4 = self.client.post(reverse('attendance-start-break'), {'reason': 'other', 'comment': 'Dentist appointment'}, format='json', REMOTE_ADDR=self.office_ip)
+        self.assertEqual(r4.status_code, status.HTTP_200_OK)
+        brk = r4.data['breaks'][0]
+        self.assertEqual(brk['reason'], 'other')
+        self.assertEqual(brk['comment'], 'Dentist appointment')
+        self.assertEqual(brk['duration_limit_minutes'], 15)
+        self.assertEqual(brk['counts_as_worked_time'], False)
+
+    def test_start_break_legacy_unparameterized_compatibility(self):
+        """Unparameterized start-break calls maintain backward compatibility with legacy endpoints."""
+        self.client.force_authenticate(user=self.user)
+        self.client.post(reverse('attendance-check-in'), REMOTE_ADDR=self.office_ip)
+        response = self.client.post(reverse('attendance-start-break'), REMOTE_ADDR=self.office_ip)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertTrue(response.data['is_on_break'])
+        brk = response.data['breaks'][0]
+        self.assertIsNone(brk['reason'])
+        self.assertIsNone(brk['reason_label'])
+
+    def test_start_break_legacy_break_type_id_compatibility(self):
+        """Legacy break_type_id payload creates break with break_type FK and metadata."""
+        from apps.attendance.models import BreakType
+        bt = BreakType.objects.create(organization=self.org, name='Custom Break', max_duration_minutes=25)
+        self.client.force_authenticate(user=self.user)
+        self.client.post(reverse('attendance-check-in'), REMOTE_ADDR=self.office_ip)
+        response = self.client.post(
+            reverse('attendance-start-break'),
+            {'break_type_id': bt.id},
+            format='json',
+            REMOTE_ADDR=self.office_ip
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        brk = response.data['breaks'][0]
+        self.assertEqual(brk['break_type'], bt.id)
+        self.assertEqual(brk['reason_label'], 'Custom Break')
+        self.assertEqual(brk['duration_limit_minutes'], 25)
+
+    def test_start_break_conflicting_other_org_break_type_rejected(self):
+        """Specifying a break_type_id from a different organization is rejected."""
+        from apps.organization.models import Organization
+        from apps.attendance.models import BreakType
+        org2 = Organization.objects.create(name='Foreign Org')
+        bt_foreign = BreakType.objects.create(organization=org2, name='Foreign Break', max_duration_minutes=15)
+        self.client.force_authenticate(user=self.user)
+        self.client.post(reverse('attendance-check-in'), REMOTE_ADDR=self.office_ip)
+        response = self.client.post(
+            reverse('attendance-start-break'),
+            {'reason': 'lunch', 'break_type_id': bt_foreign.id},
+            format='json',
+            REMOTE_ADDR=self.office_ip
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(response.data['detail'], 'Selected break type is unavailable.')

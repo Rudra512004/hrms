@@ -39,6 +39,11 @@ class Attendance(models.Model):
 class AttendanceBreak(models.Model):
     attendance = models.ForeignKey(Attendance, on_delete=models.CASCADE, related_name='breaks')
     break_type = models.ForeignKey('BreakType', on_delete=models.SET_NULL, null=True, blank=True, related_name='breaks')
+    reason = models.CharField(max_length=50, null=True, blank=True)
+    reason_label = models.CharField(max_length=100, null=True, blank=True)
+    comment = models.TextField(blank=True, default='')
+    counts_as_worked_time = models.BooleanField(default=False)
+    duration_limit_minutes = models.PositiveIntegerField(null=True, blank=True)
     started_at = models.DateTimeField(default=timezone.now)
     ended_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)

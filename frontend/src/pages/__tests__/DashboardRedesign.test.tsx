@@ -639,6 +639,28 @@ describe('Phase 16B: Role-Aware Employee Dashboard Redesign', () => {
       // Verify Recent Leave Requests Widget
       expect(screen.getByTestId('recent-leave-requests-widget')).toBeInTheDocument();
       expect(screen.getAllByText(/Earned Leave/i).length).toBeGreaterThanOrEqual(1);
+
+      // Phase 16N: Clicking Take Break opens BreakReasonModal
+      const takeBreakBtn = screen.getByRole('button', { name: /Take Break/i });
+      fireEvent.click(takeBreakBtn);
+
+      expect(screen.getByText('What is the break for?')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /Start the break/i })).toBeInTheDocument();
+
+      // Submit break via modal
+      (attendanceService.startBreak as any).mockResolvedValueOnce({
+        id: 10,
+        is_on_break: true,
+        breaks: [{ id: 1, reason: 'lunch', reason_label: 'Lunch', started_at: '2026-10-12T12:00:00Z', ended_at: null }],
+      });
+
+      fireEvent.click(screen.getByRole('button', { name: /Start the break/i }));
+
+      await waitFor(() => {
+        expect(attendanceService.startBreak).toHaveBeenCalledWith(
+          expect.objectContaining({ reason: 'lunch' })
+        );
+      });
     });
   });
 });

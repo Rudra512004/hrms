@@ -4,10 +4,11 @@ import type {
   AttendanceBreak,
   AttendanceLocation,
   ManagementAttendanceParams,
+  StartBreakPayload,
 } from '../types/attendance';
 import type { PaginatedResponse } from '../types/pagination';
 
-export type { AttendanceRecord, AttendanceBreak, AttendanceLocation, ManagementAttendanceParams, PaginatedResponse };
+export type { AttendanceRecord, AttendanceBreak, AttendanceLocation, ManagementAttendanceParams, PaginatedResponse, StartBreakPayload };
 export { ApiError };
 
 const getHeaders = (includeContentType = true): HeadersInit => {
@@ -61,11 +62,11 @@ export const attendanceService = {
     return handleResponse<AttendanceRecord>(response);
   },
 
-  startBreak: async (location?: AttendanceLocation): Promise<AttendanceRecord> => {
+  startBreak: async (payload?: StartBreakPayload | AttendanceLocation): Promise<AttendanceRecord> => {
     const response = await fetch('/api/v1/attendance/start-break/', {
       method: 'POST',
-      headers: getHeaders(Boolean(location)),
-      body: location ? JSON.stringify(location) : undefined,
+      headers: getHeaders(Boolean(payload)),
+      body: payload ? JSON.stringify(payload) : undefined,
     });
     return handleResponse<AttendanceRecord>(response);
   },

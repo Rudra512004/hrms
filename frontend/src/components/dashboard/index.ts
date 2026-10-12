@@ -14,4 +14,5 @@ export { AttendanceKpiCards } from './AttendanceKpiCards';
 export { TodayAttendanceCard } from './TodayAttendanceCard';
 export { AttendanceTrendWidget } from './AttendanceTrendWidget';
 export { RecentLeaveRequestsWidget } from './RecentLeaveRequestsWidget';
+export { BreakReasonModal, BREAK_REASON_OPTIONS } from './BreakReasonModal';
 

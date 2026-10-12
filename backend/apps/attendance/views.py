@@ -9,6 +9,7 @@ from django.db.models import Q
 from datetime import timedelta
 from apps.authorization.permissions import IsNetworkAllowed, require_permission
 from .models import Attendance, AttendanceBreak, Holiday, Shift, BreakType
+from .constants import BREAK_REASONS
 from .serializers import AttendanceSerializer, HolidaySerializer, ShiftSerializer, BreakTypeSerializer
 from apps.organization.context import get_current_employee, get_current_organization
 
@@ -239,19 +240,73 @@ class AttendanceViewSet(viewsets.GenericViewSet):
 
             break_type = None
             break_type_id = request.data.get('break_type_id')
-            if break_type_id:
+            reason = request.data.get('reason')
+            raw_comment = request.data.get('comment') or ''
+            comment = raw_comment.strip() if isinstance(raw_comment, str) else ''
+
+            reason_code = None
+            reason_label = None
+            duration_limit = None
+            counts_worked = False
+
+            if reason is not None:
+                if not isinstance(reason, str) or reason.strip() == '':
+                    return Response({'detail': 'A break reason is required.'}, status=status.HTTP_400_BAD_REQUEST)
+                reason_clean = reason.strip()
+                if reason_clean not in BREAK_REASONS:
+                    return Response({'detail': f"Invalid break reason: '{reason_clean}'."}, status=status.HTTP_400_BAD_REQUEST)
+
+                reason_def = BREAK_REASONS[reason_clean]
+                reason_code = reason_clean
+                # Server-authoritative: Do NOT trust client-supplied labels, limits, or counts_as_worked_time
+                reason_label = reason_def['label']
+                duration_limit = reason_def['duration_limit_minutes']
+                counts_worked = reason_def['counts_as_worked_time']
+
+                if reason_clean == 'other':
+                    if len(comment) < 3 or len(comment) > 255:
+                        return Response(
+                            {'detail': 'A comment between 3 and 255 characters is required for reason Other.'},
+                            status=status.HTTP_400_BAD_REQUEST
+                        )
+
+                if break_type_id:
+                    try:
+                        break_type = BreakType.objects.get(
+                            id=break_type_id,
+                            organization_id=employee.organization_id,
+                            is_active=True,
+                        )
+                    except (BreakType.DoesNotExist, ValueError):
+                        return Response({'detail': 'Selected break type is unavailable.'}, status=status.HTTP_400_BAD_REQUEST)
+
+            elif break_type_id:
                 try:
                     break_type = BreakType.objects.get(
                         id=break_type_id,
                         organization_id=employee.organization_id,
                         is_active=True,
                     )
-                except BreakType.DoesNotExist:
+                except (BreakType.DoesNotExist, ValueError):
                     return Response({'detail': 'Selected break type is unavailable.'}, status=status.HTTP_400_BAD_REQUEST)
+                reason_label = break_type.name
+                duration_limit = break_type.max_duration_minutes
+                counts_worked = False
+            else:
+                # Legacy unparameterized payload compatibility
+                reason_code = None
+                reason_label = None
+                duration_limit = None
+                counts_worked = False
 
             b = AttendanceBreak.objects.create(
                 attendance=attendance,
                 break_type=break_type,
+                reason=reason_code,
+                reason_label=reason_label,
+                comment=comment,
+                counts_as_worked_time=counts_worked,
+                duration_limit_minutes=duration_limit,
                 started_at=timezone.now()
             )
 
@@ -261,7 +316,14 @@ class AttendanceViewSet(viewsets.GenericViewSet):
                 target_type='attendance',
                 target_id=attendance.id,
                 request=request,
-                metadata={'break_type_id': break_type.id if break_type else None}
+                metadata={
+                    'break_type_id': break_type.id if break_type else None,
+                    'reason': reason_code,
+                    'reason_label': reason_label,
+                    'comment': comment,
+                    'counts_as_worked_time': counts_worked,
+                    'duration_limit_minutes': duration_limit,
+                }
             )
 
         serializer = self.get_serializer(attendance)

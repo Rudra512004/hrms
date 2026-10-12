@@ -5,8 +5,18 @@ class AttendanceBreakSerializer(serializers.ModelSerializer):
     break_type_name = serializers.CharField(source='break_type.name', read_only=True)
     class Meta:
         model = AttendanceBreak
-        fields = ['id', 'break_type', 'break_type_name', 'started_at', 'ended_at']
-        read_only_fields = ['id', 'break_type', 'break_type_name', 'started_at', 'ended_at']
+        fields = [
+            'id', 'break_type', 'break_type_name',
+            'reason', 'reason_label', 'comment',
+            'counts_as_worked_time', 'duration_limit_minutes',
+            'started_at', 'ended_at'
+        ]
+        read_only_fields = [
+            'id', 'break_type', 'break_type_name',
+            'reason', 'reason_label', 'comment',
+            'counts_as_worked_time', 'duration_limit_minutes',
+            'started_at', 'ended_at'
+        ]
 
 class BreakTypeSerializer(serializers.ModelSerializer):
     class Meta:
