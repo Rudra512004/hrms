@@ -803,6 +803,12 @@ class DisbursementBatch(models.Model):
                 condition=models.Q(batch_type='fnf') & ~models.Q(status='cancelled'),
                 name='unique_active_fnf_disbursement_batch',
             ),
+            models.UniqueConstraint(
+                fields=['organization', 'period', 'branch'],
+                condition=models.Q(batch_type='regular') & ~models.Q(status='cancelled'),
+                nulls_distinct=False,
+                name='unique_active_payroll_disbursement_batch',
+            ),
         ]
 
     def __str__(self):

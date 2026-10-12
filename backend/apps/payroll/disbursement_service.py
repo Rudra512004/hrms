@@ -5,7 +5,7 @@ from datetime import date, datetime
 from decimal import Decimal
 from typing import Dict, List, Any, Optional
 
-from django.db import transaction
+from django.db import transaction, IntegrityError
 from django.utils import timezone
 from django.core.exceptions import ValidationError
 
@@ -118,7 +118,9 @@ class DisbursementService:
         Validate finalized payroll eligibility, evaluate routing configuration,
         and create an immutable DisbursementBatch with snapshot items in DRAFT status.
         """
-        # 1. State check: PayrollPeriod must be FINALIZED or DISBURSED
+        # 1. State check & concurrency lock: PayrollPeriod must be FINALIZED or DISBURSED
+        # Acquire row-level exclusive lock on PayrollPeriod to serialize competing preparation requests
+        period = PayrollPeriod.objects.select_for_update().get(pk=period.pk)
         if period.status not in [PayrollPeriod.STATUS_FINALIZED, PayrollPeriod.STATUS_DISBURSED]:
             raise DisbursementException(
                 f"Cannot prepare bank disbursement for period in state '{period.status}'. "
@@ -380,22 +382,32 @@ class DisbursementService:
         org_code = period.organization.code or 'ORG'
         batch_number = f"DISB-{period.year}{period.month:02d}-{org_code}-{seq:03d}"
 
-        # 10. Persist Batch
-        batch = DisbursementBatch.objects.create(
-            organization=period.organization,
-            period=period,
-            branch=branch,
-            batch_number=batch_number,
-            debit_account=debit_account,
-            debit_account_number=debit_account.account_number.strip(),
-            value_date=value_date,
-            narration=clean_narration,
-            status=DisbursementBatch.STATUS_DRAFT,
-            total_amount=total_amount,
-            total_count=len(items_to_create),
-            routing_config_snapshot=routing_snapshot,
-            created_by=user,
-        )
+        # 10. Persist Batch (with IntegrityError handling for concurrent duplicate preparation)
+        try:
+            batch = DisbursementBatch.objects.create(
+                organization=period.organization,
+                batch_type=DisbursementBatch.BATCH_TYPE_REGULAR,
+                period=period,
+                branch=branch,
+                batch_number=batch_number,
+                debit_account=debit_account,
+                debit_account_number=debit_account.account_number.strip(),
+                value_date=value_date,
+                narration=clean_narration,
+                status=DisbursementBatch.STATUS_DRAFT,
+                total_amount=total_amount,
+                total_count=len(items_to_create),
+                routing_config_snapshot=routing_snapshot,
+                created_by=user,
+            )
+        except IntegrityError as err:
+            logger.warning(
+                f"IntegrityError creating regular disbursement batch for period {period.id}: {err}"
+            )
+            raise DisbursementException(
+                f"An active disbursement batch already exists for this period. Duplicate payment runs are prevented.",
+                code="DUPLICATE_DISBURSEMENT_BATCH",
+            ) from err
 
         for itm in items_to_create:
             itm.batch = batch
@@ -619,23 +631,32 @@ class DisbursementService:
         exit_d = settlement.exit_date or timezone.now().date()
         batch_number = f"DISB-FNF-{exit_d.year}{exit_d.month:02d}-{org_code}-{seq:03d}"
 
-        # 11. Persist Batch
-        batch = DisbursementBatch.objects.create(
-            organization=settlement.organization,
-            batch_type=DisbursementBatch.BATCH_TYPE_FNF,
-            final_settlement=settlement,
-            branch=branch,
-            batch_number=batch_number,
-            debit_account=debit_account,
-            debit_account_number=debit_account.account_number.strip(),
-            value_date=value_date,
-            narration=clean_narration,
-            status=DisbursementBatch.STATUS_DRAFT,
-            total_amount=settlement.net_payable,
-            total_count=1,
-            routing_config_snapshot=routing_snapshot,
-            created_by=user,
-        )
+        # 11. Persist Batch (with IntegrityError handling for concurrent duplicate preparation)
+        try:
+            batch = DisbursementBatch.objects.create(
+                organization=settlement.organization,
+                batch_type=DisbursementBatch.BATCH_TYPE_FNF,
+                final_settlement=settlement,
+                branch=branch,
+                batch_number=batch_number,
+                debit_account=debit_account,
+                debit_account_number=debit_account.account_number.strip(),
+                value_date=value_date,
+                narration=clean_narration,
+                status=DisbursementBatch.STATUS_DRAFT,
+                total_amount=settlement.net_payable,
+                total_count=1,
+                routing_config_snapshot=routing_snapshot,
+                created_by=user,
+            )
+        except IntegrityError as err:
+            logger.warning(
+                f"IntegrityError creating FnF disbursement batch for settlement {settlement.id}: {err}"
+            )
+            raise DisbursementException(
+                f"An active disbursement batch already exists for this FnF settlement. Duplicate payment runs are prevented.",
+                code="DUPLICATE_DISBURSEMENT_BATCH",
+            ) from err
 
         # 12. Persist Disbursement Item
         DisbursementItem.objects.create(
