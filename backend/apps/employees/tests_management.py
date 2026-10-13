@@ -298,16 +298,15 @@ class EmployeeIDGenerationTests(TestCase):
         User.objects.all().delete()
 
         self.client = APIClient()
+        from apps.organization.models import Organization
+        self.org = Organization.objects.create(name='ID Gen Org')
         self.super_user = User.objects.create_user(email='super@example.com', is_superuser=True, status='active')
-        from apps.authorization.models import Role, UserRole, ScopeChoices
-        from apps.organization.models import Organization as _PatchOrg
-        _test_org = getattr(self, 'org', getattr(self, 'organization', getattr(self, 'org1', None)))
-        if not _test_org:
-            _test_org = Organization.objects.first()
-        if _test_org:
-            _role, _ = Role.objects.get_or_create(organization=_test_org, name='System Admin')
-            UserRole.objects.get_or_create(user=self.super_user, role=_role, scope=ScopeChoices.ORGANIZATION)
-        self.super_employee = Employee.objects.create(user=self.super_user, employee_code='EMPBS000')
+        from apps.authorization.models import Role, UserRole, ScopeChoices, Permission, RolePermission
+        _role, _ = Role.objects.get_or_create(organization=self.org, name='System Admin')
+        UserRole.objects.get_or_create(user=self.super_user, role=_role, scope=ScopeChoices.ORGANIZATION)
+        perm, _ = Permission.objects.get_or_create(codename='employee.create', defaults={'name': 'employee.create', 'resource': 'employee', 'action': 'create'})
+        RolePermission.objects.get_or_create(role=_role, permission=perm)
+        self.super_employee = Employee.objects.create(user=self.super_user, employee_code='EMPBS000', organization=self.org)
         self.client.force_authenticate(user=self.super_user)
 
     def test_first_employee_generation(self):
@@ -322,9 +321,9 @@ class EmployeeIDGenerationTests(TestCase):
         self.assertEqual(Employee.objects.get(user__email='emp1@company.com').employee_code, 'EMPBS001')
 
     def test_second_employee_generation(self):
-        Employee.objects.create(user=User.objects.create_user(email='e1@c.com'), employee_code='EMPBS001')
+        Employee.objects.create(user=User.objects.create_user(email='e1@c.com'), employee_code='EMPBS001', organization=self.org)
         from apps.employees.models import EmployeeIDSequence
-        EmployeeIDSequence.objects.create(id=1, last_generated=5)
+        EmployeeIDSequence.objects.create(organization=self.org, last_generated=5)
 
         response = self.client.post(reverse('employee-management-list'), {
             'email': 'e6@company.com',
@@ -678,9 +677,9 @@ class EmployeeIDGenerationTests(TestCase):
         self.assertEqual(Employee.objects.get(user__email='emp1@company.com').employee_code, 'EMPBS001')
 
     def test_second_employee_generation(self):
-        Employee.objects.create(user=User.objects.create_user(email='e1@c.com'), employee_code='EMPBS001')
+        Employee.objects.create(user=User.objects.create_user(email='e1@c.com'), employee_code='EMPBS001', organization=self.org)
         from apps.employees.models import EmployeeIDSequence
-        EmployeeIDSequence.objects.create(id=1, last_generated=1)
+        EmployeeIDSequence.objects.create(organization=self.org, last_generated=1)
 
         response = self.client.post(reverse('employee-management-list'), {
             'email': 'emp2@company.com',
@@ -691,9 +690,9 @@ class EmployeeIDGenerationTests(TestCase):
         self.assertEqual(Employee.objects.get(user__email='emp2@company.com').employee_code, 'EMPBS002')
 
     def test_padding_generation(self):
-        Employee.objects.create(user=User.objects.create_user(email='e9@c.com'), employee_code='EMPBS009')
+        Employee.objects.create(user=User.objects.create_user(email='e9@c.com'), employee_code='EMPBS009', organization=self.org)
         from apps.employees.models import EmployeeIDSequence
-        EmployeeIDSequence.objects.create(id=1, last_generated=9)
+        EmployeeIDSequence.objects.create(organization=self.org, last_generated=9)
 
         response = self.client.post(reverse('employee-management-list'), {
             'email': 'emp10@company.com',
@@ -704,10 +703,10 @@ class EmployeeIDGenerationTests(TestCase):
         self.assertEqual(Employee.objects.get(user__email='emp10@company.com').employee_code, 'EMPBS010')
 
     def test_existing_gap_generation(self):
-        Employee.objects.create(user=User.objects.create_user(email='e1@c.com'), employee_code='EMPBS001')
-        Employee.objects.create(user=User.objects.create_user(email='e3@c.com'), employee_code='EMPBS003')
+        Employee.objects.create(user=User.objects.create_user(email='e1@c.com'), employee_code='EMPBS001', organization=self.org)
+        Employee.objects.create(user=User.objects.create_user(email='e3@c.com'), employee_code='EMPBS003', organization=self.org)
         from apps.employees.models import EmployeeIDSequence
-        EmployeeIDSequence.objects.create(id=1, last_generated=3)
+        EmployeeIDSequence.objects.create(organization=self.org, last_generated=3)
 
         response = self.client.post(reverse('employee-management-list'), {
             'email': 'emp4@company.com',
@@ -718,12 +717,12 @@ class EmployeeIDGenerationTests(TestCase):
         self.assertEqual(Employee.objects.get(user__email='emp4@company.com').employee_code, 'EMPBS004')
 
     def test_deleted_employee_no_reuse(self):
-        Employee.objects.create(user=User.objects.create_user(email='e5@c.com'), employee_code='EMPBS005')
+        Employee.objects.create(user=User.objects.create_user(email='e5@c.com'), employee_code='EMPBS005', organization=self.org)
         from apps.employees.models import EmployeeIDSequence
-        EmployeeIDSequence.objects.create(id=1, last_generated=5)
+        EmployeeIDSequence.objects.create(organization=self.org, last_generated=5)
 
         # Hard delete EMPBS005
-        Employee.objects.get(employee_code='EMPBS005').delete()
+        Employee.objects.get(employee_code='EMPBS005', organization=self.org).delete()
 
         response = self.client.post(reverse('employee-management-list'), {
             'email': 'emp6@company.com',
@@ -735,9 +734,9 @@ class EmployeeIDGenerationTests(TestCase):
         self.assertEqual(Employee.objects.get(user__email='emp6@company.com').employee_code, 'EMPBS006')
 
     def test_high_number_generation(self):
-        Employee.objects.create(user=User.objects.create_user(email='e999@c.com'), employee_code='EMPBS999')
+        Employee.objects.create(user=User.objects.create_user(email='e999@c.com'), employee_code='EMPBS999', organization=self.org)
         from apps.employees.models import EmployeeIDSequence
-        EmployeeIDSequence.objects.create(id=1, last_generated=999)
+        EmployeeIDSequence.objects.create(organization=self.org, last_generated=999)
 
         response = self.client.post(reverse('employee-management-list'), {
             'email': 'emp1000@company.com',
@@ -749,7 +748,7 @@ class EmployeeIDGenerationTests(TestCase):
 
     def test_legacy_high_number_discovery(self):
         # Sequence is missing, but database has high number
-        Employee.objects.create(user=User.objects.create_user(email='e17@c.com'), employee_code='EMPBS017')
+        Employee.objects.create(user=User.objects.create_user(email='e17@c.com'), employee_code='EMPBS017', organization=self.org)
 
         response = self.client.post(reverse('employee-management-list'), {
             'email': 'emp18@company.com',

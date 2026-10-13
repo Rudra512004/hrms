@@ -11,18 +11,13 @@ from apps.audit.services import AuditService
 User = get_user_model()
 
 def generate_employee_code(organization):
-    with transaction.atomic():
-        seq, _ = EmployeeIDSequence.objects.select_for_update().get_or_create(id=1)
-        seq.last_generated += 1
-        seq.save()
-        
-        prefix = 'EMP'
-        if organization and organization.name:
-            prefix = ''.join([c.upper() for c in organization.name if c.isalpha()])[:3]
-            if len(prefix) < 2:
-                prefix = 'EMP'
-        
-        return f"{prefix}{str(seq.last_generated).zfill(4)}"
+    prefix = 'EMP'
+    if organization and organization.name:
+        prefix = ''.join([c.upper() for c in organization.name if c.isalpha()])[:3]
+        if len(prefix) < 2:
+            prefix = 'EMP'
+    from apps.employees.utils import generate_next_employee_code
+    return generate_next_employee_code(organization=organization, prefix=prefix)
 
 def convert_candidate_to_employee(candidate, user_who_initiated=None, request=None):
     """

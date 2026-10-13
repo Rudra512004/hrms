@@ -372,7 +372,7 @@ class CandidateViewSet(viewsets.ModelViewSet):
                     status=status.HTTP_409_CONFLICT,
                 )
 
-            employee_code = generate_next_employee_code()
+            employee_code = generate_next_employee_code(organization=candidate.organization)
 
             # Activate the candidate user account
             candidate.user.status = 'active'

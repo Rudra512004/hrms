@@ -111,9 +111,29 @@ class Employee(models.Model):
                 raise ValidationError({'team': 'Cannot assign an inactive team to an active employee.'})
             if self.designation_id and self.designation.organization_id != self.organization_id:
                 raise ValidationError({'designation': 'Designation must belong to the same organization.'})
+            if self.employee_code:
+                same_org_collision = Employee.objects.filter(
+                    organization_id=self.organization_id,
+                    employee_code=self.employee_code
+                ).exclude(pk=self.pk).exists()
+                if same_org_collision:
+                    raise ValidationError({'employee_code': 'An employee with this code already exists in this organization.'})
+
+                orphaned_collision = Employee.objects.filter(
+                    organization__isnull=True,
+                    employee_code=self.employee_code
+                ).exclude(pk=self.pk).exists()
+                if orphaned_collision:
+                    raise ValidationError({'employee_code': 'An unassigned legacy employee with this code already exists.'})
         else:
             if self.branch_id or self.department_id or self.designation_id:
                 raise ValidationError('Cannot assign branch, department, or designation without an organization.')
+            if self.employee_code:
+                assigned_collision = Employee.objects.filter(
+                    employee_code=self.employee_code
+                ).exclude(pk=self.pk).exists()
+                if assigned_collision:
+                    raise ValidationError({'employee_code': 'An employee with this code already exists.'})
 
         if self.reporting_manager_id:
             if self.reporting_manager_id == self.id:
@@ -160,7 +180,22 @@ class WFHRequest(models.Model):
         return f"WFH: {self.employee.employee_code} ({self.start_at} - {self.end_at})"
 
 class EmployeeIDSequence(models.Model):
+    organization = models.OneToOneField(
+        'organization.Organization',
+        on_delete=models.CASCADE,
+        related_name='employee_id_sequence',
+        null=True,
+        blank=True,
+    )
     last_generated = models.IntegerField(default=0)
+
+    class Meta:
+        verbose_name = 'Employee ID Sequence'
+        verbose_name_plural = 'Employee ID Sequences'
+
+    def __str__(self):
+        org_name = self.organization.name if self.organization else "Unassigned"
+        return f"Sequence for {org_name}: {self.last_generated}"
 
 class EmployeeLifecycleEvent(models.Model):
     EVENT_TYPES = [

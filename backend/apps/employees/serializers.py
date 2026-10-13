@@ -137,7 +137,17 @@ class ProvisionEmployeeSerializer(serializers.Serializer):
         return value
 
     def validate_employee_code(self, value):
-        if Employee.objects.filter(employee_code=value).exists():
+        from django.db.models import Q
+        request = self.context.get('request')
+        org = None
+        if request and request.user.is_authenticated:
+            from apps.authorization.services import AuthorizationService
+            org = AuthorizationService.get_primary_organization(request.user)
+
+        qs = Employee.objects.filter(employee_code=value)
+        if org:
+            qs = qs.filter(Q(organization=org) | Q(organization__isnull=True))
+        if qs.exists():
             raise serializers.ValidationError("An employee with this code already exists.")
         return value
 
@@ -159,7 +169,7 @@ class ProvisionEmployeeSerializer(serializers.Serializer):
             with transaction.atomic():
                 employee_code = validated_data.get('employee_code')
                 if not employee_code:
-                    employee_code = generate_next_employee_code()
+                    employee_code = generate_next_employee_code(organization=org)
                 user = User.objects.create_user(
                     email=validated_data['email'],
                     first_name=validated_data['first_name'],

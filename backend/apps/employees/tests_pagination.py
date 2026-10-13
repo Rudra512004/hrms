@@ -70,7 +70,7 @@ class PaginationAndFilteringTests(TestCase):
             )
 
         # Assign permissions
-        perm, _ = Permission.objects.get_or_create(name='employee.view', codename='employee.view', resource='employee', action='view')
+        perm, _ = Permission.objects.get_or_create(codename='employee.view', defaults={'name': 'employee.view', 'resource': 'employee', 'action': 'view'})
         role1 = Role.objects.create(name='Manager B1', organization=self.org1)
         RolePermission.objects.create(role=role1, permission=perm)
         
