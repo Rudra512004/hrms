@@ -1006,90 +1006,248 @@ class EmployeeStatutoryAndBankViewSet(viewsets.ModelViewSet):
         org = AuthorizationService.get_primary_organization(user)
         if not org:
             return EmployeeStatutoryAndBank.objects.none()
-        return EmployeeStatutoryAndBank.objects.filter(employee__organization=org)
+
+        can_manage = AuthorizationService.has_permission(user, 'employee.manage_statutory')
+        can_view = AuthorizationService.has_permission(user, 'employee.view_statutory')
+        if can_manage or can_view:
+            return EmployeeStatutoryAndBank.objects.filter(employee__organization=org)
+
+        if hasattr(user, 'employee') and user.employee:
+            return EmployeeStatutoryAndBank.objects.filter(employee=user.employee, employee__organization=org)
+
+        return EmployeeStatutoryAndBank.objects.none()
 
     def get_permissions(self):
-        permissions = [IsAuthenticated()]
-        # We enforce specific object permissions in methods if needed
-        return permissions
+        return [IsAuthenticated(), IsNetworkAllowed()]
+
+    def _verify_employee_access(self, employee):
+        from rest_framework.exceptions import PermissionDenied, NotFound
+        user = self.request.user
+        org = AuthorizationService.get_primary_organization(user)
+        if not org or employee.organization_id != org.id:
+            raise NotFound("Employee not found in your organization.")
+
+        if not AuthorizationService.has_permission(user, 'employee.manage_statutory'):
+            if not hasattr(user, 'employee') or user.employee.id != employee.id:
+                raise PermissionDenied("You do not have permission to manage statutory data for this employee.")
 
     def perform_create(self, serializer):
+        from rest_framework.exceptions import ValidationError, NotFound
         employee_id = self.kwargs.get('employee_pk') or self.request.data.get('employee')
-        employee = Employee.objects.get(id=employee_id)
-        if not AuthorizationService.has_permission(self.request.user, 'employee.manage_statutory'):
-            if not hasattr(self.request.user, 'employee') or self.request.user.employee.id != employee.id:
-                from rest_framework.exceptions import PermissionDenied
-                raise PermissionDenied("You do not have permission to manage statutory data for this employee.")
+        if not employee_id:
+            if hasattr(self.request.user, 'employee') and self.request.user.employee:
+                employee = self.request.user.employee
+            else:
+                raise ValidationError({'employee': 'Employee ID is required.'})
+        else:
+            try:
+                employee = Employee.objects.get(id=employee_id)
+            except Employee.DoesNotExist:
+                raise NotFound("Employee not found.")
+        self._verify_employee_access(employee)
+        if EmployeeStatutoryAndBank.objects.filter(employee=employee).exists():
+            raise ValidationError({'detail': 'Statutory and bank details already exist for this employee. Please update the existing record.'})
         serializer.save(employee=employee)
+
+    def perform_update(self, serializer):
+        self._verify_employee_access(serializer.instance.employee)
+        serializer.save()
+
+    def perform_destroy(self, instance):
+        self._verify_employee_access(instance.employee)
+        instance.delete()
+
 
 class EmployeeDependentViewSet(viewsets.ModelViewSet):
     serializer_class = EmployeeDependentSerializer
 
     def get_permissions(self):
-        return [IsAuthenticated()]
-
+        return [IsAuthenticated(), IsNetworkAllowed()]
 
     def get_queryset(self):
         user = self.request.user
         org = AuthorizationService.get_primary_organization(user)
         if not org:
             return EmployeeDependent.objects.none()
-        qs = EmployeeDependent.objects.filter(employee__organization=org)
+
+        can_view_all = AuthorizationService.has_permission(user, 'employee.view') or AuthorizationService.has_permission(user, 'employee.manage')
+        if can_view_all:
+            qs = EmployeeDependent.objects.filter(employee__organization=org)
+        elif hasattr(user, 'employee') and user.employee:
+            qs = EmployeeDependent.objects.filter(employee=user.employee, employee__organization=org)
+        else:
+            return EmployeeDependent.objects.none()
+
         employee_id = self.request.query_params.get('employee')
         if employee_id:
-            qs = qs.filter(employee_id=employee_id)
+            if can_view_all or (hasattr(user, 'employee') and str(user.employee.id) == str(employee_id)):
+                qs = qs.filter(employee_id=employee_id)
+            else:
+                return EmployeeDependent.objects.none()
         return qs
 
+    def _verify_access(self, employee):
+        from rest_framework.exceptions import PermissionDenied, NotFound
+        user = self.request.user
+        org = AuthorizationService.get_primary_organization(user)
+        if not org or employee.organization_id != org.id:
+            raise NotFound("Employee not found in your organization.")
+        can_manage = AuthorizationService.has_permission(user, 'employee.manage') or AuthorizationService.has_permission(user, 'employee.update')
+        if not can_manage:
+            if not hasattr(user, 'employee') or user.employee.id != employee.id:
+                raise PermissionDenied("You do not have permission to manage dependents for this employee.")
+
     def perform_create(self, serializer):
-        employee_id = self.request.data.get('employee')
-        employee = Employee.objects.get(id=employee_id)
+        from rest_framework.exceptions import ValidationError, NotFound
+        employee_id = self.kwargs.get('employee_pk') or self.request.data.get('employee')
+        if not employee_id:
+            if hasattr(self.request.user, 'employee') and self.request.user.employee:
+                employee = self.request.user.employee
+            else:
+                raise ValidationError({'employee': 'Employee ID is required.'})
+        else:
+            try:
+                employee = Employee.objects.get(id=employee_id)
+            except Employee.DoesNotExist:
+                raise NotFound("Employee not found.")
+        self._verify_access(employee)
         serializer.save(employee=employee)
+
+    def perform_update(self, serializer):
+        self._verify_access(serializer.instance.employee)
+        serializer.save()
+
+    def perform_destroy(self, instance):
+        self._verify_access(instance.employee)
+        instance.delete()
+
 
 class EmployeeEducationViewSet(viewsets.ModelViewSet):
     serializer_class = EmployeeEducationSerializer
 
     def get_permissions(self):
-        return [IsAuthenticated()]
-
+        return [IsAuthenticated(), IsNetworkAllowed()]
 
     def get_queryset(self):
         user = self.request.user
         org = AuthorizationService.get_primary_organization(user)
         if not org:
             return EmployeeEducation.objects.none()
-        qs = EmployeeEducation.objects.filter(employee__organization=org)
+
+        can_view_all = AuthorizationService.has_permission(user, 'employee.view') or AuthorizationService.has_permission(user, 'employee.manage')
+        if can_view_all:
+            qs = EmployeeEducation.objects.filter(employee__organization=org)
+        elif hasattr(user, 'employee') and user.employee:
+            qs = EmployeeEducation.objects.filter(employee=user.employee, employee__organization=org)
+        else:
+            return EmployeeEducation.objects.none()
+
         employee_id = self.request.query_params.get('employee')
         if employee_id:
-            qs = qs.filter(employee_id=employee_id)
+            if can_view_all or (hasattr(user, 'employee') and str(user.employee.id) == str(employee_id)):
+                qs = qs.filter(employee_id=employee_id)
+            else:
+                return EmployeeEducation.objects.none()
         return qs
 
+    def _verify_access(self, employee):
+        from rest_framework.exceptions import PermissionDenied, NotFound
+        user = self.request.user
+        org = AuthorizationService.get_primary_organization(user)
+        if not org or employee.organization_id != org.id:
+            raise NotFound("Employee not found in your organization.")
+        can_manage = AuthorizationService.has_permission(user, 'employee.manage') or AuthorizationService.has_permission(user, 'employee.update')
+        if not can_manage:
+            if not hasattr(user, 'employee') or user.employee.id != employee.id:
+                raise PermissionDenied("You do not have permission to manage education records for this employee.")
+
     def perform_create(self, serializer):
-        employee_id = self.request.data.get('employee')
-        employee = Employee.objects.get(id=employee_id)
+        from rest_framework.exceptions import ValidationError, NotFound
+        employee_id = self.kwargs.get('employee_pk') or self.request.data.get('employee')
+        if not employee_id:
+            if hasattr(self.request.user, 'employee') and self.request.user.employee:
+                employee = self.request.user.employee
+            else:
+                raise ValidationError({'employee': 'Employee ID is required.'})
+        else:
+            try:
+                employee = Employee.objects.get(id=employee_id)
+            except Employee.DoesNotExist:
+                raise NotFound("Employee not found.")
+        self._verify_access(employee)
         serializer.save(employee=employee)
+
+    def perform_update(self, serializer):
+        self._verify_access(serializer.instance.employee)
+        serializer.save()
+
+    def perform_destroy(self, instance):
+        self._verify_access(instance.employee)
+        instance.delete()
+
 
 class EmployeePriorExperienceViewSet(viewsets.ModelViewSet):
     serializer_class = EmployeePriorExperienceSerializer
 
     def get_permissions(self):
-        return [IsAuthenticated()]
-
+        return [IsAuthenticated(), IsNetworkAllowed()]
 
     def get_queryset(self):
         user = self.request.user
         org = AuthorizationService.get_primary_organization(user)
         if not org:
             return EmployeePriorExperience.objects.none()
-        qs = EmployeePriorExperience.objects.filter(employee__organization=org)
+
+        can_view_all = AuthorizationService.has_permission(user, 'employee.view') or AuthorizationService.has_permission(user, 'employee.manage')
+        if can_view_all:
+            qs = EmployeePriorExperience.objects.filter(employee__organization=org)
+        elif hasattr(user, 'employee') and user.employee:
+            qs = EmployeePriorExperience.objects.filter(employee=user.employee, employee__organization=org)
+        else:
+            return EmployeePriorExperience.objects.none()
+
         employee_id = self.request.query_params.get('employee')
         if employee_id:
-            qs = qs.filter(employee_id=employee_id)
+            if can_view_all or (hasattr(user, 'employee') and str(user.employee.id) == str(employee_id)):
+                qs = qs.filter(employee_id=employee_id)
+            else:
+                return EmployeePriorExperience.objects.none()
         return qs
 
+    def _verify_access(self, employee):
+        from rest_framework.exceptions import PermissionDenied, NotFound
+        user = self.request.user
+        org = AuthorizationService.get_primary_organization(user)
+        if not org or employee.organization_id != org.id:
+            raise NotFound("Employee not found in your organization.")
+        can_manage = AuthorizationService.has_permission(user, 'employee.manage') or AuthorizationService.has_permission(user, 'employee.update')
+        if not can_manage:
+            if not hasattr(user, 'employee') or user.employee.id != employee.id:
+                raise PermissionDenied("You do not have permission to manage prior experience records for this employee.")
+
     def perform_create(self, serializer):
-        employee_id = self.request.data.get('employee')
-        employee = Employee.objects.get(id=employee_id)
+        from rest_framework.exceptions import ValidationError, NotFound
+        employee_id = self.kwargs.get('employee_pk') or self.request.data.get('employee')
+        if not employee_id:
+            if hasattr(self.request.user, 'employee') and self.request.user.employee:
+                employee = self.request.user.employee
+            else:
+                raise ValidationError({'employee': 'Employee ID is required.'})
+        else:
+            try:
+                employee = Employee.objects.get(id=employee_id)
+            except Employee.DoesNotExist:
+                raise NotFound("Employee not found.")
+        self._verify_access(employee)
         serializer.save(employee=employee)
+
+    def perform_update(self, serializer):
+        self._verify_access(serializer.instance.employee)
+        serializer.save()
+
+    def perform_destroy(self, instance):
+        self._verify_access(instance.employee)
+        instance.delete()
 
 from .models import ApprovalDelegation, LetterRequest
 from .serializers import ApprovalDelegationSerializer, LetterRequestSerializer

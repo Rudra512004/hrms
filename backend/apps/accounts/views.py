@@ -64,6 +64,15 @@ class LoginView(APIView):
             user = serializer.validated_data['user']
             token, created = Token.objects.get_or_create(user=user)
 
+            from django.conf import settings
+            from django.utils import timezone
+            from datetime import timedelta
+            token_ttl_hours = getattr(settings, 'TOKEN_TTL_HOURS', 24)
+            if not created and token_ttl_hours is not None:
+                if timezone.now() > token.created + timedelta(hours=token_ttl_hours):
+                    token.delete()
+                    token = Token.objects.create(user=user)
+
             AuditService.log(
                 action='login_success',
                 actor=user,
@@ -95,7 +104,7 @@ class LogoutView(APIView):
             target_id=request.user.id,
             request=request
         )
-        request.user.auth_token.delete()
+        Token.objects.filter(user=request.user).delete()
         return Response({'detail': 'Successfully logged out.'}, status=status.HTTP_200_OK)
 
 class MeView(APIView):
