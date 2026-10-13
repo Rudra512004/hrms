@@ -4,10 +4,21 @@ from rest_framework.response import Response
 from django.db import IntegrityError, transaction
 from rest_framework.exceptions import ValidationError
 from .models import OfficeNetwork, Organization, Department, Designation, Branch, Team, WorkingCalendar
-from .services import OrganizationReadinessService
-from .serializers import OfficeNetworkSerializer, OrganizationSerializer, DepartmentSerializer, DesignationSerializer, BranchSerializer, WorkingCalendarSerializer, OrganizationSetupSerializer, TeamSerializer, AttendancePolicySerializer, TenantBrandingAndConfigSerializer
+from .services import OrganizationReadinessService, OrganizationOnboardingService
+from .serializers import (
+    OfficeNetworkSerializer, OrganizationSerializer, DepartmentSerializer,
+    DesignationSerializer, BranchSerializer, WorkingCalendarSerializer,
+    OrganizationSetupSerializer, TeamSerializer, AttendancePolicySerializer,
+    TenantBrandingAndConfigSerializer, OnboardingStage1Serializer,
+    OnboardingStage2Serializer, OnboardingStage3Serializer,
+    OnboardingStage4Serializer, OnboardingStage5Serializer,
+    OnboardingStage6Serializer, OnboardingDraftSerializer,
+    OrganizationOnboardingSerializer, OrganizationInvitationSerializer,
+    OrganizationInvitationAcceptSerializer,
+)
 from apps.authorization.permissions import require_permission, IsNetworkAllowed
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import IsAuthenticated, AllowAny
+from rest_framework.throttling import AnonRateThrottle, UserRateThrottle
 from rest_framework.views import APIView
 from apps.audit.services import AuditService
 
@@ -169,12 +180,11 @@ class OrganizationViewSet(OrganizationConfigurationAuditMixin, viewsets.ModelVie
     def get_permissions(self):
         if self.action in ['list', 'retrieve', 'readiness', 'org_chart']:
             permission = require_permission('organization.view')
-        elif self.action == 'branding':
+        elif self.action in ['branding', 'branding_logo']:
             if self.request.method in ['GET', 'HEAD']:
                 permission = require_permission('organization.view')
             else:
-                from apps.authorization.permissions import IsSuperAdmin
-                permission = IsSuperAdmin
+                permission = require_permission('branding.manage')
         else:
             permission = require_permission('organization.manage')
         return [IsAuthenticated(), permission()]
@@ -215,6 +225,93 @@ class OrganizationViewSet(OrganizationConfigurationAuditMixin, viewsets.ModelVie
         updated_config = serializer.save()
         self._audit('tenant_branding_updated', organization, {'fields': list(request.data.keys())})
         return Response(serializer.data)
+
+    @action(detail=True, methods=['post', 'delete'], url_path='branding/logo')
+    def branding_logo(self, request, pk=None):
+        """
+        Upload, replace, or remove organization logo file.
+        On upload, validates image integrity, extracts dominant colors,
+        and generates coordinated color palettes.
+        """
+        organization = self.get_object()
+        from .models import TenantBrandingAndConfig
+        from .branding_service import OrganizationBrandingService
+        from PIL import Image
+
+        branding_config, _ = TenantBrandingAndConfig.objects.get_or_create(
+            organization=organization
+        )
+
+        if request.method == 'DELETE':
+            if branding_config.logo_file:
+                branding_config.logo_file.delete(save=False)
+            branding_config.logo_file = None
+            branding_config.logo_url = ''
+            branding_config.save(update_fields=['logo_file', 'logo_url', 'updated_at'])
+            self._audit('organization_logo_removed', organization)
+            return Response(TenantBrandingAndConfigSerializer(branding_config).data, status=status.HTTP_200_OK)
+
+        # POST upload
+        upload_file = request.FILES.get('file') or request.FILES.get('logo')
+        if not upload_file:
+            raise ValidationError({'file': ['No logo image file was provided in the upload request.']})
+
+        # Size check (2MB max)
+        if upload_file.size > 2 * 1024 * 1024:
+            raise ValidationError({'file': ['Logo file size must not exceed 2 MB.']})
+
+        # Content validation via Pillow
+        try:
+            img = Image.open(upload_file)
+            img.verify()
+            upload_file.seek(0)
+            img = Image.open(upload_file)
+        except Exception:
+            raise ValidationError({'file': ['Uploaded file is not a valid or readable image.']})
+
+        if img.format.upper() not in ['PNG', 'JPEG', 'JPG', 'WEBP']:
+            raise ValidationError({'file': [f"Unsupported image format '{img.format}'. Allowed: PNG, JPEG, WEBP."]})
+
+        if img.width > 2048 or img.height > 2048:
+            raise ValidationError({'file': ['Logo dimensions must not exceed 2048x2048 pixels.']})
+
+        if img.width < 16 or img.height < 16:
+            raise ValidationError({'file': ['Logo dimensions must be at least 16x16 pixels.']})
+
+        # Replace existing logo file safely
+        if branding_config.logo_file:
+            branding_config.logo_file.delete(save=False)
+
+        branding_config.logo_file = upload_file
+        branding_config.save()
+        branding_config.refresh_from_db()
+
+        # Build absolute URL
+        if branding_config.logo_file:
+            branding_config.logo_url = request.build_absolute_uri(branding_config.logo_file.url)
+
+        # Extract dominant colors and generate palette suggestions
+        upload_file.seek(0)
+        dominant_colors = OrganizationBrandingService.extract_dominant_colors(upload_file)
+        palettes = OrganizationBrandingService.generate_coordinated_palettes(dominant_colors[0])
+        branding_config.palette_suggestions = palettes
+
+        # If custom mode is active and no colors have been set yet, initialize with the first palette.
+        # Otherwise, preserve existing theme colors and manual overrides (do not silently replace active theme).
+        if branding_config.branding_mode == 'custom' and not branding_config.primary_color:
+            branding_config.selected_palette = palettes[0]['id']
+            branding_config.primary_color = palettes[0]['primary_color']
+            branding_config.secondary_color = palettes[0]['secondary_color']
+            branding_config.accent_color = palettes[0]['accent_color']
+            branding_config.sidebar_bg_color = palettes[0]['sidebar_bg_color']
+
+        branding_config.save(update_fields=[
+            'logo_url', 'palette_suggestions', 'selected_palette',
+            'primary_color', 'secondary_color', 'accent_color', 'sidebar_bg_color', 'updated_at'
+        ])
+
+        self._audit('organization_logo_uploaded', organization, {'logo_url': branding_config.logo_url})
+        return Response(TenantBrandingAndConfigSerializer(branding_config).data, status=status.HTTP_200_OK)
 
     @action(detail=True, methods=['get'], url_path='org-chart')
     def org_chart(self, request, pk=None):
@@ -532,3 +629,306 @@ class BranchViewSet(OrganizationConfigurationAuditMixin, viewsets.ModelViewSet):
             organization=branch.organization,
         )
         return Response(serializer.data)
+
+
+# =============================================================================
+# Organization Setup Wizard Views (Phase 3C)
+# =============================================================================
+
+class OrganizationWizardBaseView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get_onboarding(self, request):
+        org_id = request.query_params.get('org_id')
+        if org_id is None and request.data and isinstance(request.data, dict):
+            org_id = request.data.get('organization_id') or request.data.get('org_id')
+
+        onb = OrganizationOnboardingService.resolve_onboarding(request.user, org_id=org_id)
+        if not onb:
+            raise ValidationError({'detail': 'No active onboarding session found for this user.'})
+        return onb
+
+
+class OrganizationWizardStartView(APIView):
+    """
+    POST /api/v1/organization/wizard/start/
+    Initialize onboarding session and execute Stage 1 (Organization Details).
+    """
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, *args, **kwargs):
+        serializer = OnboardingStage1Serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        onboarding, org = OrganizationOnboardingService.execute_stage_1(
+            user=request.user,
+            validated_data=serializer.validated_data,
+            request=request,
+        )
+
+        return Response({
+            'onboarding_id': onboarding.id,
+            'organization_id': org.id,
+            'name': org.name,
+            'code': org.code,
+            'current_stage': onboarding.current_stage,
+            'completed_stages': onboarding.completed_stages,
+            'status': onboarding.status,
+        }, status=status.HTTP_201_CREATED)
+
+
+class OrganizationWizardStatusView(OrganizationWizardBaseView):
+    """
+    GET /api/v1/organization/wizard/status/
+    Query current onboarding state, stage progress, and readiness summary.
+    """
+    def get(self, request, *args, **kwargs):
+        onboarding = self.get_onboarding(request)
+        return Response(OrganizationOnboardingService.get_status(onboarding), status=status.HTTP_200_OK)
+
+
+class OrganizationWizardStageView(OrganizationWizardBaseView):
+    """
+    POST /api/v1/organization/wizard/stage/<int:stage_number>/
+    Atomic submission and validation for discrete wizard stages.
+    """
+    def post(self, request, stage_number, *args, **kwargs):
+        if stage_number < 1 or stage_number > 7:
+            raise ValidationError({'stage': 'Stage number must be between 1 and 7.'})
+
+        if stage_number == 1:
+            serializer = OnboardingStage1Serializer(data=request.data)
+            serializer.is_valid(raise_exception=True)
+            onboarding, org = OrganizationOnboardingService.execute_stage_1(
+                user=request.user, validated_data=serializer.validated_data, request=request
+            )
+            return Response(OrganizationOnboardingService.get_status(onboarding), status=status.HTTP_200_OK)
+
+        onboarding = self.get_onboarding(request)
+
+        if stage_number == 2:
+            serializer = OnboardingStage2Serializer(data=request.data)
+            serializer.is_valid(raise_exception=True)
+            onboarding, branch = OrganizationOnboardingService.execute_stage_2(
+                onboarding, request.user, serializer.validated_data, request=request
+            )
+        elif stage_number == 3:
+            serializer = OnboardingStage3Serializer(data=request.data)
+            serializer.is_valid(raise_exception=True)
+            onboarding, depts, desigs = OrganizationOnboardingService.execute_stage_3(
+                onboarding, request.user, serializer.validated_data, request=request
+            )
+        elif stage_number == 4:
+            serializer = OnboardingStage4Serializer(data=request.data)
+            serializer.is_valid(raise_exception=True)
+            onboarding, wc = OrganizationOnboardingService.execute_stage_4(
+                onboarding, request.user, serializer.validated_data, request=request
+            )
+        elif stage_number == 5:
+            serializer = OnboardingStage5Serializer(data=request.data)
+            serializer.is_valid(raise_exception=True)
+            onboarding, shift = OrganizationOnboardingService.execute_stage_5(
+                onboarding, request.user, serializer.validated_data, request=request
+            )
+        elif stage_number == 6:
+            serializer = OnboardingStage6Serializer(data=request.data, context={'request': request})
+            serializer.is_valid(raise_exception=True)
+            onboarding, result = OrganizationOnboardingService.execute_stage_6(
+                onboarding, request.user, serializer.validated_data, request=request
+            )
+        elif stage_number == 7:
+            onboarding, readiness = OrganizationOnboardingService.execute_stage_7(
+                onboarding, request.user, request=request
+            )
+
+        return Response(OrganizationOnboardingService.get_status(onboarding), status=status.HTTP_200_OK)
+
+
+class OrganizationWizardStage2View(OrganizationWizardStageView):
+    def post(self, request, *args, **kwargs):
+        return super().post(request, 2, *args, **kwargs)
+
+
+class OrganizationWizardStage3View(OrganizationWizardStageView):
+    def post(self, request, *args, **kwargs):
+        return super().post(request, 3, *args, **kwargs)
+
+
+class OrganizationWizardStage4View(OrganizationWizardStageView):
+    def post(self, request, *args, **kwargs):
+        return super().post(request, 4, *args, **kwargs)
+
+
+class OrganizationWizardStage5View(OrganizationWizardStageView):
+    def post(self, request, *args, **kwargs):
+        return super().post(request, 5, *args, **kwargs)
+
+
+class OrganizationWizardStage6View(OrganizationWizardStageView):
+    def post(self, request, *args, **kwargs):
+        return super().post(request, 6, *args, **kwargs)
+
+
+class OrganizationWizardCompleteView(OrganizationWizardBaseView):
+    """
+    POST /api/v1/organization/wizard/complete/
+    Finalizes wizard setup, marks onboarding complete, activates organization, and returns readiness report.
+    """
+    def post(self, request, *args, **kwargs):
+        onboarding = self.get_onboarding(request)
+        onboarding, readiness = OrganizationOnboardingService.execute_stage_7(
+            onboarding, request.user, request=request
+        )
+        return Response({
+            'status': onboarding.status,
+            'organization_id': onboarding.organization.id,
+            'completed_at': onboarding.completed_at,
+            'readiness_score': readiness.get('score', 0),
+            'redirect_url': '/dashboard',
+        }, status=status.HTTP_200_OK)
+
+
+class OrganizationWizardDraftView(OrganizationWizardBaseView):
+    """
+    POST /api/v1/organization/wizard/draft/
+    Saves non-sensitive draft metadata for a wizard step.
+    """
+    def post(self, request, *args, **kwargs):
+        serializer = OnboardingDraftSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        onboarding = self.get_onboarding(request)
+        stage = serializer.validated_data['stage']
+        data = serializer.validated_data['data']
+
+        onboarding = OrganizationOnboardingService.save_draft(
+            onboarding, request.user, stage, data, request=request
+        )
+        return Response({
+            'detail': 'Draft saved successfully.',
+            'stage': stage,
+            'current_stage': onboarding.current_stage,
+        }, status=status.HTTP_200_OK)
+
+
+class OrganizationWizardReadinessView(OrganizationWizardBaseView):
+    """
+    GET /api/v1/organization/wizard/readiness/
+    Retrieves the complete diagnostic readiness assessment.
+    """
+    def get(self, request, *args, **kwargs):
+        onboarding = self.get_onboarding(request)
+        return Response(OrganizationReadinessService.assess(onboarding.organization), status=status.HTTP_200_OK)
+
+
+class OrganizationInvitationThrottle(AnonRateThrottle):
+    rate = '15/minute'
+
+
+class OrganizationInvitationAcceptThrottle(AnonRateThrottle):
+    rate = '5/minute'
+
+
+class OrganizationWizardStage6ResendView(OrganizationWizardBaseView):
+    """
+    POST /api/v1/organization/wizard/stage-6/resend/
+    Resends an active pending administrator invitation and rotates the token.
+    """
+    throttle_classes = [UserRateThrottle]
+
+    def post(self, request, *args, **kwargs):
+        onboarding = self.get_onboarding(request)
+        invitation = OrganizationOnboardingService.resend_stage_6_invitation(
+            onboarding, request.user, request=request
+        )
+        return Response({
+            'detail': 'Invitation resent successfully.',
+            'invitation_id': invitation.id,
+            'email': invitation.email,
+            'status': invitation.status,
+            'email_delivery_status': invitation.email_delivery_status,
+            'resend_count': invitation.resend_count,
+            'expires_at': invitation.expires_at.isoformat(),
+        }, status=status.HTTP_200_OK)
+
+
+class OrganizationWizardStage6RevokeView(OrganizationWizardBaseView):
+    """
+    POST /api/v1/organization/wizard/stage-6/revoke/
+    Revokes an active pending administrator invitation.
+    """
+    throttle_classes = [UserRateThrottle]
+
+    def post(self, request, *args, **kwargs):
+        onboarding = self.get_onboarding(request)
+        invitation = OrganizationOnboardingService.revoke_stage_6_invitation(
+            onboarding, request.user, request=request
+        )
+        return Response({
+            'detail': 'Invitation revoked successfully.',
+            'invitation_id': invitation.id,
+            'status': invitation.status,
+        }, status=status.HTTP_200_OK)
+
+
+class OrganizationInvitationVerifyView(APIView):
+    """
+    GET /api/v1/organization/invitations/verify/?token=<raw_token>
+    Public rate-throttled endpoint validating an invitation token.
+    Does NOT disclose whether arbitrary accounts exist.
+    """
+    permission_classes = [AllowAny]
+    throttle_classes = [OrganizationInvitationThrottle]
+
+    def get(self, request, *args, **kwargs):
+        token = request.query_params.get('token')
+        invitation = OrganizationOnboardingService.verify_invitation_token(token)
+        return Response({
+            'valid': True,
+            'organization_name': invitation.organization.name,
+            'organization_code': invitation.organization.code,
+            'email': invitation.email,
+            'first_name': invitation.first_name,
+            'last_name': invitation.last_name,
+            'expires_at': invitation.expires_at.isoformat(),
+        }, status=status.HTTP_200_OK)
+
+
+class OrganizationInvitationAcceptView(APIView):
+    """
+    POST /api/v1/organization/invitations/accept/
+    Atomically accepts an invitation and provisions the organization Super Admin role.
+    Active existing accounts must be pre-authenticated through canonical login.
+    Invited or new accounts must provide a password meeting complexity standards.
+    Zero DRF authentication tokens are returned from this view.
+    """
+    permission_classes = [AllowAny]
+    throttle_classes = [OrganizationInvitationAcceptThrottle]
+
+    def post(self, request, *args, **kwargs):
+        serializer = OrganizationInvitationAcceptSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        token = serializer.validated_data['token']
+        password = serializer.validated_data.get('password')
+        first_name = serializer.validated_data.get('first_name', '')
+        last_name = serializer.validated_data.get('last_name', '')
+
+        invitation, target_user = OrganizationOnboardingService.accept_invitation(
+            raw_token=token,
+            authenticated_user=request.user if request.user.is_authenticated else None,
+            password=password,
+            first_name=first_name,
+            last_name=last_name,
+            request=request,
+        )
+
+        return Response({
+            'detail': 'Invitation accepted successfully. Organization Super Admin role provisioned.',
+            'organization_id': invitation.organization.id,
+            'organization_name': invitation.organization.name,
+            'role': invitation.role.slug,
+            'status': invitation.status,
+        }, status=status.HTTP_200_OK)
+
+

@@ -72,7 +72,7 @@ class OrganizationAPITests(TestCase):
         checks = {item['key']: item for item in response.data['checks']}
         self.assertEqual(checks['branches']['state'], 'ready')
         self.assertEqual(checks['calendars']['state'], 'ready')
-        self.assertEqual(checks['leave_types']['state'], 'action_required')
+        self.assertEqual(checks['leave_types']['state'], 'recommended')
 
     def test_department_creation_under_branch(self):
         from apps.organization.models import Branch

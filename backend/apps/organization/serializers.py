@@ -3,7 +3,8 @@ from django.db import transaction
 from .models import (
     OfficeNetwork, Organization, Department, Designation, Branch,
     WorkingCalendar, WorkingCalendarRule, Team, AttendancePolicy,
-    TenantBrandingAndConfig,
+    TenantBrandingAndConfig, OrganizationOnboarding,
+    OrganizationInvitation, InvitationStatus, EmailDeliveryStatus,
 )
 
 class WorkingCalendarRuleSerializer(serializers.ModelSerializer):
@@ -172,13 +173,41 @@ class TenantBrandingAndConfigSerializer(serializers.ModelSerializer):
     class Meta:
         model = TenantBrandingAndConfig
         fields = [
-            'logo_url', 'favicon_url', 'login_banner_url', 'watermark_url',
+            'branding_mode', 'selected_palette', 'palette_suggestions', 'manual_overrides',
+            'logo_url', 'logo_file', 'favicon_url', 'login_banner_url', 'watermark_url',
             'watermark_opacity', 'primary_color', 'secondary_color',
             'accent_color', 'sidebar_bg_color', 'default_theme_mode',
             'font_family', 'currency_code', 'date_format',
             'enabled_modules_json', 'custom_fields_schema', 'updated_at',
         ]
         read_only_fields = ['updated_at']
+
+    def validate_hex_color_field(self, field_name, value):
+        if value:
+            from .branding_service import OrganizationBrandingService
+            clean_val = value.strip()
+            if not OrganizationBrandingService.validate_hex_color(clean_val):
+                raise serializers.ValidationError(f"Invalid hex color format for {field_name}. Expected format: #RRGGBB or #RGB.")
+            return clean_val
+        return value
+
+    def validate_primary_color(self, value):
+        return self.validate_hex_color_field('primary_color', value)
+
+    def validate_secondary_color(self, value):
+        return self.validate_hex_color_field('secondary_color', value)
+
+    def validate_accent_color(self, value):
+        return self.validate_hex_color_field('accent_color', value)
+
+    def validate_sidebar_bg_color(self, value):
+        return self.validate_hex_color_field('sidebar_bg_color', value)
+
+    def validate_branding_mode(self, value):
+        from .models import BrandingMode
+        if value and value not in BrandingMode.values:
+            raise serializers.ValidationError(f"Invalid branding mode. Must be one of {BrandingMode.values}.")
+        return value
 
     def validate_watermark_opacity(self, value):
         if value is not None and not (0 <= value <= 1):
@@ -355,3 +384,236 @@ class BranchSerializer(serializers.ModelSerializer):
             wc.save()
 
         return instance
+
+
+# =============================================================================
+# Organization Onboarding Wizard Serializers
+# =============================================================================
+
+class OrganizationOnboardingSerializer(serializers.ModelSerializer):
+    organization_name = serializers.CharField(source='organization.name', read_only=True)
+    organization_code = serializers.CharField(source='organization.code', read_only=True)
+    owner_email = serializers.EmailField(source='owner.email', read_only=True)
+
+    class Meta:
+        model = OrganizationOnboarding
+        fields = [
+            'id', 'organization', 'organization_name', 'organization_code',
+            'owner', 'owner_email', 'status', 'current_stage',
+            'completed_stages', 'metadata', 'completed_at',
+            'created_at', 'updated_at',
+        ]
+        read_only_fields = [
+            'id', 'organization', 'organization_name', 'organization_code',
+            'owner', 'owner_email', 'status', 'current_stage',
+            'completed_stages', 'metadata', 'completed_at',
+            'created_at', 'updated_at',
+        ]
+
+
+class OnboardingStage1Serializer(serializers.Serializer):
+    name = serializers.CharField(max_length=255, required=True)
+    code = serializers.CharField(max_length=50, required=False, allow_blank=True, default='')
+    currency_code = serializers.CharField(max_length=10, required=False, default='INR')
+    date_format = serializers.CharField(max_length=30, required=False, default='DD/MM/YYYY')
+    timezone = serializers.CharField(max_length=50, required=False, default='UTC')
+
+    def validate_name(self, value):
+        val = value.strip()
+        if not val:
+            raise serializers.ValidationError("Organization name cannot be empty.")
+        return val
+
+
+class OnboardingStage2Serializer(serializers.Serializer):
+    name = serializers.CharField(max_length=255, required=True)
+    code = serializers.CharField(max_length=50, required=False, allow_blank=True, default='')
+    address_line1 = serializers.CharField(max_length=255, required=False, allow_blank=True, default='')
+    address_line2 = serializers.CharField(max_length=255, required=False, allow_blank=True, default='')
+    city = serializers.CharField(max_length=100, required=False, allow_blank=True, default='')
+    state = serializers.CharField(max_length=100, required=False, allow_blank=True, default='')
+    country = serializers.CharField(max_length=100, required=False, allow_blank=True, default='')
+    postal_code = serializers.CharField(max_length=20, required=False, allow_blank=True, default='')
+    timezone = serializers.CharField(max_length=50, required=False, default='UTC')
+    latitude = serializers.DecimalField(max_digits=9, decimal_places=6, required=False, allow_null=True)
+    longitude = serializers.DecimalField(max_digits=9, decimal_places=6, required=False, allow_null=True)
+    radius = serializers.FloatField(required=False, default=100.0)
+
+    def validate_radius(self, value):
+        if value < 100.0:
+            raise serializers.ValidationError("Branch radius must be at least 100.0 meters.")
+        return value
+
+
+class OnboardingDepartmentInputSerializer(serializers.Serializer):
+    name = serializers.CharField(max_length=255, required=True)
+    code = serializers.CharField(max_length=50, required=False, allow_blank=True, default='')
+    description = serializers.CharField(required=False, allow_blank=True, default='')
+
+
+class OnboardingDesignationInputSerializer(serializers.Serializer):
+    name = serializers.CharField(max_length=255, required=True)
+    code = serializers.CharField(max_length=50, required=False, allow_blank=True, default='')
+    level = serializers.IntegerField(required=False, allow_null=True, min_value=1)
+
+
+class OnboardingStage3Serializer(serializers.Serializer):
+    departments = OnboardingDepartmentInputSerializer(many=True, required=True)
+    designations = OnboardingDesignationInputSerializer(many=True, required=True)
+
+    def validate_departments(self, value):
+        if not value:
+            raise serializers.ValidationError("At least one department is required for stage 3.")
+        names = [d['name'].strip().lower() for d in value if d.get('name')]
+        if len(names) != len(set(names)):
+            raise serializers.ValidationError("Duplicate department names are not allowed.")
+        return value
+
+    def validate_designations(self, value):
+        if not value:
+            raise serializers.ValidationError("At least one designation is required for stage 3.")
+        names = [d['name'].strip().lower() for d in value if d.get('name')]
+        if len(names) != len(set(names)):
+            raise serializers.ValidationError("Duplicate designation names are not allowed.")
+        return value
+
+
+class OnboardingHolidayInputSerializer(serializers.Serializer):
+    name = serializers.CharField(max_length=255, required=True)
+    date = serializers.DateField(required=True)
+    holiday_type = serializers.CharField(max_length=50, required=False, allow_blank=True, default='public')
+
+
+class OnboardingStage4Serializer(serializers.Serializer):
+    work_days = serializers.CharField(max_length=50, required=True)
+    recurring_rules = WorkingCalendarRuleSerializer(many=True, required=False, default=list)
+    holidays = OnboardingHolidayInputSerializer(many=True, required=False, default=list)
+
+    def validate_work_days(self, value):
+        if not value or not value.strip():
+            raise serializers.ValidationError("work_days cannot be empty.")
+        try:
+            days = [int(d.strip()) for d in value.split(',')]
+            if not all(0 <= d <= 6 for d in days):
+                raise serializers.ValidationError("Work days must be between 0 (Monday) and 6 (Sunday).")
+            if len(days) != len(set(days)):
+                raise serializers.ValidationError("Duplicate work days are not allowed.")
+        except serializers.ValidationError:
+            raise
+        except Exception:
+            raise serializers.ValidationError("Invalid format. Use comma-separated integers, e.g. '0,1,2,3,4'.")
+        return value
+
+
+class OnboardingShiftInputSerializer(serializers.Serializer):
+    name = serializers.CharField(max_length=255, required=False, default='General Shift')
+    code = serializers.CharField(max_length=50, required=False, allow_blank=True, default='GEN')
+    start_time = serializers.TimeField(required=True)
+    end_time = serializers.TimeField(required=True)
+    grace_period_minutes = serializers.IntegerField(required=False, default=15, min_value=0)
+    work_days = serializers.CharField(max_length=50, required=False, default='0,1,2,3,4')
+
+
+class OnboardingAttendancePolicyInputSerializer(serializers.Serializer):
+    is_office_gps_enabled = serializers.BooleanField(required=False, default=True)
+    is_office_ip_enabled = serializers.BooleanField(required=False, default=False)
+    is_wfh_enabled = serializers.BooleanField(required=False, default=False)
+    wfh_bypasses_office_restrictions = serializers.BooleanField(required=False, default=True)
+
+
+class OnboardingOfficeNetworkInputSerializer(serializers.Serializer):
+    name = serializers.CharField(max_length=255, required=True)
+    network = serializers.CharField(max_length=50, required=True)
+    description = serializers.CharField(required=False, allow_blank=True, default='')
+
+
+class OnboardingStage5Serializer(serializers.Serializer):
+    shift = OnboardingShiftInputSerializer(required=True)
+    attendance_policy = OnboardingAttendancePolicyInputSerializer(required=False, default=dict)
+    office_network = OnboardingOfficeNetworkInputSerializer(required=False, allow_null=True, default=None)
+
+
+class OnboardingStage6Serializer(serializers.Serializer):
+    assignment_type = serializers.ChoiceField(
+        choices=['self', 'invite'],
+        required=False,
+        default='self',
+    )
+    confirm = serializers.BooleanField(required=False, default=False)
+    first_name = serializers.CharField(required=False, allow_blank=True, max_length=150)
+    last_name = serializers.CharField(required=False, allow_blank=True, max_length=150)
+    email = serializers.EmailField(required=False)
+
+    def validate(self, data):
+        assignment_type = data.get('assignment_type', 'self')
+        if assignment_type == 'self':
+            if not data.get('confirm'):
+                raise serializers.ValidationError({
+                    'confirm': "Confirmation of administrative role assignment is required to proceed."
+                })
+        elif assignment_type == 'invite':
+            email = data.get('email')
+            first_name = data.get('first_name')
+            if not email:
+                raise serializers.ValidationError({'email': ["This field is required."]})
+            email = email.strip().lower()
+            data['email'] = email
+            if not first_name or not first_name.strip():
+                raise serializers.ValidationError({'first_name': ["This field is required."]})
+            data['first_name'] = first_name.strip()
+            if 'last_name' in data and data['last_name']:
+                data['last_name'] = data['last_name'].strip()
+
+            # Prevent self-invite via Option B
+            request = self.context.get('request')
+            if request and getattr(request, 'user', None) and request.user.is_authenticated:
+                if request.user.email and request.user.email.strip().lower() == email:
+                    raise serializers.ValidationError({
+                        'email': ["To assign yourself, choose 'Assign myself' (Option A)."]
+                    })
+        return data
+
+
+class OrganizationInvitationSerializer(serializers.ModelSerializer):
+    role_name = serializers.CharField(source='role.name', read_only=True)
+    role_slug = serializers.CharField(source='role.slug', read_only=True)
+    organization_name = serializers.CharField(source='organization.name', read_only=True)
+    organization_code = serializers.CharField(source='organization.code', read_only=True)
+
+    class Meta:
+        model = OrganizationInvitation
+        fields = [
+            'id', 'email', 'first_name', 'last_name', 'status',
+            'email_delivery_status', 'email_delivery_error', 'email_sent_at',
+            'expires_at', 'resend_count', 'created_at', 'role_name', 'role_slug',
+            'organization_name', 'organization_code'
+        ]
+        read_only_fields = fields
+
+
+class OrganizationInvitationAcceptSerializer(serializers.Serializer):
+    token = serializers.CharField(required=True)
+    password = serializers.CharField(required=False, write_only=True)
+    first_name = serializers.CharField(required=False, allow_blank=True, max_length=150)
+    last_name = serializers.CharField(required=False, allow_blank=True, max_length=150)
+
+    def validate_token(self, value):
+        token = value.strip()
+        if not token:
+            raise serializers.ValidationError("Invitation token is required.")
+        return token
+
+
+class OnboardingDraftSerializer(serializers.Serializer):
+    stage = serializers.IntegerField(min_value=1, max_value=7, required=True)
+    data = serializers.DictField(required=True)
+
+    def validate_data(self, value):
+        from .models import validate_onboarding_metadata
+        from django.core.exceptions import ValidationError as DjangoValidationError
+        try:
+            validate_onboarding_metadata(value)
+        except DjangoValidationError as e:
+            raise serializers.ValidationError(e.messages if hasattr(e, 'messages') else str(e))
+        return value
+

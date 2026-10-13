@@ -12,8 +12,8 @@ class OfficeNetworkTests(APITestCase):
         from apps.organization.models import Branch
         self.branch = Branch.objects.create(organization=self.org, name='HQ Branch')
 
-        self.perm_view = Permission.objects.create(name='View Net', codename='office_network.view', resource='office_network', action='view')
-        self.perm_create = Permission.objects.create(name='Create Net', codename='office_network.create', resource='office_network', action='create')
+        self.perm_view, _ = Permission.objects.get_or_create(codename='office_network.view', defaults={'name': 'View Net', 'resource': 'office_network', 'action': 'view'})
+        self.perm_create, _ = Permission.objects.get_or_create(codename='office_network.create', defaults={'name': 'Create Net', 'resource': 'office_network', 'action': 'create'})
 
         self.role = Role.objects.create(organization=self.org, name='Superadmin')
         RolePermission.objects.create(role=self.role, permission=self.perm_view)

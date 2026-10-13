@@ -110,6 +110,41 @@ class NotificationService:
             return False
 
     @staticmethod
+    def send_organization_admin_invitation_email(recipient_email, recipient_name, organization_name, raw_token, inviter_name=None):
+        subject = f"You are invited to be Super Admin for {organization_name}"
+        frontend_url = getattr(settings, 'FRONTEND_URL', 'http://localhost:5173')
+        accept_link = f"{frontend_url}/invite/accept?token={raw_token}"
+        inviter_info = f" by {inviter_name}" if inviter_name else ""
+
+        message = (
+            f"Hello {recipient_name},\n\n"
+            f"You have been invited{inviter_info} to become the Super Admin for {organization_name} on BeyondSure HRMS.\n\n"
+            f"This role grants authoritative organization-scoped administrative access to manage company settings, "
+            f"branches, departments, employees, attendance, leaves, and payroll.\n\n"
+            f"To accept this invitation and complete your setup, click the link below:\n"
+            f"{accept_link}\n\n"
+            f"Please note:\n"
+            f"- For security reasons, do not share this link with anyone.\n"
+            f"- This invitation link will expire in 7 days.\n"
+            f"- If you already have an active account, you will be prompted to sign in before accepting.\n\n"
+            f"Regards,\n{organization_name} Administration"
+        )
+
+        try:
+            send_mail(
+                subject,
+                message,
+                settings.DEFAULT_FROM_EMAIL,
+                [recipient_email],
+                fail_silently=False,
+            )
+            return True
+        except Exception as e:
+            logger.error(f"Failed to send organization admin invitation email to {recipient_email}: {str(e)}")
+            return False
+
+
+    @staticmethod
     def create_in_app_notification(recipient, organization, notification_type, title, message, reference_id=''):
         from .models import Notification
         
