@@ -2,12 +2,23 @@ import React, { useMemo, useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import {
   Building2, CheckCircle2, ChevronRight, Circle, Loader2,
-  ShieldCheck, Users, CalendarDays, Wifi, AlertCircle,
+  ShieldCheck, Users, CalendarDays, Wifi, AlertCircle, Sparkles, ArrowRight,
 } from 'lucide-react';
 import { Card } from '../../../components/Card';
 import { organizationService, type OrganizationSetupPayload } from '../../../services/organization';
+import { onboardingService, type WizardStatusResponse } from '../../../services/onboardingService';
 import { useAuth } from '../../../contexts/AuthContext';
 import { useBranding } from '../../../contexts/BrandingContext';
+
+const STAGE_NAMES: Record<number, string> = {
+  1: 'Organization Details',
+  2: 'Initial Branch & Location',
+  3: 'Organizational Structure',
+  4: 'Working Calendar & Holidays',
+  5: 'Shift & Attendance Policy',
+  6: 'Initial Administrator & RBAC',
+  7: 'Review & Complete Launch',
+};
 
 type Tab = 'setup' | 'branding';
 
@@ -71,6 +82,40 @@ export const OrganizationLaunchpadPage: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<Tab>('setup');
   
+  const [wizardStatus, setWizardStatus] = useState<WizardStatusResponse | null>(null);
+  const [activating, setActivating] = useState(false);
+  const [activationSuccess, setActivationSuccess] = useState(false);
+
+  useEffect(() => {
+    let isMounted = true;
+    onboardingService.getStatus()
+      .then(status => {
+        if (isMounted) setWizardStatus(status);
+      })
+      .catch(() => {
+        // Safe fallback if user has no onboarding session yet
+      });
+    return () => { isMounted = false; };
+  }, []);
+
+  const handleLaunchpadActivate = async () => {
+    if (!wizardStatus?.organization_id) return;
+    setActivating(true);
+    setError(null);
+    try {
+      await onboardingService.completeWizard(wizardStatus.organization_id);
+      setActivationSuccess(true);
+      await refreshAuth();
+      setTimeout(() => {
+        navigate('/dashboard');
+      }, 1200);
+    } catch (err: any) {
+      setError(err?.message || 'Failed to activate organization.');
+    } finally {
+      setActivating(false);
+    }
+  };
+
   const { branding, updateBranding } = useBranding();
   const [brandingForm, setBrandingForm] = useState<{
     logo_url: string; favicon_url: string; watermark_url: string; watermark_opacity: string;
@@ -102,7 +147,7 @@ export const OrganizationLaunchpadPage: React.FC = () => {
     try {
       await updateBranding(brandingForm);
       alert('Branding updated successfully');
-    } catch (err) {
+    } catch {
       alert('Failed to update branding');
     } finally {
       setSaving(false);
@@ -188,7 +233,12 @@ export const OrganizationLaunchpadPage: React.FC = () => {
           <h1 style={styles.title}>Organization Launchpad</h1>
           <p style={styles.subtitle}>Create a company and its first location in one protected transaction. Existing organization and branch screens remain available for ongoing administration.</p>
         </div>
-        <Link to="/admin/organizations" className="btn btn-secondary">View organizations</Link>
+        <div style={{ display: 'flex', gap: '8px' }}>
+          <Link to="/setup" className="btn btn-primary" style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+            <Building2 size={16} /> 7-Stage Setup Wizard
+          </Link>
+          <Link to="/admin/organizations" className="btn btn-secondary">View organizations</Link>
+        </div>
       </div>
 
       <div style={{ display: 'flex', gap: 'var(--spacing-md)', marginBottom: 'var(--spacing-lg)', borderBottom: '1px solid var(--color-border-subtle)' }}>
@@ -200,6 +250,130 @@ export const OrganizationLaunchpadPage: React.FC = () => {
 
       {activeTab === 'setup' && (
         <>
+      {/* Live Transition & Onboarding Orchestrator Card */}
+      {wizardStatus && wizardStatus.status === 'in_progress' && (
+        <div style={{
+          marginBottom: 'var(--spacing-xl)',
+          padding: '24px',
+          borderRadius: 'var(--radius-lg, 12px)',
+          background: 'linear-gradient(135deg, rgba(59, 130, 246, 0.08) 0%, rgba(147, 51, 234, 0.04) 100%)',
+          border: '1px solid rgba(59, 130, 246, 0.3)',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '16px',
+        }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '12px' }}>
+            <div>
+              <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '0.75rem', fontWeight: 700, color: 'var(--color-primary, #3b82f6)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '4px' }}>
+                <Sparkles size={14} /> Onboarding In Progress • Stage {wizardStatus.current_stage}/7
+              </div>
+              <h2 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 700, color: 'var(--color-text-main, #0f172a)' }}>
+                {wizardStatus.organization_name}
+              </h2>
+              <p style={{ margin: '4px 0 0', fontSize: '0.875rem', color: 'var(--color-text-sub, #64748b)' }}>
+                Current Step: <strong>Stage {wizardStatus.current_stage}: {STAGE_NAMES[wizardStatus.current_stage] || 'Setup'}</strong>
+              </p>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+              <div style={{ textAlign: 'right' }}>
+                <div style={{ fontSize: '1.125rem', fontWeight: 800, color: (wizardStatus.readiness_summary?.score ?? 0) >= 80 ? 'var(--color-status-success, #10b981)' : 'var(--color-status-warning, #f59e0b)' }}>
+                  {wizardStatus.readiness_summary?.score ?? 0}% Ready
+                </div>
+                <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted, #64748b)' }}>
+                  Operational Readiness
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+            {[1, 2, 3, 4, 5, 6].map(s => {
+              const isDone = (wizardStatus.completed_stages || []).includes(s);
+              const isCurrent = wizardStatus.current_stage === s;
+              return (
+                <Link
+                  key={s}
+                  to={`/setup/${s}`}
+                  style={{
+                    padding: '6px 12px',
+                    borderRadius: '6px',
+                    fontSize: '0.8125rem',
+                    fontWeight: 600,
+                    textDecoration: 'none',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    background: isDone ? 'rgba(16, 185, 129, 0.12)' : isCurrent ? 'rgba(59, 130, 246, 0.15)' : 'var(--surface-control-bg, #f1f5f9)',
+                    color: isDone ? '#047857' : isCurrent ? '#1d4ed8' : 'var(--color-text-muted, #64748b)',
+                    border: `1px solid ${isDone ? 'rgba(16, 185, 129, 0.3)' : isCurrent ? 'rgba(59, 130, 246, 0.4)' : 'var(--color-border, #e2e8f0)'}`,
+                  }}
+                >
+                  {isDone ? <CheckCircle2 size={13} /> : <Circle size={13} />}
+                  Stage {s}: {STAGE_NAMES[s]}
+                </Link>
+              );
+            })}
+          </div>
+
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '4px' }}>
+            <Link
+              to={`/setup/${wizardStatus.current_stage}`}
+              className="btn btn-secondary"
+              style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+            >
+              Resume Wizard <ArrowRight size={14} />
+            </Link>
+            {wizardStatus.completed_stages && [1, 2, 3, 4, 5, 6].every(s => wizardStatus.completed_stages.includes(s)) && (
+              <button
+                type="button"
+                onClick={handleLaunchpadActivate}
+                disabled={activating || activationSuccess}
+                className="btn btn-primary"
+                style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+              >
+                {activating ? <Loader2 size={16} className="animate-spin" /> : <Sparkles size={16} />}
+                {activationSuccess ? 'Activated!' : 'Complete Setup & Launch Organization'}
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
+      {wizardStatus && wizardStatus.status === 'completed' && (
+        <div style={{
+          marginBottom: 'var(--spacing-xl)',
+          padding: '24px',
+          borderRadius: 'var(--radius-lg, 12px)',
+          background: 'linear-gradient(135deg, rgba(16, 185, 129, 0.08) 0%, rgba(59, 130, 246, 0.04) 100%)',
+          border: '1px solid rgba(16, 185, 129, 0.3)',
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          flexWrap: 'wrap',
+          gap: '16px',
+        }}>
+          <div>
+            <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '0.75rem', fontWeight: 700, color: 'var(--color-status-success, #10b981)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '4px' }}>
+              <CheckCircle2 size={14} /> Fully Activated & Operational
+            </div>
+            <h2 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 700, color: 'var(--color-text-main, #0f172a)' }}>
+              {wizardStatus.organization_name}
+            </h2>
+            <p style={{ margin: '4px 0 0', fontSize: '0.875rem', color: 'var(--color-text-sub, #64748b)' }}>
+              Organizational readiness evaluated (100%). System is operational with active locations, working calendars, and RBAC governance.
+            </p>
+          </div>
+          <div style={{ display: 'flex', gap: '10px' }}>
+            <Link to="/admin/branding" className="btn btn-secondary">
+              Theme & Branding
+            </Link>
+            <Link to="/dashboard" className="btn btn-primary" style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+              Go to HRMS Dashboard <ArrowRight size={14} />
+            </Link>
+          </div>
+        </div>
+      )}
+
       {!canLaunch && (
         <div style={styles.error} role="alert"><ShieldCheck size={18} /> Verify a tenant-owner account before launching an organization. Existing organization administrators can continue using the linked configuration screens.</div>
       )}

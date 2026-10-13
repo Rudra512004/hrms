@@ -59,7 +59,10 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
   const hasPermission = (permission: string): boolean => {
     if (!session) return false;
-    if (session.user?.isSuperuser || session.roles?.includes('Super Admin')) {
+    // Authorize via backend-sourced superuser flag and dynamic permission set.
+    // Never check role names — all authorization must be permission-based
+    // per .agent/RBAC_RULES.md.
+    if (session.user?.isSuperuser) {
       return true;
     }
     if (!session.permissions) return false;

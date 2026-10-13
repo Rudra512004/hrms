@@ -107,6 +107,39 @@ export interface Designation {
   updated_at?: string;
 }
 
+export interface PaletteSuggestion {
+  id: string;
+  name: string;
+  description: string;
+  primary_color: string;
+  secondary_color: string;
+  accent_color: string;
+  sidebar_bg_color: string;
+}
+
+export interface BrandingConfig {
+  branding_mode?: 'default' | 'custom';
+  selected_palette?: string;
+  palette_suggestions?: PaletteSuggestion[];
+  manual_overrides?: Record<string, string>;
+  logo_url?: string;
+  logo_file?: string | null;
+  favicon_url?: string;
+  login_banner_url?: string;
+  watermark_url?: string;
+  watermark_opacity?: string;
+  primary_color?: string;
+  secondary_color?: string;
+  accent_color?: string;
+  sidebar_bg_color?: string;
+  default_theme_mode?: 'light' | 'dark' | 'system';
+  font_family?: string;
+  currency_code?: string;
+  date_format?: string;
+  custom_fields_schema?: any[];
+  updated_at?: string;
+}
+
 const getHeaders = (includeContentType = true): HeadersInit => {
   const token = localStorage.getItem('auth_token');
   const headers: Record<string, string> = {
@@ -163,20 +196,46 @@ export const organizationService = {
   },
 
   // --- BRANDING ---
-  getBranding: async (id: number): Promise<any> => {
+  getBranding: async (id: number): Promise<BrandingConfig> => {
     const response = await fetch(`/api/v1/organization/organizations/${id}/branding/`, {
       headers: getHeaders(false),
     });
-    return handleResponse<any>(response);
+    return handleResponse<BrandingConfig>(response);
   },
   
-  updateBranding: async (id: number, data: any): Promise<any> => {
+  updateBranding: async (id: number, data: Partial<BrandingConfig>): Promise<BrandingConfig> => {
     const response = await fetch(`/api/v1/organization/organizations/${id}/branding/`, {
       method: 'PATCH',
       headers: getHeaders(true),
       body: JSON.stringify(data),
     });
-    return handleResponse<any>(response);
+    return handleResponse<BrandingConfig>(response);
+  },
+
+  uploadLogo: async (id: number, file: File): Promise<BrandingConfig> => {
+    const formData = new FormData();
+    formData.append('file', file);
+    const token = localStorage.getItem('auth_token');
+    const headers: Record<string, string> = {
+      Accept: 'application/json',
+    };
+    if (token) {
+      headers.Authorization = `Token ${token}`;
+    }
+    const response = await fetch(`/api/v1/organization/organizations/${id}/branding/logo/`, {
+      method: 'POST',
+      headers,
+      body: formData,
+    });
+    return handleResponse<BrandingConfig>(response);
+  },
+
+  removeLogo: async (id: number): Promise<BrandingConfig> => {
+    const response = await fetch(`/api/v1/organization/organizations/${id}/branding/logo/`, {
+      method: 'DELETE',
+      headers: getHeaders(false),
+    });
+    return handleResponse<BrandingConfig>(response);
   },
 
   // --- ORGANIZATIONS ---

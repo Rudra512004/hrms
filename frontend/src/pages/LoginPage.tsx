@@ -1,5 +1,5 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate, Link, useSearchParams } from 'react-router-dom';
 import { authService } from '../services/auth';
 import { useAuth } from '../contexts/AuthContext';
 import { Eye, EyeOff, Shield, Users, BarChart3, Clock } from 'lucide-react';
@@ -425,6 +425,7 @@ function useOrbFollow(panelRef: React.RefObject<HTMLDivElement | null>) {
 
 export const LoginPage: React.FC = () => {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { refreshAuth } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -442,7 +443,12 @@ export const LoginPage: React.FC = () => {
     try {
       await authService.login(email.toLowerCase().trim(), password);
       await refreshAuth();
-      navigate('/dashboard');
+      const redirectUrl = searchParams.get('redirect');
+      if (redirectUrl && redirectUrl.startsWith('/') && !redirectUrl.startsWith('//')) {
+        navigate(redirectUrl);
+      } else {
+        navigate('/dashboard');
+      }
     } catch (err: any) {
       setError(err.message || 'Login failed. Please check your credentials.');
     } finally {

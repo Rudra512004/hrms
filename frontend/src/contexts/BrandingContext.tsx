@@ -1,30 +1,19 @@
 import React, { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
-import { organizationService } from '../services/organization';
+import { organizationService, type BrandingConfig } from '../services/organization';
 import { useAuth } from './AuthContext';
+import { applyThemeTokens, clearThemeTokens } from '../utils/themeTokens';
 
-export interface BrandingConfig {
-  logo_url?: string;
-  favicon_url?: string;
-  login_banner_url?: string;
-  watermark_url?: string;
-  watermark_opacity?: string;
-  primary_color?: string;
-  secondary_color?: string;
-  accent_color?: string;
-  sidebar_bg_color?: string;
-  default_theme_mode?: 'light' | 'dark' | 'system';
-  font_family?: string;
-  currency_code?: string;
-  date_format?: string;
-  custom_fields_schema?: any[];
-}
+export type { BrandingConfig };
 
 interface BrandingContextType {
   branding: BrandingConfig | null;
+  orgId: number | null;
   loading: boolean;
   error: string | null;
   refreshBranding: () => Promise<void>;
-  updateBranding: (data: Partial<BrandingConfig>) => Promise<void>;
+  updateBranding: (data: Partial<BrandingConfig>) => Promise<BrandingConfig>;
+  uploadLogo: (file: File) => Promise<BrandingConfig>;
+  removeLogo: () => Promise<BrandingConfig>;
 }
 
 const BrandingContext = createContext<BrandingContextType | undefined>(undefined);
@@ -41,9 +30,11 @@ export const BrandingProvider: React.FC<{ children: ReactNode }> = ({ children }
       const config = await organizationService.getBranding(organizationId);
       setBranding(config);
       setError(null);
+      return config;
     } catch (err: any) {
       console.error('Failed to load branding:', err);
       setError('Unable to load branding configuration');
+      return null;
     } finally {
       setLoading(false);
     }
@@ -54,20 +45,25 @@ export const BrandingProvider: React.FC<{ children: ReactNode }> = ({ children }
   useEffect(() => {
     const init = async () => {
       if (!user) {
+        setBranding(null);
+        setOrgId(null);
+        clearThemeTokens();
         setLoading(false);
         return;
       }
-      
-      // Find the first available organization since user org payload doesn't contain the explicit organizationId
+
       try {
         const orgs = await organizationService.listOrganizations();
         if (orgs.length > 0) {
-          setOrgId(orgs[0].id);
-          fetchBranding(orgs[0].id);
+          const currentOrgId = orgs[0].id;
+          setOrgId(currentOrgId);
+          await fetchBranding(currentOrgId);
         } else {
+          setBranding(null);
+          clearThemeTokens();
           setLoading(false);
         }
-      } catch (e) {
+      } catch {
         setLoading(false);
       }
     };
@@ -75,14 +71,7 @@ export const BrandingProvider: React.FC<{ children: ReactNode }> = ({ children }
   }, [user]);
 
   useEffect(() => {
-    if (branding) {
-      const root = document.documentElement;
-      if (branding.primary_color) root.style.setProperty('--color-primary', branding.primary_color);
-      if (branding.secondary_color) root.style.setProperty('--color-secondary', branding.secondary_color);
-      if (branding.accent_color) root.style.setProperty('--color-accent', branding.accent_color);
-      if (branding.sidebar_bg_color) root.style.setProperty('--sidebar-bg', branding.sidebar_bg_color);
-      if (branding.font_family) root.style.setProperty('--font-family', branding.font_family);
-    }
+    applyThemeTokens(branding);
   }, [branding]);
 
   const refreshBranding = async () => {
@@ -91,15 +80,40 @@ export const BrandingProvider: React.FC<{ children: ReactNode }> = ({ children }
     }
   };
 
-  const updateBranding = async (data: Partial<BrandingConfig>) => {
-    if (orgId) {
-      const updated = await organizationService.updateBranding(orgId, data);
-      setBranding(updated);
-    }
+  const updateBranding = async (data: Partial<BrandingConfig>): Promise<BrandingConfig> => {
+    if (!orgId) throw new Error('No active organization found to update branding.');
+    const updated = await organizationService.updateBranding(orgId, data);
+    setBranding(updated);
+    return updated;
+  };
+
+  const uploadLogo = async (file: File): Promise<BrandingConfig> => {
+    if (!orgId) throw new Error('No active organization found to upload logo.');
+    const updated = await organizationService.uploadLogo(orgId, file);
+    setBranding(updated);
+    return updated;
+  };
+
+  const removeLogo = async (): Promise<BrandingConfig> => {
+    if (!orgId) throw new Error('No active organization found to remove logo.');
+    const updated = await organizationService.removeLogo(orgId);
+    setBranding(updated);
+    return updated;
   };
 
   return (
-    <BrandingContext.Provider value={{ branding, loading, error, refreshBranding, updateBranding }}>
+    <BrandingContext.Provider
+      value={{
+        branding,
+        orgId,
+        loading,
+        error,
+        refreshBranding,
+        updateBranding,
+        uploadLogo,
+        removeLogo,
+      }}
+    >
       {children}
     </BrandingContext.Provider>
   );
@@ -107,10 +121,13 @@ export const BrandingProvider: React.FC<{ children: ReactNode }> = ({ children }
 
 const defaultBrandingContext: BrandingContextType = {
   branding: null,
+  orgId: null,
   loading: false,
   error: null,
   refreshBranding: async () => {},
-  updateBranding: async () => {},
+  updateBranding: async () => { throw new Error('Branding provider uninitialized'); },
+  uploadLogo: async () => { throw new Error('Branding provider uninitialized'); },
+  removeLogo: async () => { throw new Error('Branding provider uninitialized'); },
 };
 
 export const useBranding = () => {

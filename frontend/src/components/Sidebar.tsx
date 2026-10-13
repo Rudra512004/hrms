@@ -28,9 +28,11 @@ import {
   Star,
   UserCheck,
   FileCheck,
+  Palette,
 } from 'lucide-react';
 
 import { useAuth } from '../contexts/AuthContext';
+import { useBranding } from '../contexts/BrandingContext';
 
 interface SidebarProps {
   isOpen: boolean;
@@ -54,6 +56,7 @@ interface NavSection {
 
 export const Sidebar: React.FC<SidebarProps> = ({ isOpen, isMobile, onNavigate }) => {
   const { hasPermission, hasEmployeeProfile, user } = useAuth();
+  const { branding } = useBranding();
 
   const navigation: NavSection[] = [
     {
@@ -123,6 +126,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, isMobile, onNavigate }
       title: 'Admin',
       items: [
         { path: '/admin/control-center', label: 'Control Center', icon: SlidersHorizontal, permission: 'organization.view' },
+        { path: '/admin/branding',       label: 'Branding & Theme',   icon: Palette,           permission: 'branding.manage' },
         { path: '/admin/announcements', label: 'Announcements', icon: Bell, permission: 'announcement.view' },
         { path: '/admin/roles',          label: 'Roles & Permissions', icon: ShieldAlert, permission: 'role.view' },
         { path: '/admin/audit-logs',     label: 'Audit Logs',          icon: Settings,    permission: 'audit.view' },
@@ -152,8 +156,11 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, isMobile, onNavigate }
             }}
           >
             <img
-              src="/beyondsure-logo.webp"
+              src={branding?.logo_url || '/beyondsure-logo.webp'}
               alt="BeyondSure HRMS"
+              onError={(e) => {
+                (e.target as HTMLImageElement).src = '/beyondsure-logo.webp';
+              }}
               style={{
                 width: '100%',
                 maxWidth: '170px',
@@ -177,8 +184,11 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, isMobile, onNavigate }
             }}
           >
             <img
-              src="/favicon.svg"
+              src={branding?.logo_url || '/favicon.svg'}
               alt="BeyondSure"
+              onError={(e) => {
+                (e.target as HTMLImageElement).src = '/favicon.svg';
+              }}
               style={{
                 width: 24,
                 height: 24,

@@ -34,6 +34,7 @@ import { EmployeeProfilePage } from '../pages/admin/EmployeeProfilePage';
 import { EmployeeAccessPage } from '../pages/admin/EmployeeAccessPage';
 import { AuditLogsPage } from '../pages/admin/AuditLogsPage';
 import { OrganizationControlCenterPage } from '../pages/admin/OrganizationControlCenterPage';
+import { OrganizationBrandingPage } from '../pages/admin/branding/OrganizationBrandingPage';
 import { AnnouncementsPage } from '../pages/admin/AnnouncementsPage';
 import { DailyRosterPage } from '../pages/admin/DailyRosterPage';
 import { BreakTypesPage } from '../pages/admin/BreakTypesPage';
@@ -77,6 +78,7 @@ import { OnboardingDocumentsPage } from '../pages/onboarding/OnboardingDocuments
 import { OnboardingLettersPage } from '../pages/onboarding/OnboardingLettersPage';
 import { WorkHealthAlertsPage } from '../pages/admin/WorkHealthAlertsPage';
 import { MyAlertPreferencesPage } from '../pages/employee/MyAlertPreferencesPage';
+import { OrganizationSetupWizardPage, AcceptInvitationPage } from '../pages/setup';
 
 export const AppRouter: React.FC = () => {
   return (
@@ -92,6 +94,16 @@ export const AppRouter: React.FC = () => {
         <Route path="/activate" element={<ActivateAccountPage />} />
         <Route path="/activate/:uid/:token" element={<ActivateAccountPage />} />
         <Route path="/pending-activation" element={<PendingActivationPage />} />
+        <Route path="/invite/accept" element={<AcceptInvitationPage />} />
+        <Route path="/invitations/accept" element={<AcceptInvitationPage />} />
+      </Route>
+
+      {/* Organization Setup Wizard (Phase 3D) — Dedicated Setup Shell */}
+      <Route element={<ProtectedRoute />}>
+        <Route path="/setup" element={<OrganizationSetupWizardPage />} />
+        <Route path="/setup/:stageNumber" element={<OrganizationSetupWizardPage />} />
+        <Route path="/setup/review" element={<Navigate to="/setup/7" replace />} />
+        <Route path="/admin/setup" element={<Navigate to="/setup" replace />} />
       </Route>
 
       {/* Protected Routes */}
@@ -171,6 +183,10 @@ export const AppRouter: React.FC = () => {
             <Route path="/admin/control-center" element={<OrganizationControlCenterPage />} />
             <Route path="/admin/org-chart" element={<OrgChartPage />} />
           </Route>
+
+          <Route element={<ProtectedRoute requiredPermission="branding.manage" />}>
+            <Route path="/admin/branding" element={<OrganizationBrandingPage />} />
+          </Route>
           
           <Route element={<ProtectedRoute requiredPermission="data_import.view" />}>
             <Route path="/admin/data-import" element={<DataImportPage />} />
@@ -228,6 +244,9 @@ export const AppRouter: React.FC = () => {
           <Route element={<ProtectedRoute requiredPermission="role.view" />}>
             <Route path="/admin/roles" element={<RolesPage />} />
             <Route path="/admin/roles/:roleId/permissions" element={<RolePermissionsPage />} />
+            <Route path="/roles" element={<RolesPage />} />
+            <Route path="/roles/:roleId" element={<RolePermissionsPage />} />
+            <Route path="/roles/:roleId/edit" element={<RolePermissionsPage />} />
           </Route>
 
           <Route element={<ProtectedRoute requiredPermission="audit.view" />}>
