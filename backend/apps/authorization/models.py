@@ -9,6 +9,11 @@ class Permission(models.Model):
     action = models.CharField(max_length=100, help_text="e.g., view, create")
     description = models.TextField(blank=True)
     is_active = models.BooleanField(default=True)
+    category = models.CharField(max_length=100, blank=True, default='')
+    ui_label = models.CharField(max_length=255, blank=True, default='')
+    column_index = models.PositiveSmallIntegerField(null=True, blank=True)
+    display_order = models.PositiveSmallIntegerField(default=0)
+    is_preserved_enterprise = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -21,13 +26,43 @@ class Permission(models.Model):
 class Role(models.Model):
     organization = models.ForeignKey(Organization, on_delete=models.CASCADE, related_name='roles')
     name = models.CharField(max_length=255)
+    slug = models.CharField(max_length=100, blank=True, default='')
     description = models.TextField(blank=True)
+    is_system = models.BooleanField(default=False)
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
-        unique_together = ('organization', 'name')
+        unique_together = (('organization', 'name'), ('organization', 'slug'))
+
+    def save(self, *args, **kwargs):
+        if not self.slug and self.name:
+            from django.utils.text import slugify
+            base_slug = slugify(self.name) or 'role'
+            system_mapping = {
+                'super admin': 'super-admin',
+                'organization owner (super admin)': 'super-admin',
+                'hr manager': 'hr-manager',
+                'branch manager': 'branch-manager',
+                'employee': 'employee',
+                'accountant': 'accountant',
+            }
+            normalized = self.name.strip().lower()
+            candidate = system_mapping.get(normalized, base_slug)
+
+            org_id = getattr(self, 'organization_id', None)
+            if org_id:
+                existing_qs = Role.objects.filter(organization_id=org_id, slug=candidate)
+                if self.pk:
+                    existing_qs = existing_qs.exclude(pk=self.pk)
+                if existing_qs.exists():
+                    count = 1
+                    while Role.objects.filter(organization_id=org_id, slug=f"{candidate}-{count}").exclude(pk=self.pk).exists():
+                        count += 1
+                    candidate = f"{candidate}-{count}"
+            self.slug = candidate
+        super().save(*args, **kwargs)
 
     def __str__(self):
         return f"{self.name} ({self.organization.name})"

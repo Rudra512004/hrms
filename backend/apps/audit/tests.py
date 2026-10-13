@@ -24,8 +24,14 @@ class OnboardingAuditTestCase(TestCase):
         self.normal_user.status = 'active'
         self.normal_user.save()
 
-        p1, _ = Permission.objects.get_or_create(codename='employee.create', resource='employee', action='create', name='Create Employee')
-        p2, _ = Permission.objects.get_or_create(codename='audit.view', resource='audit', action='view', name='View Audit')
+        p1, _ = Permission.objects.get_or_create(
+            codename='employee.create',
+            defaults={'resource': 'employee', 'action': 'create', 'name': 'Create Employee'}
+        )
+        p2, _ = Permission.objects.get_or_create(
+            codename='audit.view',
+            defaults={'resource': 'audit', 'action': 'view', 'name': 'View Audit'}
+        )
         
         UserPermissionGrant.objects.create(user=self.super_user, permission=p1)
         UserPermissionGrant.objects.create(user=self.super_user, permission=p2)

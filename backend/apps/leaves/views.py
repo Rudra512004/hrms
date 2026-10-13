@@ -366,12 +366,15 @@ class LeaveRequestViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['post'])
     def approve(self, request, pk=None):
         from .models import LeaveCycle, BranchLeavePolicy, LeaveBalanceTransaction
-        if not AuthorizationService.has_permission(request.user, 'leave.approve'):
+        has_approve = AuthorizationService.has_permission(request.user, 'leave.approve')
+        has_canonical = AuthorizationService.has_permission(request.user, 'leave.approve_reject')
+        if not (has_approve or has_canonical):
             return Response(status=status.HTTP_403_FORBIDDEN)
 
         with transaction.atomic():
             leave = LeaveRequest.objects.select_for_update().get(pk=self.get_object().pk)
-            authorized_branches = AuthorizationService.get_authorized_branches(request.user, 'leave.approve')
+            perm_to_check = 'leave.approve' if has_approve else 'leave.approve_reject'
+            authorized_branches = AuthorizationService.get_authorized_branches(request.user, perm_to_check)
             if leave.employee.branch not in authorized_branches:
                 return Response(status=status.HTTP_403_FORBIDDEN)
 
@@ -468,12 +471,15 @@ class LeaveRequestViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=['post'])
     def reject(self, request, pk=None):
-        if not AuthorizationService.has_permission(request.user, 'leave.reject'):
+        has_reject = AuthorizationService.has_permission(request.user, 'leave.reject')
+        has_canonical = AuthorizationService.has_permission(request.user, 'leave.approve_reject')
+        if not (has_reject or has_canonical):
             return Response(status=status.HTTP_403_FORBIDDEN)
 
         with transaction.atomic():
             leave = LeaveRequest.objects.select_for_update().get(pk=self.get_object().pk)
-            authorized_branches = AuthorizationService.get_authorized_branches(request.user, 'leave.reject')
+            perm_to_check = 'leave.reject' if has_reject else 'leave.approve_reject'
+            authorized_branches = AuthorizationService.get_authorized_branches(request.user, perm_to_check)
             if leave.employee.branch not in authorized_branches:
                 return Response(status=status.HTTP_403_FORBIDDEN)
 
@@ -513,9 +519,12 @@ class LeaveRequestViewSet(viewsets.ModelViewSet):
             leave = LeaveRequest.objects.select_for_update().get(pk=self.get_object().pk)
             caller_emp = getattr(request.user, 'employee', None)
             if not (caller_emp and leave.employee == caller_emp):
-                if not AuthorizationService.has_permission(request.user, 'leave.cancel'):
+                has_cancel = AuthorizationService.has_permission(request.user, 'leave.cancel')
+                has_canonical = AuthorizationService.has_permission(request.user, 'leave.approve_reject')
+                if not (has_cancel or has_canonical):
                     return Response(status=status.HTTP_403_FORBIDDEN)
-                authorized_branches = AuthorizationService.get_authorized_branches(request.user, 'leave.cancel')
+                perm_to_check = 'leave.cancel' if has_cancel else 'leave.approve_reject'
+                authorized_branches = AuthorizationService.get_authorized_branches(request.user, perm_to_check)
                 if leave.employee.branch not in authorized_branches:
                     return Response(status=status.HTTP_403_FORBIDDEN)
 

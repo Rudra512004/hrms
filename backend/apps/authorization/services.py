@@ -21,13 +21,67 @@ class AuthorizationService:
             role__is_active=True,
             role__organization__isnull=False,
         ).select_related('role__organization').first()
-        return user_role.role.organization if user_role else None
+        if user_role:
+            return user_role.role.organization
+        reg = getattr(user, 'tenant_owner_registration', None)
+        if reg and reg.organization_id:
+            return reg.organization
+        onb = getattr(user, 'organization_onboardings', None)
+        if onb:
+            first_onb = onb.select_related('organization').first()
+            if first_onb:
+                return first_onb.organization
+        return None
+
+    @staticmethod
+    def _is_active_org_superadmin(user, organization):
+        """Check if user has an active, unrevoked Super Admin role within the given organization."""
+        if not user or not user.is_authenticated or not user.is_active or not organization:
+            return False
+        now = timezone.now()
+        return UserRole.objects.filter(
+            user=user,
+            is_revoked=False,
+            role__is_active=True,
+            role__organization=organization,
+            role__slug='super-admin',
+            scope=ScopeChoices.ORGANIZATION,
+        ).filter(
+            Q(expires_at__isnull=True) | Q(expires_at__gte=now)
+        ).exists()
+
+    @staticmethod
+    def is_super_admin(user, organization=None):
+        """Check if user has an active, unrevoked Super Admin role within their primary or specified organization."""
+        if not user or not user.is_authenticated or not user.is_active:
+            return False
+        if not organization:
+            organization = AuthorizationService.get_primary_organization(user)
+        if not organization:
+            return False
+        return AuthorizationService._is_active_org_superadmin(user, organization)
+
     @staticmethod
     def get_effective_permissions(user, branch_id=None, team_id=None, global_only=False):
-        if not user.is_authenticated or not user.is_active:
+        if not user or not user.is_authenticated or not user.is_active:
             return set()
 
+        org = AuthorizationService.get_primary_organization(user)
 
+        # Dynamic Super Admin Resolution within tenant organization
+        if org and AuthorizationService._is_active_org_superadmin(user, org):
+            if team_id:
+                from apps.organization.models import Team
+                team = Team.objects.filter(id=team_id).select_related('department__branch').first()
+                if not team or team.department.branch.organization_id != org.id:
+                    return set()
+            elif branch_id:
+                from apps.organization.models import Branch
+                branch = Branch.objects.filter(id=branch_id).first()
+                if not branch or branch.organization_id != org.id:
+                    return set()
+
+            return set(Permission.objects.filter(is_active=True).values_list('codename', flat=True))
 
         now = timezone.now()
 
@@ -90,7 +144,15 @@ class AuthorizationService:
     @staticmethod
     def get_authorized_branches(user, permission_codename):
         """Returns a QuerySet of branches the user has the given permission for."""
-        if not user.is_authenticated or not user.is_active:
+        if not user or not user.is_authenticated or not user.is_active:
+            return Branch.objects.none()
+
+        org = AuthorizationService.get_primary_organization(user)
+
+        # Dynamic Super Admin Resolution
+        if org and AuthorizationService._is_active_org_superadmin(user, org):
+            if Permission.objects.filter(codename=permission_codename, is_active=True).exists():
+                return Branch.objects.filter(organization=org, is_active=True)
             return Branch.objects.none()
 
         now = timezone.now()
@@ -156,10 +218,16 @@ class AuthorizationService:
     def get_authorized_teams(user, permission_codename):
         """Returns a QuerySet of Teams the user has the given permission for, including explicitly Team-scoped ones."""
         from apps.organization.models import Team
-        if not user.is_authenticated or not user.is_active:
+        if not user or not user.is_authenticated or not user.is_active:
             return Team.objects.none()
 
+        org = AuthorizationService.get_primary_organization(user)
 
+        # Dynamic Super Admin Resolution
+        if org and AuthorizationService._is_active_org_superadmin(user, org):
+            if Permission.objects.filter(codename=permission_codename, is_active=True).exists():
+                return Team.objects.filter(department__branch__organization=org, is_active=True)
+            return Team.objects.none()
 
         now = timezone.now()
 

@@ -36,8 +36,14 @@ class AuthorizationManagementAPITests(TestCase):
         self.normal_employee = Employee.objects.create(user=self.normal_user, employee_code='EMP_NORMAL', organization=self.org)
 
         # Permissions and Roles
-        self.perm_view_emp = Permission.objects.create(name='View Employee', codename='employee.view', resource='employee', action='view')
-        self.perm_create_emp = Permission.objects.create(name='Create Employee', codename='employee.create', resource='employee', action='create')
+        self.perm_view_emp, _ = Permission.objects.get_or_create(
+            codename='employee.view',
+            defaults={'name': 'View Employee', 'resource': 'employee', 'action': 'view'}
+        )
+        self.perm_create_emp, _ = Permission.objects.get_or_create(
+            codename='employee.create',
+            defaults={'name': 'Create Employee', 'resource': 'employee', 'action': 'create'}
+        )
 
         self.hr_role = Role.objects.create(organization=self.org, name='HR Manager')
         self.hr_role.role_permissions.create(permission=self.perm_view_emp)
@@ -105,7 +111,12 @@ class AuthorizationManagementAPITests(TestCase):
     def test_superadmin_protection(self):
         # Normal user with role assignment permission shouldn't revoke superadmin role
         # Actually in views.py, any modification of superadmin roles requires the acting user to be superadmin
-        super_role = UserRole.objects.create(user=self.super_user, role=self.hr_role, assigned_by=self.super_user)
+        admin_role, _ = Role.objects.get_or_create(
+            organization=self.org,
+            slug='super-admin',
+            defaults={'name': 'Super Admin', 'is_system': True}
+        )
+        super_role = UserRole.objects.create(user=self.super_user, role=admin_role, assigned_by=self.super_user)
 
         # Give normal user role.revoke permission
         perm_revoke, _ = Permission.objects.get_or_create(codename='role.revoke', defaults={'name': 'Revoke Role'})

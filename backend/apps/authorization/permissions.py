@@ -18,6 +18,17 @@ def require_permission(permission_codename):
             return AuthorizationService.has_permission(request.user, permission_codename)
     return SpecificPermission
 
+def require_any_permission(*permission_codenames):
+    class AnyPermission(permissions.BasePermission):
+        def has_permission(self, request, view):
+            if not request.user or not request.user.is_authenticated:
+                return False
+            for codename in permission_codenames:
+                if AuthorizationService.has_permission(request.user, codename):
+                    return True
+            return False
+    return AnyPermission
+
 from .network import NetworkAccessService
 
 class IsSuperAdmin(permissions.BasePermission):

@@ -104,7 +104,7 @@ class TenantOwnerIsolationTests(TestCase):
             'permission.view', 'permission.assign',
         ):
             resource, action = codename.split('.')
-            Permission.objects.create(name=codename, codename=codename, resource=resource, action=action)
+            Permission.objects.get_or_create(codename=codename, defaults={'name': codename, 'resource': resource, 'action': action})
 
     def _register_verify_and_launch(self, email, organization_name):
         with patch('apps.accounts.views.NotificationService.send_tenant_owner_verification_email', return_value=True):
@@ -282,7 +282,7 @@ class ProvisioningAPITests(TestCase):
 
         self.branch = Branch.objects.create(organization=self.org, name='HQ')
         self.role = Role.objects.create(organization=self.org, name='HR Role')
-        self.perm = Permission.objects.create(name='Create Employee', codename='employee.create', resource='employee', action='create')
+        self.perm, _ = Permission.objects.get_or_create(codename='employee.create', defaults={'name': 'Create Employee', 'resource': 'employee', 'action': 'create'})
         RolePermission.objects.create(role=self.role, permission=self.perm)
         UserRole.objects.create(user=self.hr_user, role=self.role)
         OfficeNetwork.objects.create(branch=self.branch, name='TestNet', network='127.0.0.0/8', is_active=True)
