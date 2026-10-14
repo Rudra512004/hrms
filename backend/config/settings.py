@@ -175,6 +175,14 @@ if frontend_url_env and not (frontend_url_env.startswith('http://') or frontend_
 else:
     FRONTEND_URL = frontend_url_env
 
+# Gmail API OAuth2 Configuration
+# Set these in production to enable Gmail API email delivery.
+GOOGLE_OAUTH_CLIENT_ID = os.environ.get('GOOGLE_OAUTH_CLIENT_ID', '')
+GOOGLE_OAUTH_CLIENT_SECRET = os.environ.get('GOOGLE_OAUTH_CLIENT_SECRET', '')
+GOOGLE_OAUTH_REDIRECT_URI = os.environ.get('GOOGLE_OAUTH_REDIRECT_URI', '')
+PLATFORM_EMAIL_ADDRESS = os.environ.get('PLATFORM_EMAIL_ADDRESS', '')
+GMAIL_ENCRYPTION_KEY = os.environ.get('GMAIL_ENCRYPTION_KEY', '')
+
 AUTH_USER_MODEL = 'accounts.User'
 
 REST_FRAMEWORK = {

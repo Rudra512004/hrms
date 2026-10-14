@@ -93,3 +93,6 @@ class AnnouncementAcknowledgement(models.Model):
 
     class Meta:
         unique_together = ('announcement', 'employee')
+
+# Gmail API OAuth credential model — imported to ensure Django model discovery
+from .gmail_models import PlatformEmailCredential  # noqa: E402, F401
